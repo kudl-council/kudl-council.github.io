@@ -124,7 +124,7 @@
   // 지금 학생회의 사업인지: 기수로 판단 (기수 기록이 없는 옛 자료는 올해 것만)
   const isCurrent = (p) => (p.generation ? p.generation === S.settings.generation : Number(p.year) === S.settings.currentYear);
   const genNum = (g) => { const m = String(g || "").match(/\d+/); return m ? Number(m[0]) : 0; };
-  // 활동 이력: 지금 학생회에서의 국·직책을 회원 기록에 남김 (같은 기수는 덮어씀)
+  // 활동 이력: 지금 학생회에서의 국서·직책을 회원 기록에 남김 (같은 기수는 덮어씀)
   function withHistory(u) {
     const h = (u.history || []).filter((x) => x.generation !== S.settings.generation);
     h.push({ generation: S.settings.generation, councilName: S.settings.councilName || "", dept: u.dept || "", position: u.position || "" });
@@ -684,7 +684,7 @@
     }
     const taskRow = (x) => '<li class="trow ' + (x.dueDate < t ? "late" : "") + (x.dept === myDept ? " mine" : "") + '" data-act="editTask" data-id="' + esc(x.id) + '">' +
       '<span class="dd">' + dday(x.dueDate) + "</span>" + deptTag(x.dept) + '<span class="tt">' + esc(x.title) + '</span><span class="dt">' + fmtDate(x.dueDate) + "</span></li>";
-    if (S.me && S.me.profileCheck) pendingNote = '<div class="notice info"><b>' + esc(curCouncil()) + ' 학생회가 시작됐어요!</b> 소속 국이나 직책이 바뀌었다면 연락망이 맞게 나오도록 수정해 주세요.' +
+    if (S.me && S.me.profileCheck) pendingNote = '<div class="notice info"><b>' + esc(curCouncil()) + ' 학생회가 시작됐어요!</b> 소속 국서나 직책이 바뀌었다면 연락망이 맞게 나오도록 수정해 주세요.' +
       '<div class="actions" style="margin-top:8px"><button class="btn sm primary" data-act="editMe">내 정보 수정</button><button class="btn sm" data-act="profileOk">그대로 맞아요</button></div></div>' + pendingNote;
     return pendingNote +
       '<div class="hello"><h2>' + (S.me ? esc(S.me.name) + "님, 안녕하세요" : "안녕하세요") + '</h2><p class="muted">' + fmtDate(t, true) + "</p></div>" +
@@ -718,9 +718,9 @@
             '<a class="ph" href="tel:' + esc((u.phone || "").replace(/[^\d+]/g, "")) + '">' + esc(u.phone || "") + "</a></li>";
         }).join("") + "</ul></section>";
     }).join("");
-    return '<div class="page-head"><div><h2>비상연락망</h2><p class="muted">승인된 학생회원 ' + users.length + "명 · 국별 / 직책순</p></div>" +
+    return '<div class="page-head"><div><h2>비상연락망</h2><p class="muted">승인된 학생회원 ' + users.length + "명 · 국서별 / 직책순</p></div>" +
       '<div class="actions"><button class="btn" data-act="copyContacts">명단 복사</button><button class="btn" data-act="print">인쇄</button><button class="btn primary" data-act="editMe">내 정보 수정</button></div></div>' +
-      '<input class="search" data-search="contacts" placeholder="이름 · 국 · 전화번호로 검색" value="' + esc(S.q.contacts || "") + '">' +
+      '<input class="search" data-search="contacts" placeholder="이름 · 국서 · 전화번호로 검색" value="' + esc(S.q.contacts || "") + '">' +
       '<div class="dept-grid">' + (html || '<div class="card empty">검색 결과가 없어요.</div>') + "</div>";
   };
 
@@ -740,7 +740,7 @@
     const byDay = {};
     filt.forEach((x) => (byDay[x.dueDate] = byDay[x.dueDate] || []).push(x));
     Object.values(byDay).forEach((a) => a.sort((p, q) => (p.done - q.done) || deptRank(p.dept) - deptRank(q.dept)));
-    // 사업 날짜(시행일): 여러 날이면 그 기간 매일 표시. 국 필터는 주관 국 또는 업무를 맡은 국 기준
+    // 사업 날짜(시행일): 여러 날이면 그 기간 매일 표시. 국서 필터는 주관 국서 또는 업무를 맡은 국서 기준
     const evs = projects.filter((p) => p.startDate && p.status !== "취소" && (!S.calFilter || p.dept === S.calFilter ||
       tasks.some((x) => x.projectId === p.id && x.dept === S.calFilter)));
     const evByDay = {};
@@ -774,7 +774,7 @@
         '<span class="dd">' + (p.startDate < t ? (p.status === "완료" ? "완료" : "") : dday(p.startDate)) + "</span></li>").join("") + "</ul></section>" : "";
     const chips = '<button class="fchip' + (!S.calFilter ? " on" : "") + '" data-act="calFilter" data-dept="">전체</button>' +
       S.settings.depts.map((d) => '<button class="fchip' + (S.calFilter === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="calFilter" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "</button>").join("");
-    return '<div class="page-head"><div><h2>업무 캘린더</h2><p class="muted">색이 꽉 찬 칸은 <b>사업 날짜</b>, 연한 칸은 국별 <b>업무 마감</b> · 날짜를 누르면 업무 추가</p></div>' +
+    return '<div class="page-head"><div><h2>업무 캘린더</h2><p class="muted">색이 꽉 찬 칸은 <b>사업 날짜</b>, 연한 칸은 국서별 <b>업무 마감</b> · 날짜를 누르면 업무 추가</p></div>' +
       '<div class="actions"><button class="btn primary" data-act="addTask" data-date="">+ 업무 추가</button></div></div>' +
       '<div class="filters">' + chips + "</div>" +
       '<div class="card cal-card"><div class="cal-nav"><button class="btn sm ghost" data-act="calMove" data-d="-1" aria-label="이전 달">‹</button>' +
@@ -852,7 +852,7 @@
   function projectTasksHTML(p, opts) {
     const ts = opts.tasks || [];
     const canAdd = !opts.readonly && !opts.archive;
-    if (!ts.length) return canAdd ? '<button class="btn sm ptask-add" data-act="distribute" data-id="' + esc(p.id) + '">+ 국별 업무 분배하기</button>' : "";
+    if (!ts.length) return canAdd ? '<button class="btn sm ptask-add" data-act="distribute" data-id="' + esc(p.id) + '">+ 국서별 업무 분배하기</button>' : "";
     const t = today(), done = ts.filter((x) => x.done).length;
     const depts = [];
     ts.forEach((x) => { if (depts.indexOf(x.dept) < 0) depts.push(x.dept); });
@@ -961,7 +961,7 @@
         "</section>" : "") +
       '<section class="card"><div class="card-head"><h3>사이트 설정</h3><button class="btn sm primary" data-act="editSettings">설정 바꾸기</button></div>' +
       '<dl class="meta wide"><dt>지금 학생회</dt><dd><b>' + esc(curCouncil()) + "</b></dd>" +
-      "</dd><dt>국 목록</dt><dd>" + S.settings.depts.map(deptTag).join(" ") + "</dd><dt>직책</dt><dd>" + esc(execDept()) + ": " + esc(execPositions().join(", ")) + " / 그 밖의 국: " + esc(deptPositions().join(", ")) +
+      "</dd><dt>국서 목록</dt><dd>" + S.settings.depts.map(deptTag).join(" ") + "</dd><dt>직책</dt><dd>" + esc(execDept()) + ": " + esc(execPositions().join(", ")) + " / 그 밖의 국서: " + esc(deptPositions().join(", ")) +
       "</dd><dt>회의 종류</dt><dd>" + esc(S.settings.minuteTypes.join(", ")) + "</dd><dt>회의록 폴더</dt><dd>" + (safeUrl(S.settings.minutesFolderUrl) ? '<a href="' + esc(safeUrl(S.settings.minutesFolderUrl)) + '" target="_blank" rel="noopener">열기 ↗</a>' : '<span class="muted">미등록</span>') + "</dd></dl></section>" +
       '<section class="card"><div class="card-head"><h3>새 학생회 인수인계 순서</h3><button class="btn sm primary" data-act="handover">새 학생회로 넘기기</button></div><ol class="steps">' +
       "<li>새 학생회원들이 사이트에 로그인해서 <b>가입 신청</b></li>" +
@@ -979,7 +979,7 @@
 
   async function findIn(c, id) { return (await col(c)).find((x) => x.id === id); }
 
-  /* 사업 하나에 국별 업무를 한 번에 나눠 넣기 → 업무 캘린더에도 표시 */
+  /* 사업 하나에 국서별 업무를 한 번에 나눠 넣기 → 업무 캘린더에도 표시 */
   function openDistribute(p, rows, fromWho) {
     rows = rows && rows.length ? rows : [{}, {}, {}];
     const deptOpts = (sel) => '<option value="">국서 선택</option>' + S.settings.depts.map((d) => '<option value="' + esc(d) + '"' + (d === sel ? " selected" : "") + ">" + esc(d) + "</option>").join("");
@@ -990,7 +990,7 @@
     openForm({ title: "'" + p.name + "' 업무 분배", submitLabel: "캘린더에 추가",
       intro: (fromWho
         ? '<p class="small"><b>' + esc(fromWho) + "</b>의 업무 분배를 불러왔어요. <b>마감일만 새로 넣고</b>, 필요 없는 줄은 ×로 지우세요.</p>"
-        : '<p class="muted small">국마다 맡을 일과 마감일을 적으면 업무 캘린더에도 국별 색깔로 표시돼요. 빈 줄은 무시돼요.</p>') +
+        : '<p class="muted small">국서마다 맡을 일과 마감일을 적으면 업무 캘린더에도 국서별 색깔로 표시돼요. 빈 줄은 무시돼요.</p>') +
         (p.startDate ? '<p class="small"><b>사업 날짜: ' + eventDateText(p) + "</b> (" + dday(p.startDate) + ")</p>" : '<p class="small muted">사업 날짜를 넣어 두면 여기에 표시돼서 마감일 정하기가 쉬워요.</p>'),
       fields: [],
       after: '<div class="dlist">' + rows.map(rowHTML).join("") + '</div><button type="button" class="btn sm" id="dAdd">+ 줄 추가</button>',
@@ -1281,14 +1281,14 @@
         { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 윤슬" },
         { name: "fixExisting", label: "오타 수정이에요 — 지금 학생회의 기존 사업 기록에도 바뀐 기수·이름을 똑같이 적용", type: "checkbox",
           help: "새 학생회로 넘기는 거라면 체크하지 말고 [새 학생회로 넘기기] 버튼을 쓰세요." },
-        { name: "depts", label: "국 목록 (한 줄에 하나씩, 위에서부터 순서대로 — 맨 위는 회장단 자리)", type: "textarea", rows: 7, required: true },
-        { name: "execPositions", label: "회장단 직책 (국 목록 맨 위 국에 쓰여요, 한 줄에 하나씩)", type: "textarea", rows: 2, required: true },
-        { name: "positions", label: "그 밖의 국 직책 (한 줄에 하나씩, 높은 직책부터)", type: "textarea", rows: 2, required: true },
+        { name: "depts", label: "국서 목록 (한 줄에 하나씩, 위에서부터 순서대로 — 맨 위는 회장단 자리)", type: "textarea", rows: 7, required: true },
+        { name: "execPositions", label: "회장단 직책 (국서 목록 맨 위 국서에 쓰여요, 한 줄에 하나씩)", type: "textarea", rows: 2, required: true },
+        { name: "positions", label: "그 밖의 국서 직책 (한 줄에 하나씩, 높은 직책부터)", type: "textarea", rows: 2, required: true },
         { name: "minuteTypes", label: "회의 종류 (한 줄에 하나씩)", type: "textarea", rows: 4, required: true },
         { name: "minutesFolderUrl", label: "회의록 구글 드라이브 폴더 주소", type: "url", placeholder: "https://drive.google.com/drive/folders/…" },
       ];
       openForm({ title: "사이트 설정", fields: fields, values: S.settings,
-        intro: '<p class="muted small">국 이름을 바꾸면, 기존에 그 이름으로 등록된 회원·업무는 예전 이름 그대로 남아요. 필요하면 각 항목에서 다시 골라 주세요.</p>',
+        intro: '<p class="muted small">국서 이름을 바꾸면, 기존에 그 이름으로 등록된 회원·업무는 예전 이름 그대로 남아요. 필요하면 각 항목에서 다시 골라 주세요.</p>',
         onSubmit: async (v) => {
           const lines = (s) => String(s).split(/\n|,/).map((x) => x.trim()).filter(Boolean);
           v.depts = lines(v.depts); v.positions = lines(v.positions); v.execPositions = lines(v.execPositions); v.minuteTypes = lines(v.minuteTypes);
@@ -1326,7 +1326,7 @@
           "<li>🔒 <b>타임캡슐이 열려요</b> — 지금 학생회가 봉인해 둔 한마디가 후배들에게 공개돼요. 넘기기 전에 다들 [소통방 → 선배들의 한마디]에 남겼는지 확인해 주세요</li>" +
           "<li>사이트 위쪽 이름이 새 학생회로 바뀌어요</li>" +
           "<li><b>체크하지 않은 회원은 임기 종료</b> — 사이트에 못 들어오고 연락망에서 빠져요 (기록은 남아요)</li>" +
-          "<li>계속 활동하는 회원에게는 바뀐 국·직책을 수정하라는 안내가 떠요</li></ul>",
+          "<li>계속 활동하는 회원에게는 바뀐 국서·직책을 수정하라는 안내가 떠요</li></ul>",
         fields: [
           { name: "generation", label: "새 학생회 기수", required: true, half: true, placeholder: "예: 제30대" },
           { name: "councilName", label: "새 학생회 이름", required: true, half: true, placeholder: "새 학생회 이름" },
@@ -1344,7 +1344,7 @@
           if (!keepers.some((u) => u.isAdmin))
             throw new Error("계속 활동하는 회원 중에 회장단 권한이 있는 사람이 없어요. 먼저 회원 관리에서 새 회장·부회장에게 회장단 권한을 준 뒤 넘겨 주세요.");
           if (!confirm(leavers.length + "명을 임기 종료하고 " + councilLabel(v.generation, v.councilName) + " 학생회로 넘길까요?")) return;
-          // 이번 학생회 멤버 명단을 기록으로 남김 (OB 화면에서 이름·국·직책만 보여줌)
+          // 이번 학생회 멤버 명단을 기록으로 남김 (OB 화면에서 이름·국서·직책만 보여줌)
           // 임기 중간에 먼저 임기 종료된 사람도 이번 학생회 멤버로 함께 기록
           const earlyOB = (await col("users")).filter((u) => u.status === "inactive" && u.inactiveReason === "임기 종료" &&
             (u.history || []).some((h) => h.generation === S.settings.generation));
