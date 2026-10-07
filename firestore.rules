@@ -24,6 +24,13 @@ service cloud.firestore {
       return hasProfile() && me().status == 'inactive' && me().get('inactiveReason', '') == '임기 종료';
     }
     function admin() { return isOwner() || (approved() && me().get('isAdmin', false) == true); }
+    // 지금 학생회(관리 → 사이트 설정) / 내가 속했던 학생회(넘기기 때 기록됨) / 2학년 여부
+    function siteDoc() { return /databases/$(database)/documents/settings/site; }
+    function curGen() { return exists(siteDoc()) ? get(siteDoc()).data.get('generation', '') : ''; }
+    function wasIn(g) { return g in me().get('generations', []); }
+    // 지금 학생회 것은 활동 중인 모두, 지난 학생회 것은 그 학생회에 있었던 사람만
+    function canSeeGen(g) { return approved() && (g == curGen() || (hasProfile() && wasIn(g))); }
+    function senior() { return approved() && hasProfile() && me().get('grade', '') == '2학년'; }
     function unchanged(f) { return request.resource.data.get(f, null) == resource.data.get(f, null); }
 
     // ---- 회원 정보 (연락망) ----
@@ -64,6 +71,48 @@ service cloud.firestore {
       allow write: if admin();
     }
 
+    // ---- 선배들의 한마디 (공개된 것): 활동 중인 회원과 OB가 읽기
+    //   OB는 바로 공개로 쓸 수 있음. 회장단은 인수인계 때 타임캡슐을 여기로 옮김
+    //   그 학생회에 함께 있었던 후배(넘기기 후 남은 사람)와 쓴 사람만 읽기
+    match /messages/{id} {
+      allow read: if admin()
+        || (signedIn() && resource.data.authorUid == request.auth.uid)
+        || (approved() && hasProfile() && wasIn(resource.data.generation));
+      allow create: if admin()
+        || ((approved() || alumni()) && request.resource.data.authorUid == request.auth.uid);
+      allow update: if admin() || ((approved() || alumni())
+        && resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorUid == request.auth.uid);
+      allow delete: if admin() || ((approved() || alumni())
+        && resource.data.authorUid == request.auth.uid);
+    }
+
+    // ---- 타임캡슐 (봉인된 한마디): 2학년끼리만 읽고 씀. 인수인계 때 공개됨
+    match /capsules/{id} {
+      allow read: if admin()
+        || (signedIn() && resource.data.authorUid == request.auth.uid)
+        || (senior() && resource.data.generation == curGen());
+      allow create: if senior() && request.resource.data.authorUid == request.auth.uid;
+      allow update: if admin() || (approved()
+        && resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorUid == request.auth.uid);
+      allow delete: if admin() || (signedIn() && resource.data.authorUid == request.auth.uid);
+    }
+
+    // ---- 소통방 자유게시판 · 댓글: 활동 중인 회원끼리
+    match /talk/{id} {
+      allow read: if admin() || canSeeGen(resource.data.generation);
+      allow create: if approved() && request.resource.data.authorUid == request.auth.uid;
+      allow update: if approved() && resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorUid == request.auth.uid;
+      allow delete: if admin() || (approved() && resource.data.authorUid == request.auth.uid);
+    }
+    match /talkComments/{id} {
+      allow read: if admin() || canSeeGen(resource.data.generation);
+      allow create: if approved() && request.resource.data.authorUid == request.auth.uid;
+      allow delete: if admin() || (approved() && resource.data.authorUid == request.auth.uid);
+    }
+
     // ---- 사이트 설정 (국 목록 등) ----
     match /settings/{doc} {
       allow read: if signedIn();
@@ -75,8 +124,12 @@ service cloud.firestore {
       allow read, create, update: if approved();
       allow delete: if admin() || (approved() && resource.data.createdBy == request.auth.uid);
     }
+    // 회의록: 지금 학생회 것은 모두, 지난 학생회 것은 그 학생회에 있었던 사람만 (OB 포함)
     match /minutes/{id} {
-      allow read, create, update: if approved();
+      allow read: if admin()
+        || canSeeGen(resource.data.get('generation', ''))
+        || (alumni() && wasIn(resource.data.get('generation', '')));
+      allow create, update: if approved();
       allow delete: if admin() || (approved() && resource.data.createdBy == request.auth.uid);
     }
     match /projects/{id} {

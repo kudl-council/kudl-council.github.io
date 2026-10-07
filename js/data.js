@@ -60,6 +60,20 @@
       const s = await this.fs.collection(col).get();
       return s.docs.map((d) => Object.assign({ id: d.id }, d.data()));
     },
+    async queryEq(col, field, value) {
+      const snap = await this.fs.collection(col).where(field, "==", value).get();
+      return snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+    },
+    // 조건에 맞는 문서만 가져오기 (보안 규칙이 일부만 허용할 때 사용)
+    async queryIn(col, field, values) {
+      // 값마다 '같음' 조건으로 따로 조회 (보안 규칙이 확실히 확인할 수 있게)
+      const out = [];
+      for (const v of values) {
+        const snap = await this.fs.collection(col).where(field, "==", v).get();
+        snap.docs.forEach((d) => out.push(Object.assign({ id: d.id }, d.data())));
+      }
+      return out;
+    },
     async set(col, id, data) { await this.fs.collection(col).doc(id).set(data); },
     async add(col, data) { const r = await this.fs.collection(col).add(data); return r.id; },
     async update(col, id, data) { await this.fs.collection(col).doc(id).update(data); },
@@ -97,13 +111,14 @@
     people.forEach(function (p, i) {
       users[p[0]] = {
         name: p[1], dept: p[2], position: p[3], isAdmin: p[4], status: "approved",
-        phone: "010-0000-" + String(1000 + i * 37).slice(-4), studentId: (p[3] === "국원" ? t.getFullYear() : t.getFullYear() - 1) + "2500" + String(10 + i),
+        phone: "010-0000-" + String(1000 + i * 37).slice(-4), studentId: (p[3] === "국원" ? t.getFullYear() : t.getFullYear() - 1) + "2500" + String(10 + i), grade: i === 4 ? undefined : (p[3] === "국원" ? "1학년" : "2학년"),
         email: p[0] + "@example.com", createdAt: now,
       };
     });
+    ["demo-president", "demo-vp", "demo-member"].forEach((k) => (users[k].generations = ["제28대"]));
     users["demo-pending"] = { name: "조은별", dept: "내무국", position: "국원", isAdmin: false, status: "pending", phone: "010-0000-9999", studentId: "2026250099", email: "pending@example.com", createdAt: now };
     users["demo-ob"] = { name: "정하람", dept: "홍보국", position: "국장", isAdmin: false, status: "inactive", inactiveReason: "임기 종료", phone: "010-0000-7777", studentId: (t.getFullYear() - 2) + "250077", email: "ob@example.com", createdAt: now,
-      history: [{ generation: "제27대", councilName: "다온(예시)", dept: "홍보국", position: "국원" }, { generation: "제28대", councilName: "새벽(예시)", dept: "홍보국", position: "국장" }] };
+      history: [{ generation: "제27대", councilName: "다온(예시)", dept: "홍보국", position: "국원" }, { generation: "제28대", councilName: "새벽(예시)", dept: "홍보국", position: "국장" }], generations: ["제27대", "제28대"] };
     users["u16"] = { name: "배수현", dept: "소통국", position: "국원", isAdmin: false, status: "pending", phone: "010-0000-8888", studentId: "2026250088", email: "u16@example.com", createdAt: now };
 
     const tasks = {};
@@ -132,6 +147,8 @@
       minutes["m" + i] = { title: x[0], type: x[1], date: x[2], url: "https://docs.google.com/document/d/example" + i, memo: "", createdBy: "demo-president", createdAt: now };
     });
 
+    minutes.old1 = { title: "제28대 마지막 전체회의", type: "전체회의", date: (Y - 1) + "-11-20", url: "https://docs.google.com/document/d/old-m1", memo: "인수인계 일정 확정", generation: "제28대", councilName: "새벽(예시)", createdBy: "x1", createdAt: now };
+    minutes.old2 = { title: "제28대 홍보국 회의", type: "국회의", date: (Y - 1) + "-09-02", url: "https://docs.google.com/document/d/old-m2", memo: "", generation: "제28대", councilName: "새벽(예시)", createdBy: "x1", createdAt: now };
     const projects = {};
     const G = { [Y]: ["제29대", "윤슬"], [Y - 1]: ["제28대", "새벽(예시)"], [Y - 2]: ["제27대", "다온(예시)"] };
     const P = (id, o) => { projects[id] = Object.assign({ generation: G[o.year][0], councilName: G[o.year][1], owner: "", budget: "", summary: "", planUrl: "", resultUrl: "", extraUrl: "", createdBy: "demo-president", createdAt: now }, o); };
@@ -158,10 +175,29 @@
         { name: "정하람", dept: "홍보국", position: "국장", phone: "010-0000-3099" }, { name: "김하늘", dept: "홍보국", position: "국원", phone: "010-0000-3110" }, { name: "이서준", dept: "내무국", position: "국원", phone: "010-0000-3121" },
         { name: "진세아", dept: "소통국", position: "국장", phone: "010-0000-3132" }, { name: "탁민결", dept: "재무국", position: "국장", phone: "010-0000-3143" }, { name: "박지민", dept: "재무국", position: "국원", phone: "010-0000-3154" }] },
     };
+    const messages = {
+      msg1: { text: "개강파티 장소는 최소 한 달 전에 예약하세요. 작년에 2주 전에 했다가 큰일 날 뻔했어요 ㅠㅠ", toDept: "모두에게", showName: true, authorUid: "x1", authorName: "고은채", authorDept: "회장단", authorPosition: "회장", generation: "제28대", councilName: "새벽(예시)", createdAt: (Y - 1) + "-11-20T00:00:00Z" },
+      msg2: { text: "영수증은 받은 날 바로 사진 찍어서 드라이브에 올리기! 학기 말에 몰아서 하면 절대 안 맞아요.", toDept: "다음 재무국에게", showName: false, authorUid: "x2", authorName: "탁민결", authorDept: "재무국", authorPosition: "국장", generation: "제28대", councilName: "새벽(예시)", createdAt: (Y - 1) + "-11-21T00:00:00Z" },
+      msg3: { text: "힘들 때는 혼자 끙끙대지 말고 꼭 서로 기대세요. 1년 금방 지나가요 :)", toDept: "모두에게", showName: true, authorUid: "demo-ob", authorName: "정하람", authorDept: "홍보국", authorPosition: "국장", generation: "제28대", councilName: "새벽(예시)", createdAt: (Y - 1) + "-11-22T00:00:00Z" },
+    };
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    const talk = {
+      tk1: { text: "오늘 회의 수고 많았어요!! 다들 푹 쉬어요 🙌", authorUid: "demo-president", authorName: "김하늘", authorDept: "회장단", authorPosition: "회장", generation: "제29대", councilName: "윤슬", createdAt: ago(3) },
+      tk2: { text: "혹시 학생회실 열쇠 누가 가지고 있나요?", authorUid: "u8", authorName: "임채원", authorDept: "소통국", authorPosition: "국원", generation: "제29대", councilName: "윤슬", createdAt: ago(26) },
+    };
+    const talkComments = {
+      tc1: { postId: "tk2", text: "저한테 있어요! 내일 과방에 둘게요", authorUid: "u6", authorName: "강다은", authorDept: "소통국", authorPosition: "국장", generation: "제29대", councilName: "윤슬", createdAt: ago(25) },
+    };
+    const capsules = {
+      cp1: { text: "1학년들아, 1년 동안 진짜 고마웠어. 너희가 이끌 30대 학생회가 벌써 기대돼!", toDept: "모두에게", showName: true, authorUid: "demo-president", authorName: "김하늘", authorDept: "회장단", authorPosition: "회장", generation: "제29대", councilName: "윤슬", createdAt: ago(5) },
+      cp2: { text: "회계 장부는 매주 금요일에 정리하는 습관 들이기! 화이팅", toDept: "다음 재무국에게", showName: true, authorUid: "demo-member", authorName: "박지민", authorDept: "재무국", authorPosition: "국장", generation: "제29대", councilName: "윤슬", createdAt: ago(8) },
+    };
     return {
+      talk: talk, talkComments: talkComments, capsules: capsules,
+      messages: messages,
       councils: councils,
       users: users, tasks: tasks, minutes: minutes, projects: projects,
-      settings: { site: { generation: "제29대", councilName: "윤슬", minutesFolderUrl: "https://drive.google.com/drive/folders/example" } },
+      settings: { site: { generation: "제29대", councilName: "윤슬", prevGeneration: "제28대", minutesFolderUrl: "https://drive.google.com/drive/folders/example" } },
     };
   }
 
@@ -172,7 +208,8 @@
     onAuth(cb) { this.cb = cb; cb(this.user); },
     personas: [
       { uid: "demo-president", label: "회장단으로 보기", desc: "가입 승인 · 관리 화면까지 모두" },
-      { uid: "demo-member", label: "일반 국원으로 보기", desc: "재무국장 박지민" },
+      { uid: "demo-member", label: "2학년 국장으로 보기", desc: "재무국장 박지민 (2학년)" },
+      { uid: "u8", label: "1학년 국원으로 보기", desc: "소통국 국원 임채원 (1학년)" },
       { uid: "demo-pending", label: "승인 대기 중인 회원", desc: "가입 신청만 한 상태" },
       { uid: "demo-ob", label: "임기를 마친 선배 (OB)", desc: "함께했던 학생회 기록만 보기" },
       { uid: "demo-new", label: "처음 가입하는 사람", desc: "가입 신청서 작성 화면" },
@@ -186,6 +223,8 @@
     async signOut() { this.user = null; this.cb(null); },
     async get(col, id) { const c = this.store[col] || {}; return c[id] ? Object.assign({ id: id }, clone(c[id])) : null; },
     async list(col) { const c = this.store[col] || {}; return Object.keys(c).map((id) => Object.assign({ id: id }, clone(c[id]))); },
+    async queryIn(col, field, values) { return (await this.list(col)).filter((x) => values.indexOf(x[field]) >= 0); },
+    async queryEq(col, field, value) { return (await this.list(col)).filter((x) => x[field] === value); },
     async set(col, id, data) { (this.store[col] = this.store[col] || {})[id] = clone(data); },
     async add(col, data) { const id = "x" + Date.now() + (this.n++); await this.set(col, id, data); return id; },
     async update(col, id, data) {

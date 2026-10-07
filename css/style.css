@@ -384,3 +384,48 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .cell .dots i.e { border-radius: 2px; width: 10px; }
 .evrow { cursor: pointer; }
 .evdot { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
+
+/* ===== 선배들의 한마디 ===== */
+.msg-sec { margin-bottom: 22px; }
+.msg-sec h3 { margin-bottom: 10px; }
+.msg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; align-items: start; }
+.msg { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; box-shadow: var(--shadow); border-top: 3px solid var(--c); position: relative; }
+.msg .to { font-size: 12px; font-weight: 700; color: var(--c); }
+.msg .mtext { margin: 8px 0 10px; font-size: 15px; line-height: 1.65; white-space: pre-wrap; }
+.msg .by { margin: 0; font-size: 12.5px; color: var(--muted); }
+.msg .linkbtn { position: absolute; top: 14px; right: 14px; font-weight: 600; color: var(--muted); text-decoration: none; }
+.home-msg { display: block; text-decoration: none; color: var(--ink); background: var(--accent-soft); border-radius: var(--r); padding: 14px 18px; margin-bottom: 16px; }
+.home-msg .lbl { display: block; font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.home-msg .mtext { display: block; font-size: 15px; line-height: 1.6; }
+.home-msg .by { display: block; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+
+/* ===== 회의록: 지금 / 지난 학생회 ===== */
+.sec-h { margin: 18px 0 10px; font-size: 16px; }
+.mrow.ro { padding-right: 0; }
+.ob-min { margin-top: 12px; }
+.ob-min summary { font-size: 15px; }
+
+/* ===== 나의 기록 ===== */
+.ob-h { font-size: 14px; margin: 14px 0 8px; color: var(--muted); }
+.ob-h small { font-weight: 500; }
+.hist .now { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 999px; }
+
+/* ===== 소통방 ===== */
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; margin-bottom: 16px; }
+.seg a { padding: 8px 14px; border-radius: 9px; text-decoration: none; color: var(--muted); font-weight: 700; font-size: 14px; }
+.seg a.on { background: var(--ink); color: var(--surface); }
+.compose textarea { width: 100%; border: 0; resize: vertical; font: inherit; font-size: 15px; background: transparent; color: var(--ink); outline: none; }
+.compose-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; margin-top: 6px; }
+.post { margin-bottom: 12px; }
+.phead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.phead .del { margin-left: auto; color: var(--muted); text-decoration: none; font-weight: 600; }
+.ptext { margin: 10px 0; font-size: 15px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.comments { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
+.cmt { font-size: 14px; word-break: break-word; }
+.cmt .linkbtn { color: var(--muted); text-decoration: none; }
+.cform { display: flex; gap: 6px; margin-top: 4px; }
+.cform input { flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); }
+.sealed { border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.year .post { margin-top: 10px; }
+
+.warn-t { color: var(--late); font-weight: 700; font-size: 12.5px; }
