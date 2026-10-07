@@ -793,7 +793,8 @@
       grid += '<div class="cell' + (other ? " other" : "") + (key === t ? " today" : "") + (d.getDay() === 0 ? " sun" : d.getDay() === 6 ? " sat" : "") + '" data-act="addTask" data-date="' + key + '">' +
         '<span class="num">' + d.getDate() + "</span>" +
         dayEvs.map((p) => '<span class="chip ev" style="--c:' + deptColor(p.dept) + '" data-act="viewProject" data-id="' + esc(p.id) + '" title="사업 · ' + esc(p.name) + '">' + esc(p.name) + "</span>").join("") +
-        items.slice(0, Math.max(1, 3 - dayEvs.length)).map((x) => '<span class="chip' + (x.done ? " done" : !x.done && x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + x.title) + '">' + esc(x.title) + "</span>").join("") +
+        items.slice(0, Math.max(1, 3 - dayEvs.length)).map((x) => '<span class="chip' + (x.done ? " done" : !x.done && x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + (pname[x.projectId] ? "[" + pname[x.projectId] + "] " : "") + x.title) + '">' +
+          (pname[x.projectId] ? '<small class="cp">' + esc(pname[x.projectId]) + "</small>" : "") + esc(x.title) + "</span>").join("") +
         (items.length > Math.max(1, 3 - dayEvs.length) ? '<span class="more-n">+' + (items.length - Math.max(1, 3 - dayEvs.length)) + "</span>" : "") +
         (items.length || dayEvs.length ? '<span class="dots">' + dayEvs.map((p) => '<i class="e" style="--c:' + deptColor(p.dept) + '"></i>').join("") + items.map((x) => '<i style="--c:' + deptColor(x.dept) + '"></i>').join("") + "</span>" : "") +
         "</div>";

@@ -440,3 +440,6 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .dpick .dnative::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
 .mwrap input[data-money] { padding-right: 34px; text-align: right; width: 100%; }
 .mwrap .unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 600; pointer-events: none; }
+
+/* 캘린더 업무 칸: 어떤 사업의 업무인지 위에 작게 */
+.chip .cp { display: block; font-size: 10px; font-weight: 700; color: color-mix(in srgb, var(--c) 75%, var(--ink)); overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
