@@ -443,3 +443,22 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 
 /* 캘린더 업무 칸: 어떤 사업의 업무인지 위에 작게 */
 .chip .cp { display: block; font-size: 10px; font-weight: 700; color: color-mix(in srgb, var(--c) 75%, var(--ink)); overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+
+/* 사업 세부 일정 (조사 기간 등) */
+.chip.sch { background: var(--surface); border: 1px dashed var(--c); border-left: 3px solid var(--c); }
+.dots i.s { background: transparent; border: 1.5px solid var(--c); }
+.evdot.s { background: transparent; border: 2px solid var(--c); }
+.psched li { cursor: default; }
+.psched li[data-act] { cursor: pointer; }
+.psched li.now .dt { color: var(--accent); font-weight: 700; }
+.psched li.done .tt { text-decoration: none; }
+.shead, .srow { display: grid; grid-template-columns: 1fr 150px 150px 28px; gap: 6px; align-items: center; }
+.shead { font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 6px; }
+.slist { display: grid; gap: 8px; margin: 4px 0 10px; }
+.srow input { font: inherit; font-size: 15px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); min-width: 0; }
+.srow .x { font-size: 22px; }
+@media (max-width: 760px) {
+  .shead { display: none; }
+  .srow { grid-template-columns: 1fr 1fr 28px; }
+  .srow .s-title { grid-column: 1 / -1; grid-row: 1; }
+}
