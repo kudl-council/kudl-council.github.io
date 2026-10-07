@@ -20,7 +20,9 @@
     minutesFolderUrl: "",
   };
   const GRADES = ["1학년", "2학년"];
-  const STATUSES = ["기획중", "진행중", "완료", "취소"];
+  const STATUSES = ["기획중", "예정", "완료", "취소"];
+  // 예전 상태 이름 '진행중'은 '예정'으로 보여줌 (수정해서 저장하면 '예정'으로 바뀜)
+  const fixStatus = (list) => { (list || []).forEach((p) => { if (p.status === "진행중") p.status = "예정"; }); return list; };
   const PALETTE = ["#9b1c31", "#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2", "#65a30d", "#ea580c", "#475569"];
   const NAV = [
     ["home", "홈"], ["contacts", "비상연락망"], ["calendar", "업무 캘린더"], ["minutes", "회의록"],
@@ -162,6 +164,7 @@
           S.cache[name] = past.length ? await DB.queryIn(name, "generation", past) : [];
         } else S.cache[name] = await DB.queryIn(name, "generation", gens);
       } else S.cache[name] = await DB.list(name);
+      if (name === "projects") fixStatus(S.cache[name]);
     }
     return S.cache[name];
   }
@@ -477,7 +480,7 @@
     const page = document.getElementById("page");
     try {
       const hist = (me.history || []).slice().sort((a, b) => genNum(b.generation) - genNum(a.generation));
-      const projects = await DB.list("projects");
+      const projects = fixStatus(await DB.list("projects"));
       let myMsgs = [];
       try { myMsgs = await DB.queryEq("messages", "authorUid", S.authUser.uid); } catch (e) { /* 없음 */ }
       let obMinutes = [];
@@ -674,7 +677,7 @@
     const late = open.filter((x) => x.dueDate < t).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     const soon = open.filter((x) => x.dueDate >= t && x.dueDate <= in14).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     const myDept = S.me && S.me.dept;
-    const live = projects.filter((p) => isCurrent(p) && (p.status === "진행중" || p.status === "기획중"))
+    const live = projects.filter((p) => isCurrent(p) && (p.status === "예정" || p.status === "기획중"))
       .sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
     const recent = minutes.slice().sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 5);
     let pendingNote = "";
@@ -694,8 +697,8 @@
       (soon.length ? '<ul class="tlist">' + soon.map(taskRow).join("") + "</ul>" : '<p class="empty-s">2주 안에 마감되는 업무가 없어요.</p>') +
       (late.length ? '<h4 class="late-h">마감 지난 업무 ' + late.length + "개</h4><ul class=\"tlist\">" + late.map(taskRow).join("") + "</ul>" : "") +
       "</section>" +
-      '<section class="card"><div class="card-head"><h3>진행 중인 사업</h3><a href="#projects" class="more">전체 →</a></div>' +
-      (live.length ? '<ul class="plist">' + live.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span>" + deptTag(p.dept) + "<b>" + esc(p.name) + '</b><span class="dt">' + (p.startDate ? fmtDate(p.startDate) + (p.startDate >= t ? " · " + dday(p.startDate) : "") : "") + "</span></li>").join("") + "</ul>" : '<p class="empty-s">진행 중인 사업이 없어요.</p>') +
+      '<section class="card"><div class="card-head"><h3>다가오는 사업</h3><a href="#projects" class="more">전체 →</a></div>' +
+      (live.length ? '<ul class="plist">' + live.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span>" + deptTag(p.dept) + "<b>" + esc(p.name) + '</b><span class="dt">' + (p.startDate ? fmtDate(p.startDate) + (p.startDate >= t ? " · " + dday(p.startDate) : "") : "") + "</span></li>").join("") + "</ul>" : '<p class="empty-s">예정된 사업이 없어요.</p>') +
       '<div class="card-head" style="margin-top:18px"><h3>최근 회의록</h3><a href="#minutes" class="more">전체 →</a></div>' +
       (recent.length ? '<ul class="mlist">' + recent.map((m) => '<li><a href="' + esc(safeUrl(m.url)) + '" target="_blank" rel="noopener"><span class="dt">' + fmtDate(m.date) + "</span> " + esc(m.title) + "</a></li>").join("") + "</ul>" : '<p class="empty-s">아직 등록된 회의록이 없어요.</p>') +
       "</section></div>";
