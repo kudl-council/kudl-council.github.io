@@ -152,7 +152,15 @@
     if (!S.cache[name]) {
       if (RECENT_ONLY.indexOf(name) >= 0) {
         if (name === "minutes" && isAdmin()) await stampOldMinutes();
-        S.cache[name] = await DB.queryIn(name, "generation", recentGens());
+        const gens = recentGens();
+        if (isAdmin()) {
+          // 회장단은 전체를 읽을 수 있으니 한 번에 받아서 걸러냄
+          S.cache[name] = (await DB.list(name)).filter((x) => gens.indexOf(x.generation || S.settings.generation) >= 0);
+        } else if (name === "messages") {
+          // 공개된 선배들의 한마디: 내가 속했던 지난 학생회 것만 (지금 학생회 것은 아직 봉인 중)
+          const past = ((S.me && S.me.generations) || []).filter((g) => g !== S.settings.generation);
+          S.cache[name] = past.length ? await DB.queryIn(name, "generation", past) : [];
+        } else S.cache[name] = await DB.queryIn(name, "generation", gens);
       } else S.cache[name] = await DB.list(name);
     }
     return S.cache[name];
@@ -172,6 +180,11 @@
     try {
       const s = await DB.get("settings", "site");
       S.settings = Object.assign({}, DEFAULTS, s || {});
+      // 사이트 설정이 한 번도 저장되지 않았으면 회장단 접속 시 저장 (보안 규칙이 '지금 학생회'를 여기서 읽음)
+      if ((!s || !s.generation) && isAdmin()) {
+        const d = Object.assign({}, S.settings); delete d.id; delete d.currentYear;
+        try { await DB.set("settings", "site", d); } catch (e) { console.warn(e); }
+      }
     } catch (e) { S.settings = Object.assign({}, DEFAULTS); }
     S.settings.currentYear = new Date().getFullYear();
   }
@@ -264,7 +277,7 @@
   const profileFields = () => [
     { name: "name", label: "이름", required: true, half: true },
     { name: "studentId", label: "학번", required: true, half: true, placeholder: "예: 2024250000" },
-    { name: "grade", label: "학생회 학년", type: "select", options: GRADES, required: true, half: true, help: "학번과 상관없이 학생회에서의 학년 (1학년 = 배우는 중, 2학년 = 주로 운영)" },
+    { name: "grade", label: "학년", type: "select", options: GRADES, required: true, half: true, help: "학번과 상관없이 학생회에서의 학년 (1학년 = 배우는 중, 2학년 = 주로 운영)" },
     { name: "dept", label: "소속 국서", type: "select", options: S.settings.depts, required: true, half: true },
     { name: "position", label: "직책", type: "select", options: execPositions().concat(deptPositions()), required: true, half: true },
     { name: "phone", label: "전화번호", type: "tel", required: true, placeholder: "010-1234-5678", help: "승인된 학생회원에게만 비상연락망으로 보입니다." },
@@ -483,9 +496,9 @@
   // 학년 칸이 생기기 전에 가입한 회원에게 한 번 물어봄
   function askGrade() {
     if (modalRoot.innerHTML || !S.me || S.me.grade) return;
-    openForm({ title: "학생회 학년을 알려주세요", submitLabel: "저장",
+    openForm({ title: "학년을 알려주세요", submitLabel: "저장",
       intro: '<p class="small">학생회를 다음 기수로 넘길 때 누가 남고 누가 떠나는지 구분하는 데 쓰여요. <b>학번과 상관없이 학생회에서의 학년</b>으로 골라 주세요.</p>',
-      fields: [{ name: "grade", label: "학생회 학년", type: "select", options: GRADES, required: true }],
+      fields: [{ name: "grade", label: "학년", type: "select", options: GRADES, required: true }],
       onSubmit: async (v) => { await DB.update("users", S.authUser.uid, { grade: v.grade }); await loadMe(); dirty("users"); toast("저장했어요."); } });
   }
 
