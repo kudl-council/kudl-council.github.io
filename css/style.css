@@ -430,3 +430,13 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 
 .warn-t { color: var(--late); font-weight: 700; font-size: 12.5px; }
 
+
+/* 날짜 칸 (YYYY.MM.DD + 달력 아이콘) · 예산 칸 (원) */
+.dwrap, .mwrap { position: relative; display: block; min-width: 0; }
+.dwrap input[data-date] { padding-right: 40px; width: 100%; }
+.dpick { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); border-radius: 8px; }
+.dpick:hover { background: var(--line); color: var(--ink); }
+.dpick .dnative { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; padding: 0; border: 0; }
+.dpick .dnative::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.mwrap input[data-money] { padding-right: 34px; text-align: right; width: 100%; }
+.mwrap .unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 600; pointer-events: none; }

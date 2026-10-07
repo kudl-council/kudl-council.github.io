@@ -204,6 +204,26 @@
   }
 
   /* ---------- 폼 만들기 (모달·화면 공용) ---------- */
+  /* 날짜는 YYYY.MM.DD 로 입력 (저장은 YYYY-MM-DD), 예산은 숫자만 입력하면 쉼표와 '원'이 붙음 */
+  const dotDate = (iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso.replace(/-/g, ".") : (iso || "");
+  function isoDate(text) {
+    const d = String(text || "").replace(/\D/g, "");
+    if (!d) return "";
+    if (d.length !== 8) return null;
+    const y = +d.slice(0, 4), m = +d.slice(4, 6), dd = +d.slice(6);
+    const t = new Date(y, m - 1, dd);
+    if (t.getFullYear() !== y || t.getMonth() !== m - 1 || t.getDate() !== dd) return null;
+    return d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6);
+  }
+  const fmtDots = (digits) => digits.slice(0, 4) + (digits.length > 4 ? "." + digits.slice(4, 6) : "") + (digits.length > 6 ? "." + digits.slice(6, 8) : "");
+  const commas = (digits) => digits.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const CAL_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>';
+  function dateInputHTML(attrs, value) {
+    const iso = /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value : "";
+    return '<span class="dwrap"><input type="text" inputmode="numeric" autocomplete="off" maxlength="10" placeholder="YYYY.MM.DD" data-date ' + attrs +
+      ' value="' + esc(dotDate(value)) + '"><span class="dpick" title="달력에서 고르기">' + CAL_ICON +
+      '<input type="date" class="dnative" tabindex="-1" aria-hidden="true" value="' + esc(iso) + '"></span></span>';
+  }
   function fieldsHTML(fields, values) {
     values = values || {};
     return fields.map(function (f) {
@@ -223,6 +243,11 @@
         input = '<textarea id="' + id + '" name="' + f.name + '" rows="' + (f.rows || 3) + '" placeholder="' + esc(f.placeholder || "") + '"' + req + ">" + esc(Array.isArray(v) ? v.join("\n") : v) + "</textarea>";
       } else if (f.type === "checkbox") {
         return '<div class="field check"><label><input type="checkbox" id="' + id + '" name="' + f.name + '"' + (v ? " checked" : "") + "> " + esc(f.label) + "</label>" + help + "</div>";
+      } else if (f.type === "date") {
+        input = dateInputHTML('id="' + id + '" name="' + f.name + '"' + req, v);
+      } else if (f.type === "money") {
+        const digits = String(v || "").replace(/\D/g, "");
+        input = '<span class="mwrap"><input id="' + id + '" name="' + f.name + '" type="text" inputmode="numeric" autocomplete="off" data-money placeholder="' + esc(f.placeholder || "") + '" value="' + esc(digits ? commas(digits) : "") + '"' + req + '><span class="unit">원</span></span>';
       } else {
         input = '<input id="' + id + '" name="' + f.name + '" type="' + (f.type || "text") + '" value="' + esc(v) + '" placeholder="' + esc(f.placeholder || "") + '"' + req + (f.type === "number" ? ' step="1"' : "") + ">";
       }
@@ -237,6 +262,12 @@
       let v = f.type === "checkbox" ? el.checked : el.value.trim();
       if (f.type === "number") v = v === "" ? "" : Number(v);
       if (f.type === "tel") v = normPhone(v);
+      if (f.type === "date") {
+        const iso = isoDate(v);
+        if (iso === null) throw new Error("'" + f.label + "'을(를) YYYY.MM.DD 형식으로 넣어 주세요. (예: 2026.10.26)");
+        v = iso;
+      }
+      if (f.type === "money") { const digits = v.replace(/\D/g, ""); v = digits ? commas(digits) + "원" : ""; }
       if (f.type === "lines") v = v;
       if (f.required && (v === "" || v == null)) throw new Error("'" + f.label + "' 항목을 입력해 주세요.");
       if (f.type === "url" && v && !safeUrl(v)) throw new Error("'" + f.label + "'에는 https:// 로 시작하는 링크를 넣어 주세요.");
@@ -348,7 +379,7 @@
     { name: "owner", label: "담당자", half: true },
     { name: "startDate", label: "사업 날짜 (시행일)", type: "date", half: true, help: "캘린더에 사업 일정으로 표시돼요." },
     { name: "endDate", label: "끝나는 날 (여러 날일 때만)", type: "date", half: true, help: "1박 2일 등일 때만 넣으세요." },
-    { name: "budget", label: "예산", placeholder: "예: 1,200,000원" },
+    { name: "budget", label: "예산", type: "money", placeholder: "숫자만 입력 (예: 1200000)" },
     { name: "summary", label: "한 줄 요약 · 다음 기수에게 남길 말", type: "textarea", rows: 3, placeholder: "예: 장소가 좁았음 → 내년엔 더 큰 곳 추천" },
     { name: "planUrl", label: "기획안 링크", type: "url", placeholder: "https://docs.google.com/…" },
     { name: "extraUrl", label: "기타 자료 (드라이브 폴더 등)", type: "url", placeholder: "https://drive.google.com/…" },
@@ -988,7 +1019,7 @@
     const deptOpts = (sel) => '<option value="">국서 선택</option>' + S.settings.depts.map((d) => '<option value="' + esc(d) + '"' + (d === sel ? " selected" : "") + ">" + esc(d) + "</option>").join("");
     const rowHTML = (r) => '<div class="drow"><select class="d-dept" aria-label="담당 국서">' + deptOpts(r.dept || "") + "</select>" +
       '<input class="d-title" placeholder="할 일 (예: 공지글 작성)" value="' + esc(r.title || "") + '" aria-label="할 일">' +
-      '<input class="d-date" type="date" value="' + esc(r.dueDate || "") + '" aria-label="마감일">' +
+      dateInputHTML('class="d-date" aria-label="마감일"', r.dueDate || "") +
       '<button type="button" class="x d-del" aria-label="이 줄 지우기">×</button></div>';
     openForm({ title: "'" + p.name + "' 업무 분배", submitLabel: "캘린더에 추가",
       intro: (fromWho
@@ -999,7 +1030,7 @@
       after: '<div class="dlist">' + rows.map(rowHTML).join("") + '</div><button type="button" class="btn sm" id="dAdd">+ 줄 추가</button>',
       onSubmit: async () => {
         const list = Array.from(modalRoot.querySelectorAll(".drow")).map((r) => ({
-          dept: r.querySelector(".d-dept").value, title: r.querySelector(".d-title").value.trim(), dueDate: r.querySelector(".d-date").value,
+          dept: r.querySelector(".d-dept").value, title: r.querySelector(".d-title").value.trim(), dueDate: isoDate(r.querySelector(".d-date").value) || "",
         })).filter((r) => r.title);
         if (!list.length) throw new Error("할 일을 한 줄 이상 적어 주세요.");
         const bad = list.find((r) => !r.dept || !r.dueDate);
@@ -1397,6 +1428,29 @@
   document.addEventListener("change", function (e) {
     const el = e.target;
     if (el.matches("input[data-act]")) { const fn = ACTS[el.dataset.act]; if (fn) fn(el, e); }
+  });
+  // 날짜 칸: 숫자만 쳐도 YYYY.MM.DD 로 정리 / 달력 아이콘으로 고르기
+  document.addEventListener("input", function (e) {
+    const el = e.target;
+    if (el.matches && el.matches("input[data-date]")) {
+      el.value = fmtDots(el.value.replace(/\D/g, "").slice(0, 8));
+      const iso = isoDate(el.value), nat = el.parentNode.querySelector(".dnative");
+      if (nat && iso) nat.value = iso;
+    } else if (el.matches && el.matches("input[data-money]")) {
+      const digits = el.value.replace(/\D/g, "").slice(0, 12);
+      el.value = digits ? commas(digits) : "";
+    }
+  });
+  document.addEventListener("change", function (e) {
+    const el = e.target;
+    if (el.classList && el.classList.contains("dnative")) {
+      const t = el.closest(".dwrap").querySelector("input[data-date]");
+      if (t) t.value = dotDate(el.value);
+    }
+  });
+  document.addEventListener("click", function (e) {
+    const nat = e.target.classList && e.target.classList.contains("dnative") ? e.target : null;
+    if (nat && nat.showPicker) { try { nat.showPicker(); } catch (x) {} }
   });
   let searchTimer;
   document.addEventListener("input", function (e) {
