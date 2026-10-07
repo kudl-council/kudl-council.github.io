@@ -48,6 +48,13 @@
     const n = Math.round((b - a) / 86400000);
     return n === 0 ? "D-day" : n > 0 ? "D-" + n : "D+" + -n;
   }
+  // 사업 날짜 표시: "10월 20일 (화)" 또는 "11월 6일 (금) ~ 11월 7일 (토) · 1박 2일"
+  function eventDateText(p) {
+    if (!p.startDate) return "";
+    if (!p.endDate || p.endDate <= p.startDate) return fmtDate(p.startDate);
+    const n = Math.round((new Date(p.endDate + "T00:00:00") - new Date(p.startDate + "T00:00:00")) / 86400000);
+    return fmtDate(p.startDate) + " ~ " + fmtDate(p.endDate) + " · " + n + "박 " + (n + 1) + "일";
+  }
   function normPhone(p) {
     const d = String(p || "").replace(/\D/g, "");
     if (d.length === 11) return d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7);
@@ -264,8 +271,8 @@
     { name: "dept", label: "담당 국", type: "select", options: S.settings.depts, required: true, half: true },
     { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true },
     { name: "owner", label: "담당자", half: true },
-    { name: "startDate", label: "시작일", type: "date", half: true },
-    { name: "endDate", label: "종료일", type: "date", half: true },
+    { name: "startDate", label: "사업 날짜 (시행일)", type: "date", half: true, help: "캘린더에 사업 일정으로 표시돼요." },
+    { name: "endDate", label: "끝나는 날 (여러 날일 때만)", type: "date", half: true, help: "1박 2일 등일 때만 넣으세요." },
     { name: "budget", label: "예산", placeholder: "예: 1,200,000원" },
     { name: "summary", label: "한 줄 요약 · 다음 기수에게 남길 말", type: "textarea", rows: 3, placeholder: "예: 장소가 좁았음 → 내년엔 더 큰 곳 추천" },
     { name: "planUrl", label: "기획안 링크", type: "url", placeholder: "https://docs.google.com/…" },
@@ -476,7 +483,7 @@
       (late.length ? '<h4 class="late-h">마감 지난 업무 ' + late.length + "개</h4><ul class=\"tlist\">" + late.map(taskRow).join("") + "</ul>" : "") +
       "</section>" +
       '<section class="card"><div class="card-head"><h3>진행 중인 사업</h3><a href="#projects" class="more">전체 →</a></div>' +
-      (live.length ? '<ul class="plist">' + live.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span>" + deptTag(p.dept) + "<b>" + esc(p.name) + '</b><span class="dt">' + (p.startDate ? fmtDate(p.startDate) : "") + "</span></li>").join("") + "</ul>" : '<p class="empty-s">진행 중인 사업이 없어요.</p>') +
+      (live.length ? '<ul class="plist">' + live.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span>" + deptTag(p.dept) + "<b>" + esc(p.name) + '</b><span class="dt">' + (p.startDate ? fmtDate(p.startDate) + (p.startDate >= t ? " · " + dday(p.startDate) : "") : "") + "</span></li>").join("") + "</ul>" : '<p class="empty-s">진행 중인 사업이 없어요.</p>') +
       '<div class="card-head" style="margin-top:18px"><h3>최근 회의록</h3><a href="#minutes" class="more">전체 →</a></div>' +
       (recent.length ? '<ul class="mlist">' + recent.map((m) => '<li><a href="' + esc(safeUrl(m.url)) + '" target="_blank" rel="noopener"><span class="dt">' + fmtDate(m.date) + "</span> " + esc(m.title) + "</a></li>").join("") + "</ul>" : '<p class="empty-s">아직 등록된 회의록이 없어요.</p>') +
       "</section></div>";
@@ -508,8 +515,9 @@
   /* ----- 업무 캘린더 ----- */
   PAGES.calendar = async function () {
     const tasks = await col("tasks");
+    const projects = await col("projects");
     const pname = {};
-    (await col("projects")).forEach((p) => (pname[p.id] = p.name));
+    projects.forEach((p) => (pname[p.id] = p.name));
     if (!S.calMonth) { const n = new Date(); S.calMonth = new Date(n.getFullYear(), n.getMonth(), 1); }
     const y = S.calMonth.getFullYear(), m = S.calMonth.getMonth();
     const first = new Date(y, m, 1), dim = new Date(y, m + 1, 0).getDate();
@@ -520,30 +528,48 @@
     const byDay = {};
     filt.forEach((x) => (byDay[x.dueDate] = byDay[x.dueDate] || []).push(x));
     Object.values(byDay).forEach((a) => a.sort((p, q) => (p.done - q.done) || deptRank(p.dept) - deptRank(q.dept)));
+    // 사업 날짜(시행일): 여러 날이면 그 기간 매일 표시. 국 필터는 주관 국 또는 업무를 맡은 국 기준
+    const evs = projects.filter((p) => p.startDate && p.status !== "취소" && (!S.calFilter || p.dept === S.calFilter ||
+      tasks.some((x) => x.projectId === p.id && x.dept === S.calFilter)));
+    const evByDay = {};
+    evs.forEach((p) => {
+      const end = p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate;
+      for (let d = new Date(p.startDate + "T00:00:00"), k = 0; ymd(d) <= end && k < 31; d.setDate(d.getDate() + 1), k++)
+        (evByDay[ymd(d)] = evByDay[ymd(d)] || []).push(p);
+    });
     let grid = "";
     for (let i = 0; i < cells; i++) {
       const d = new Date(y, m, 1 - startDow + i);
       const key = ymd(d);
       const items = byDay[key] || [];
+      const dayEvs = evByDay[key] || [];
       const other = d.getMonth() !== m;
       grid += '<div class="cell' + (other ? " other" : "") + (key === t ? " today" : "") + (d.getDay() === 0 ? " sun" : d.getDay() === 6 ? " sat" : "") + '" data-act="addTask" data-date="' + key + '">' +
         '<span class="num">' + d.getDate() + "</span>" +
-        items.slice(0, 3).map((x) => '<span class="chip' + (x.done ? " done" : !x.done && x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + x.title) + '">' + esc(x.title) + "</span>").join("") +
-        (items.length > 3 ? '<span class="more-n">+' + (items.length - 3) + "</span>" : "") +
-        (items.length ? '<span class="dots">' + items.map((x) => '<i style="--c:' + deptColor(x.dept) + '"></i>').join("") + "</span>" : "") +
+        dayEvs.map((p) => '<span class="chip ev" style="--c:' + deptColor(p.dept) + '" data-act="viewProject" data-id="' + esc(p.id) + '" title="사업 · ' + esc(p.name) + '">' + esc(p.name) + "</span>").join("") +
+        items.slice(0, Math.max(1, 3 - dayEvs.length)).map((x) => '<span class="chip' + (x.done ? " done" : !x.done && x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + x.title) + '">' + esc(x.title) + "</span>").join("") +
+        (items.length > Math.max(1, 3 - dayEvs.length) ? '<span class="more-n">+' + (items.length - Math.max(1, 3 - dayEvs.length)) + "</span>" : "") +
+        (items.length || dayEvs.length ? '<span class="dots">' + dayEvs.map((p) => '<i class="e" style="--c:' + deptColor(p.dept) + '"></i>').join("") + items.map((x) => '<i style="--c:' + deptColor(x.dept) + '"></i>').join("") + "</span>" : "") +
         "</div>";
     }
     const monthKey = y + "-" + z(m + 1);
     const monthList = filt.filter((x) => (x.dueDate || "").startsWith(monthKey)).sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.done - b.done);
+    const monthEvs = evs.filter((p) => p.startDate.slice(0, 7) <= monthKey && (p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate).slice(0, 7) >= monthKey)
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const evSection = monthEvs.length ? '<section class="card"><h3>' + (m + 1) + "월 사업 일정 <small>" + monthEvs.length + "개</small></h3><ul class=\"tlist big\">" +
+      monthEvs.map((p) => '<li class="trow evrow" data-act="viewProject" data-id="' + esc(p.id) + '"><span class="evdot" style="--c:' + deptColor(p.dept) + '"></span>' +
+        '<span class="dt">' + eventDateText(p) + "</span>" + deptTag(p.dept) + '<span class="tt"><b>' + esc(p.name) + "</b></span>" +
+        '<span class="dd">' + (p.startDate < t ? (p.status === "완료" ? "완료" : "") : dday(p.startDate)) + "</span></li>").join("") + "</ul></section>" : "";
     const chips = '<button class="fchip' + (!S.calFilter ? " on" : "") + '" data-act="calFilter" data-dept="">전체</button>' +
       S.settings.depts.map((d) => '<button class="fchip' + (S.calFilter === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="calFilter" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "</button>").join("");
-    return '<div class="page-head"><div><h2>업무 캘린더</h2><p class="muted">마감일 기준으로 국별 업무를 한눈에 · 날짜를 누르면 바로 추가</p></div>' +
+    return '<div class="page-head"><div><h2>업무 캘린더</h2><p class="muted">색이 꽉 찬 칸은 <b>사업 날짜</b>, 연한 칸은 국별 <b>업무 마감</b> · 날짜를 누르면 업무 추가</p></div>' +
       '<div class="actions"><button class="btn primary" data-act="addTask" data-date="">+ 업무 추가</button></div></div>' +
       '<div class="filters">' + chips + "</div>" +
       '<div class="card cal-card"><div class="cal-nav"><button class="btn sm ghost" data-act="calMove" data-d="-1" aria-label="이전 달">‹</button>' +
       "<h3>" + y + "년 " + (m + 1) + '월</h3><button class="btn sm ghost" data-act="calMove" data-d="1" aria-label="다음 달">›</button>' +
       '<button class="btn sm" data-act="calMove" data-d="0">오늘</button></div>' +
       '<div class="cal-dow">' + DOW.map((d) => "<span>" + d + "</span>").join("") + '</div><div class="cal-grid">' + grid + "</div></div>" +
+      evSection +
       '<section class="card"><h3>' + (m + 1) + "월 업무 목록 <small>" + monthList.length + "개</small></h3>" +
       (monthList.length ? '<ul class="tlist big">' + monthList.map((x) =>
         '<li class="trow' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '">' +
@@ -586,11 +612,11 @@
     opts = opts || {};
     const links = [["기획안", p.planUrl], ["기타 자료", p.extraUrl]]
       .filter((l) => safeUrl(l[1])).map((l) => '<a class="btn sm" href="' + esc(safeUrl(l[1])) + '" target="_blank" rel="noopener">' + l[0] + " ↗</a>").join("");
-    const period = p.startDate ? fmtDate(p.startDate) + (p.endDate && p.endDate !== p.startDate ? " ~ " + fmtDate(p.endDate) : "") : "";
+    const period = eventDateText(p);
     return '<article class="card pcard" style="--c:' + deptColor(p.dept) + '">' +
       '<div class="ptop">' + deptTag(p.dept) + '<span class="st st-' + esc(p.status) + '">' + esc(p.status || "") + "</span>" + (opts.showYear ? '<span class="yr">' + esc(p.year) + "</span>" : "") + "</div>" +
       "<h4>" + esc(p.name) + "</h4>" +
-      '<dl class="meta">' + (period ? "<dt>기간</dt><dd>" + period + "</dd>" : "") + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
+      '<dl class="meta">' + (period ? "<dt>사업일</dt><dd>" + period + "</dd>" : "") + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
       '<div class="plinks">' + (links || '<span class="muted small">' + (opts.archive ? "등록된 자료 없음" : "기획안 링크를 아직 안 넣었어요") + "</span>") + "</div>" +
@@ -722,9 +748,10 @@
       '<input class="d-date" type="date" value="' + esc(r.dueDate || "") + '" aria-label="마감일">' +
       '<button type="button" class="x d-del" aria-label="이 줄 지우기">×</button></div>';
     openForm({ title: "'" + p.name + "' 업무 분배", submitLabel: "캘린더에 추가",
-      intro: fromWho
+      intro: (fromWho
         ? '<p class="small"><b>' + esc(fromWho) + "</b>의 업무 분배를 불러왔어요. <b>마감일만 새로 넣고</b>, 필요 없는 줄은 ×로 지우세요.</p>"
-        : '<p class="muted small">국마다 맡을 일과 마감일을 적으면 업무 캘린더에도 국별 색깔로 표시돼요. 빈 줄은 무시돼요.</p>',
+        : '<p class="muted small">국마다 맡을 일과 마감일을 적으면 업무 캘린더에도 국별 색깔로 표시돼요. 빈 줄은 무시돼요.</p>') +
+        (p.startDate ? '<p class="small"><b>사업 날짜: ' + eventDateText(p) + "</b> (" + dday(p.startDate) + ")</p>" : '<p class="small muted">사업 날짜를 넣어 두면 여기에 표시돼서 마감일 정하기가 쉬워요.</p>'),
       fields: [],
       after: '<div class="dlist">' + rows.map(rowHTML).join("") + '</div><button type="button" class="btn sm" id="dAdd">+ 줄 추가</button>',
       onSubmit: async () => {

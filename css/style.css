@@ -378,3 +378,9 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
   .drow { grid-template-columns: 1fr 1fr 28px; }
   .drow .d-title { grid-column: 1 / -1; grid-row: 1; }
 }
+
+/* ===== 캘린더: 사업 날짜(꽉 찬 띠) vs 업무 마감(줄) ===== */
+.chip.ev { background: var(--c); color: #fff; border-left-color: var(--c); font-weight: 700; }
+.cell .dots i.e { border-radius: 2px; width: 10px; }
+.evrow { cursor: pointer; }
+.evdot { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
