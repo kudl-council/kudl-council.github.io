@@ -14,7 +14,8 @@
     generation: "제29대",
     councilName: "윤슬",
     depts: ["회장단", "내무국", "소통국", "홍보국", "재무국", "대외협력국"],
-    positions: ["회장", "부회장", "국장", "국원"],
+    execPositions: ["회장", "부회장"],   // 회장단(국 목록 맨 위) 직책
+    positions: ["국장", "국원"],         // 그 밖의 국 직책
     minuteTypes: ["전체회의", "집행부회의", "국회의", "기타"],
     minutesFolderUrl: "",
   };
@@ -58,7 +59,24 @@
     return i < 0 ? "#64748b" : PALETTE[i % PALETTE.length];
   }
   const deptTag = (d) => d ? '<span class="tag" style="--c:' + deptColor(d) + '">' + esc(d) + "</span>" : "";
-  function posRank(p) { const i = (S.settings.positions || []).indexOf(p); return i < 0 ? 99 : i; }
+  // 국 목록 맨 위(기본: 회장단)는 회장·부회장, 나머지 국은 국장·국원
+  const execDept = () => (S.settings.depts || [])[0] || "회장단";
+  const execPositions = () => S.settings.execPositions || DEFAULTS.execPositions;
+  const deptPositions = () => (S.settings.positions || DEFAULTS.positions).filter((x) => execPositions().indexOf(x) < 0);
+  const positionsFor = (dept) => (dept === execDept() ? execPositions() : deptPositions());
+  function posRank(p) { const i = execPositions().concat(deptPositions()).indexOf(p); return i < 0 ? 99 : i; }
+  // 폼에서 국을 바꾸면 직책 목록도 그 국에 맞게 바뀜
+  function bindDeptPosition(root) {
+    const d = root.querySelector('select[name="dept"]'), p = root.querySelector('select[name="position"]');
+    if (!d || !p) return;
+    const fill = function () {
+      const opts = d.value ? positionsFor(d.value) : [], cur = p.value;
+      p.innerHTML = (opts.indexOf(cur) < 0 ? '<option value="" disabled selected>' + (d.value ? "선택하세요" : "국을 먼저 선택하세요") + "</option>" : "") +
+        opts.map((o) => '<option value="' + esc(o) + '"' + (o === cur ? " selected" : "") + ">" + esc(o) + "</option>").join("");
+    };
+    fill();
+    d.addEventListener("change", fill);
+  }
   function deptRank(d) { const i = (S.settings.depts || []).indexOf(d); return i < 0 ? 99 : i; }
 
   let toastTimer;
@@ -189,6 +207,7 @@
       try { await o.onSubmit(vals); closeModal(); }
       catch (er) { errEl.hidden = false; errEl.textContent = er.message && !er.code ? er.message : errMsg(er); btn.disabled = false; btn.textContent = o.submitLabel || "저장"; }
     });
+    bindDeptPosition(form);
     const first = form.querySelector("input:not([type=checkbox]),select,textarea");
     if (first && window.innerWidth > 700) first.focus();
   }
@@ -199,7 +218,7 @@
     { name: "name", label: "이름", required: true, half: true },
     { name: "studentId", label: "학번", required: true, half: true, placeholder: "예: 2024250000" },
     { name: "dept", label: "소속 국", type: "select", options: S.settings.depts, required: true, half: true },
-    { name: "position", label: "직책", type: "select", options: S.settings.positions, required: true, half: true },
+    { name: "position", label: "직책", type: "select", options: execPositions().concat(deptPositions()), required: true, half: true },
     { name: "phone", label: "전화번호", type: "tel", required: true, placeholder: "010-1234-5678", help: "승인된 학생회원에게만 비상연락망으로 보입니다." },
     { name: "obPhone", label: "임기가 끝난 뒤에도 같은 학생회였던 사람들에게 내 번호 보여주기", type: "checkbox", value: true,
       help: "OB 기록실의 멤버 명단에 쓰여요. 같은 기수였던 사람만 볼 수 있어요." },
@@ -290,6 +309,7 @@
       '<button class="btn ghost wide" type="button" data-act="logout">다른 계정으로 로그인</button>' +
       "</form></main>";
     const form = document.getElementById("signupForm");
+    bindDeptPosition(form);
     form.addEventListener("submit", async function (e) {
       e.preventDefault();
       const err = form.querySelector(".form-err");
@@ -458,7 +478,7 @@
       const list = groups[d].sort((a, b) => posRank(a.position) - posRank(b.position) || a.name.localeCompare(b.name));
       return '<section class="card dept-card" style="--c:' + deptColor(d) + '"><h3><span class="dot"></span>' + esc(d) + ' <small>' + list.length + "명</small></h3>" +
         '<ul class="clist">' + list.map((u) => {
-          const lead = posRank(u.position) <= posRank("국장") && u.position !== "국원";
+          const lead = u.position && u.position !== "국원";
           return '<li class="' + (lead ? "lead" : "") + '"><span class="pos">' + esc(u.position || "") + '</span><span class="nm">' + esc(u.name) + '</span><span class="sid">' + esc(u.studentId || "") + "</span>" +
             '<a class="ph" href="tel:' + esc((u.phone || "").replace(/[^\d+]/g, "")) + '">' + esc(u.phone || "") + "</a></li>";
         }).join("") + "</ul></section>";
@@ -638,7 +658,7 @@
       '<div class="tablewrap"><table class="utable"><thead><tr><th></th><th>이름</th><th>입학</th><th>국</th><th>직책</th><th>상태</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div></section>" +
       '<section class="card"><div class="card-head"><h3>사이트 설정</h3><button class="btn sm primary" data-act="editSettings">설정 바꾸기</button></div>' +
       '<dl class="meta wide"><dt>지금 학생회</dt><dd><b>' + esc(curCouncil()) + "</b></dd>" +
-      "</dd><dt>국 목록</dt><dd>" + S.settings.depts.map(deptTag).join(" ") + "</dd><dt>직책</dt><dd>" + esc(S.settings.positions.join(", ")) +
+      "</dd><dt>국 목록</dt><dd>" + S.settings.depts.map(deptTag).join(" ") + "</dd><dt>직책</dt><dd>" + esc(execDept()) + ": " + esc(execPositions().join(", ")) + " / 그 밖의 국: " + esc(deptPositions().join(", ")) +
       "</dd><dt>회의 종류</dt><dd>" + esc(S.settings.minuteTypes.join(", ")) + "</dd><dt>회의록 폴더</dt><dd>" + (safeUrl(S.settings.minutesFolderUrl) ? '<a href="' + esc(safeUrl(S.settings.minutesFolderUrl)) + '" target="_blank" rel="noopener">열기 ↗</a>' : '<span class="muted">미등록</span>') + "</dd></dl></section>" +
       '<section class="card"><div class="card-head"><h3>새 학생회 인수인계 순서</h3><button class="btn sm primary" data-act="handover">새 학생회로 넘기기</button></div><ol class="steps">' +
       "<li>새 학생회원들이 사이트에 로그인해서 <b>가입 신청</b></li>" +
@@ -865,8 +885,9 @@
         { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 윤슬" },
         { name: "fixExisting", label: "오타 수정이에요 — 지금 학생회의 기존 사업 기록에도 바뀐 기수·이름을 똑같이 적용", type: "checkbox",
           help: "새 학생회로 넘기는 거라면 체크하지 말고 [새 학생회로 넘기기] 버튼을 쓰세요." },
-        { name: "depts", label: "국 목록 (한 줄에 하나씩, 위에서부터 순서대로)", type: "textarea", rows: 7, required: true },
-        { name: "positions", label: "직책 (한 줄에 하나씩, 높은 직책부터)", type: "textarea", rows: 5, required: true },
+        { name: "depts", label: "국 목록 (한 줄에 하나씩, 위에서부터 순서대로 — 맨 위는 회장단 자리)", type: "textarea", rows: 7, required: true },
+        { name: "execPositions", label: "회장단 직책 (국 목록 맨 위 국에 쓰여요, 한 줄에 하나씩)", type: "textarea", rows: 2, required: true },
+        { name: "positions", label: "그 밖의 국 직책 (한 줄에 하나씩, 높은 직책부터)", type: "textarea", rows: 2, required: true },
         { name: "minuteTypes", label: "회의 종류 (한 줄에 하나씩)", type: "textarea", rows: 4, required: true },
         { name: "minutesFolderUrl", label: "회의록 구글 드라이브 폴더 주소", type: "url", placeholder: "https://drive.google.com/drive/folders/…" },
       ];
@@ -874,8 +895,8 @@
         intro: '<p class="muted small">국 이름을 바꾸면, 기존에 그 이름으로 등록된 회원·업무는 예전 이름 그대로 남아요. 필요하면 각 항목에서 다시 골라 주세요.</p>',
         onSubmit: async (v) => {
           const lines = (s) => String(s).split(/\n|,/).map((x) => x.trim()).filter(Boolean);
-          v.depts = lines(v.depts); v.positions = lines(v.positions); v.minuteTypes = lines(v.minuteTypes);
-          if (!v.depts.length || !v.positions.length || !v.minuteTypes.length) throw new Error("목록은 하나 이상 있어야 해요.");
+          v.depts = lines(v.depts); v.positions = lines(v.positions); v.execPositions = lines(v.execPositions); v.minuteTypes = lines(v.minuteTypes);
+          if (!v.depts.length || !v.positions.length || !v.execPositions.length || !v.minuteTypes.length) throw new Error("목록은 하나 이상 있어야 해요.");
           const fix = v.fixExisting; delete v.fixExisting;
           const oldGen = S.settings.generation;
           const changed = v.generation !== oldGen || v.councilName !== S.settings.councilName;
