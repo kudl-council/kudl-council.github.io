@@ -176,6 +176,12 @@
     } catch (e) { console.warn(e); }
   }
   const dirty = (name) => { delete S.cache[name]; };
+  // 사이트 설정 저장용 (화면에서만 쓰는 값은 빼고 기존 설정에 덧붙임)
+  function settingsDoc(extra) {
+    const d = Object.assign({}, S.settings, extra || {});
+    delete d.id; delete d.currentYear;
+    return d;
+  }
   async function loadSettings() {
     try {
       const s = await DB.get("settings", "site");
@@ -291,7 +297,7 @@
     ps.forEach((p) => (labels[p.id] = p.name));
     return [
       { name: "title", label: "할 일", required: true, placeholder: "예: 개강파티 가수요조사 공지글 작성" },
-      { name: "dept", label: "담당 국", type: "select", options: S.settings.depts, required: true, half: true },
+      { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
       { name: "dueDate", label: "마감일", type: "date", required: true, half: true },
       { name: "projectId", label: "관련 사업 (선택)", type: "select", options: ps.map((p) => p.id), labels: labels },
       { name: "assignee", label: "담당자", placeholder: "예: 강다은 (비워도 됨)" },
@@ -334,7 +340,7 @@
     { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 윤슬" },
   ] : []).concat([
     { name: "year", label: "연도", type: "number", required: true, half: true },
-    { name: "dept", label: "담당 국", type: "select", options: S.settings.depts, required: true, half: true },
+    { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
     { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true },
     { name: "owner", label: "담당자", half: true },
     { name: "startDate", label: "사업 날짜 (시행일)", type: "date", half: true, help: "캘린더에 사업 일정으로 표시돼요." },
@@ -976,8 +982,8 @@
   /* 사업 하나에 국별 업무를 한 번에 나눠 넣기 → 업무 캘린더에도 표시 */
   function openDistribute(p, rows, fromWho) {
     rows = rows && rows.length ? rows : [{}, {}, {}];
-    const deptOpts = (sel) => '<option value="">국 선택</option>' + S.settings.depts.map((d) => '<option value="' + esc(d) + '"' + (d === sel ? " selected" : "") + ">" + esc(d) + "</option>").join("");
-    const rowHTML = (r) => '<div class="drow"><select class="d-dept" aria-label="담당 국">' + deptOpts(r.dept || "") + "</select>" +
+    const deptOpts = (sel) => '<option value="">국서 선택</option>' + S.settings.depts.map((d) => '<option value="' + esc(d) + '"' + (d === sel ? " selected" : "") + ">" + esc(d) + "</option>").join("");
+    const rowHTML = (r) => '<div class="drow"><select class="d-dept" aria-label="담당 국서">' + deptOpts(r.dept || "") + "</select>" +
       '<input class="d-title" placeholder="할 일 (예: 공지글 작성)" value="' + esc(r.title || "") + '" aria-label="할 일">' +
       '<input class="d-date" type="date" value="' + esc(r.dueDate || "") + '" aria-label="마감일">' +
       '<button type="button" class="x d-del" aria-label="이 줄 지우기">×</button></div>';
@@ -994,7 +1000,7 @@
         })).filter((r) => r.title);
         if (!list.length) throw new Error("할 일을 한 줄 이상 적어 주세요.");
         const bad = list.find((r) => !r.dept || !r.dueDate);
-        if (bad) throw new Error("'" + bad.title + "'의 " + (!bad.dept ? "담당 국" : "마감일") + "을 넣어 주세요.");
+        if (bad) throw new Error("'" + bad.title + "'의 " + (!bad.dept ? "담당 국서를" : "마감일을") + " 넣어 주세요.");
         for (const r of list) await DB.add("tasks", Object.assign(r, { projectId: p.id, assignee: "", memo: "", done: false }, stamp()));
         await after("tasks", "projects"); toast(list.length + "개 업무를 캘린더에 추가했어요.");
       } });
@@ -1297,7 +1303,7 @@
             for (const p of mine) await DB.update("projects", p.id, { generation: v.generation, councilName: v.councilName });
             dirty("projects");
           }
-          await DB.set("settings", "site", Object.assign({}, v));
+          await DB.set("settings", "site", settingsDoc(v));
           await loadSettings(); render(); toast("설정을 저장했어요.");
         } });
     },
