@@ -223,13 +223,30 @@
     { name: "obPhone", label: "임기가 끝난 뒤에도 같은 학생회였던 사람들에게 내 번호 보여주기", type: "checkbox", value: true,
       help: "OB 기록실의 멤버 명단에 쓰여요. 같은 기수였던 사람만 볼 수 있어요." },
   ];
-  const taskFields = () => [
-    { name: "title", label: "할 일", required: true, placeholder: "예: 개강파티 가수요조사 공지글 작성" },
-    { name: "dept", label: "담당 국", type: "select", options: S.settings.depts, required: true, half: true },
-    { name: "dueDate", label: "마감일", type: "date", required: true, half: true },
-    { name: "assignee", label: "담당자", placeholder: "예: 강다은 (비워도 됨)" },
-    { name: "memo", label: "메모", type: "textarea", rows: 2 },
-  ];
+  // projects: 연결할 수 있는 사업 목록 (지금 학생회 사업)
+  const taskFields = (projects) => {
+    const ps = projects || [];
+    const labels = {};
+    ps.forEach((p) => (labels[p.id] = p.name));
+    return [
+      { name: "title", label: "할 일", required: true, placeholder: "예: 개강파티 가수요조사 공지글 작성" },
+      { name: "dept", label: "담당 국", type: "select", options: S.settings.depts, required: true, half: true },
+      { name: "dueDate", label: "마감일", type: "date", required: true, half: true },
+      { name: "projectId", label: "관련 사업 (선택)", type: "select", options: ps.map((p) => p.id), labels: labels },
+      { name: "assignee", label: "담당자", placeholder: "예: 강다은 (비워도 됨)" },
+      { name: "memo", label: "메모", type: "textarea", rows: 2 },
+    ];
+  };
+  async function linkableProjects(keepId) {
+    return (await col("projects")).filter((p) => isCurrent(p) || p.id === keepId)
+      .sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
+  }
+  async function tasksByProject() {
+    const m = {};
+    (await col("tasks")).forEach((t) => { if (t.projectId) (m[t.projectId] = m[t.projectId] || []).push(t); });
+    Object.values(m).forEach((a) => a.sort((x, y) => (x.dueDate || "").localeCompare(y.dueDate || "") || deptRank(x.dept) - deptRank(y.dept)));
+    return m;
+  }
   const minuteFields = () => [
     { name: "title", label: "제목", required: true, placeholder: "예: 제13차 정기 전체회의" },
     { name: "type", label: "회의 종류", type: "select", options: S.settings.minuteTypes, required: true, half: true },
@@ -252,7 +269,6 @@
     { name: "budget", label: "예산", placeholder: "예: 1,200,000원" },
     { name: "summary", label: "한 줄 요약 · 다음 기수에게 남길 말", type: "textarea", rows: 3, placeholder: "예: 장소가 좁았음 → 내년엔 더 큰 곳 추천" },
     { name: "planUrl", label: "기획안 링크", type: "url", placeholder: "https://docs.google.com/…" },
-    { name: "resultUrl", label: "결과보고서 링크", type: "url", placeholder: "https://docs.google.com/…" },
     { name: "extraUrl", label: "기타 자료 (드라이브 폴더 등)", type: "url", placeholder: "https://drive.google.com/…" },
   ]);
 
@@ -492,6 +508,8 @@
   /* ----- 업무 캘린더 ----- */
   PAGES.calendar = async function () {
     const tasks = await col("tasks");
+    const pname = {};
+    (await col("projects")).forEach((p) => (pname[p.id] = p.name));
     if (!S.calMonth) { const n = new Date(); S.calMonth = new Date(n.getFullYear(), n.getMonth(), 1); }
     const y = S.calMonth.getFullYear(), m = S.calMonth.getMonth();
     const first = new Date(y, m, 1), dim = new Date(y, m + 1, 0).getDate();
@@ -531,7 +549,7 @@
         '<li class="trow' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '">' +
         '<input type="checkbox" class="tick" data-act="toggleTask" data-id="' + esc(x.id) + '"' + (x.done ? " checked" : "") + ' aria-label="완료 표시">' +
         '<span class="dt">' + fmtDate(x.dueDate) + "</span>" + deptTag(x.dept) +
-        '<span class="tt" data-act="editTask" data-id="' + esc(x.id) + '">' + esc(x.title) + (x.assignee ? ' <small class="muted">· ' + esc(x.assignee) + "</small>" : "") + "</span>" +
+        '<span class="tt" data-act="editTask" data-id="' + esc(x.id) + '">' + esc(x.title) + (pname[x.projectId] ? ' <span class="ptag">' + esc(pname[x.projectId]) + "</span>" : "") + (x.assignee ? ' <small class="muted">· ' + esc(x.assignee) + "</small>" : "") + "</span>" +
         '<span class="dd">' + (x.done ? "완료" : dday(x.dueDate)) + "</span></li>").join("") + "</ul>" : '<p class="empty-s">이 달에 등록된 업무가 없어요.</p>') +
       "</section>";
   };
@@ -566,7 +584,7 @@
   /* ----- 사업 카드 ----- */
   function projectCard(p, opts) {
     opts = opts || {};
-    const links = [["기획안", p.planUrl], ["결과보고서", p.resultUrl], ["기타 자료", p.extraUrl]]
+    const links = [["기획안", p.planUrl], ["기타 자료", p.extraUrl]]
       .filter((l) => safeUrl(l[1])).map((l) => '<a class="btn sm" href="' + esc(safeUrl(l[1])) + '" target="_blank" rel="noopener">' + l[0] + " ↗</a>").join("");
     const period = p.startDate ? fmtDate(p.startDate) + (p.endDate && p.endDate !== p.startDate ? " ~ " + fmtDate(p.endDate) : "") : "";
     return '<article class="card pcard" style="--c:' + deptColor(p.dept) + '">' +
@@ -576,8 +594,24 @@
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
       '<div class="plinks">' + (links || '<span class="muted small">' + (opts.archive ? "등록된 자료 없음" : "기획안 링크를 아직 안 넣었어요") + "</span>") + "</div>" +
+      projectTasksHTML(p, opts) +
       (opts.readonly ? "" : '<div class="pfoot">' + (opts.archive ? '<button class="btn sm" data-act="reuseProject" data-id="' + esc(p.id) + '">참고해서 새로 기획하기</button>' : "") +
       '<button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button></div>') + "</article>";
+  }
+  // 사업 카드 안의 "업무 분배" 목록
+  function projectTasksHTML(p, opts) {
+    const ts = opts.tasks || [];
+    const canAdd = !opts.readonly && !opts.archive;
+    if (!ts.length) return canAdd ? '<button class="btn sm ptask-add" data-act="distribute" data-id="' + esc(p.id) + '">+ 국별 업무 분배하기</button>' : "";
+    const t = today(), done = ts.filter((x) => x.done).length;
+    const depts = [];
+    ts.forEach((x) => { if (depts.indexOf(x.dept) < 0) depts.push(x.dept); });
+    return '<div class="ptasks"><div class="ptasks-head"><b>업무 분배</b><small>' + done + "/" + ts.length + " 완료</small>" +
+      (canAdd ? '<button class="linkbtn small" data-act="distribute" data-id="' + esc(p.id) + '">+ 추가</button>' : "") + "</div>" +
+      '<div class="pbar"><i style="width:' + Math.round((done / ts.length) * 100) + '%"></i></div>' +
+      "<ul>" + ts.map((x) => '<li class="' + (x.done ? "done" : x.dueDate < t ? "late" : "") + '"' + (opts.readonly ? "" : ' data-act="editTask" data-id="' + esc(x.id) + '"') + ">" +
+        deptTag(x.dept) + '<span class="tt">' + esc(x.title) + "</span>" +
+        '<span class="dt">' + (x.done ? "완료" : opts.archive ? fmtDate(x.dueDate) : dday(x.dueDate)) + "</span></li>").join("") + "</ul></div>";
   }
   function deptFilterChips(key, act) {
     return '<button class="fchip' + (!S[key] ? " on" : "") + '" data-act="' + act + '" data-dept="">전체</button>' +
@@ -586,14 +620,16 @@
 
   /* ----- 사업 기획안 (지금 학생회) ----- */
   PAGES.projects = async function () {
-    const list = (await col("projects")).filter((p) => isCurrent(p) && (!S.projDept || p.dept === S.projDept));
+    const tmap = await tasksByProject();
+    const list = (await col("projects")).filter((p) => isCurrent(p) && (!S.projDept || p.dept === S.projDept ||
+      (tmap[p.id] || []).some((t) => t.dept === S.projDept)));
     const cols = STATUSES.map((st) => {
       const items = list.filter((p) => p.status === st).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
       if (st === "취소" && !items.length) return "";
       return '<div class="kcol"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small></h3>" +
-        (items.map((p) => projectCard(p)).join("") || '<p class="empty-s">없음</p>') + "</div>";
+        (items.map((p) => projectCard(p, { tasks: tmap[p.id] })).join("") || '<p class="empty-s">없음</p>') + "</div>";
     }).join("");
-    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개</p></div>" +
+    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 이미 끝난 올해 사업도 여기에 '완료'로 넣으세요</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a><button class="btn primary" data-act="addProject">+ 사업 추가</button></div></div>' +
       '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
       '<div class="kanban">' + cols + "</div>";
@@ -603,6 +639,7 @@
   PAGES.archive = async function () {
     const q = (S.q.archive || "").toLowerCase();
     const all = await col("projects");
+    const tmap = await tasksByProject();
     const past = all.filter((p) => !isCurrent(p));
     const list = past.filter((p) => (!S.archiveDept || p.dept === S.archiveDept) &&
       (!q || [p.name, p.summary, p.dept, p.owner, p.generation, p.councilName].join(" ").toLowerCase().includes(q)));
@@ -624,7 +661,7 @@
     }).sort((a, b) => b.maxY - a.maxY || b.gnum - a.gnum);
     const body = info.map((g, i) =>
       '<details class="year"' + (i < 2 || q ? " open" : "") + '><summary><b>' + esc(g.title) + "</b> <small>" + esc(g.sub) + "</small></summary>" +
-      '<div class="pgrid">' + g.items.sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9")).map((p) => projectCard(p, { archive: true })).join("") + "</div></details>").join("");
+      '<div class="pgrid">' + g.items.sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9")).map((p) => projectCard(p, { archive: true, tasks: tmap[p.id] })).join("") + "</div></details>").join("");
     return '<div class="page-head"><div><h2>사업 아카이브</h2><p class="muted">역대 학생회가 진행한 사업이 학생회별로 쌓여요 · 지금까지 ' + past.length + "개</p></div>" +
       '<div class="actions"><button class="btn primary" data-act="addPastProject">+ 지난 사업 기록하기</button></div></div>' +
       '<div class="notice info small">학생회가 바뀔 때 관리 → 사이트 설정에서 <b>기수와 학생회 이름</b>을 바꾸면, ' + esc(curCouncil()) + '의 사업이 자동으로 이곳에 쌓여요.</div>' +
@@ -675,6 +712,35 @@
   const stamp = () => ({ createdBy: S.authUser.uid, createdAt: new Date().toISOString() });
 
   async function findIn(c, id) { return (await col(c)).find((x) => x.id === id); }
+
+  /* 사업 하나에 국별 업무를 한 번에 나눠 넣기 → 업무 캘린더에도 표시 */
+  function openDistribute(p, rows, fromWho) {
+    rows = rows && rows.length ? rows : [{}, {}, {}];
+    const deptOpts = (sel) => '<option value="">국 선택</option>' + S.settings.depts.map((d) => '<option value="' + esc(d) + '"' + (d === sel ? " selected" : "") + ">" + esc(d) + "</option>").join("");
+    const rowHTML = (r) => '<div class="drow"><select class="d-dept" aria-label="담당 국">' + deptOpts(r.dept || "") + "</select>" +
+      '<input class="d-title" placeholder="할 일 (예: 공지글 작성)" value="' + esc(r.title || "") + '" aria-label="할 일">' +
+      '<input class="d-date" type="date" value="' + esc(r.dueDate || "") + '" aria-label="마감일">' +
+      '<button type="button" class="x d-del" aria-label="이 줄 지우기">×</button></div>';
+    openForm({ title: "'" + p.name + "' 업무 분배", submitLabel: "캘린더에 추가",
+      intro: fromWho
+        ? '<p class="small"><b>' + esc(fromWho) + "</b>의 업무 분배를 불러왔어요. <b>마감일만 새로 넣고</b>, 필요 없는 줄은 ×로 지우세요.</p>"
+        : '<p class="muted small">국마다 맡을 일과 마감일을 적으면 업무 캘린더에도 국별 색깔로 표시돼요. 빈 줄은 무시돼요.</p>',
+      fields: [],
+      after: '<div class="dlist">' + rows.map(rowHTML).join("") + '</div><button type="button" class="btn sm" id="dAdd">+ 줄 추가</button>',
+      onSubmit: async () => {
+        const list = Array.from(modalRoot.querySelectorAll(".drow")).map((r) => ({
+          dept: r.querySelector(".d-dept").value, title: r.querySelector(".d-title").value.trim(), dueDate: r.querySelector(".d-date").value,
+        })).filter((r) => r.title);
+        if (!list.length) throw new Error("할 일을 한 줄 이상 적어 주세요.");
+        const bad = list.find((r) => !r.dept || !r.dueDate);
+        if (bad) throw new Error("'" + bad.title + "'의 " + (!bad.dept ? "담당 국" : "마감일") + "을 넣어 주세요.");
+        for (const r of list) await DB.add("tasks", Object.assign(r, { projectId: p.id, assignee: "", memo: "", done: false }, stamp()));
+        await after("tasks", "projects"); toast(list.length + "개 업무를 캘린더에 추가했어요.");
+      } });
+    const box = modalRoot.querySelector(".dlist");
+    modalRoot.querySelector("#dAdd").addEventListener("click", () => { box.insertAdjacentHTML("beforeend", rowHTML({})); box.lastElementChild.querySelector(".d-dept").focus(); });
+    box.addEventListener("click", (e) => { if (e.target.classList.contains("d-del")) e.target.closest(".drow").remove(); });
+  }
 
   /* 탈퇴: 사이트 접속 막고, 연락망에서 빼고, 전화번호는 개인정보라 지움. 이름과 남긴 기록은 유지 */
   async function withdraw(u, self) {
@@ -734,8 +800,8 @@
       renderPage();
     },
     calFilter(el) { S.calFilter = el.dataset.dept; renderPage(); },
-    addTask(el) {
-      openForm({ title: "업무 추가", fields: taskFields(),
+    async addTask(el) {
+      openForm({ title: "업무 추가", fields: taskFields(await linkableProjects()),
         values: { dueDate: el.dataset.date || today(), dept: S.calFilter || (S.me && S.me.dept) || "" },
         submitLabel: "추가", onSubmit: async (v) => {
           await DB.add("tasks", Object.assign(v, { done: false }, stamp()));
@@ -745,13 +811,17 @@
     async editTask(el) {
       const t = await findIn("tasks", el.dataset.id);
       if (!t) return;
-      const fields = taskFields().concat([{ name: "done", label: "완료한 업무예요", type: "checkbox" }]);
+      const fields = taskFields(await linkableProjects(t.projectId)).concat([{ name: "done", label: "완료한 업무예요", type: "checkbox" }]);
       openForm({ title: "업무 보기 · 수정", fields: fields, values: t,
         extraButtons: canDelete(t) ? [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("이 업무를 삭제할까요?")) return;
           await DB.remove("tasks", t.id); closeModal(); await after("tasks"); toast("삭제했어요.");
         } }] : [],
         onSubmit: async (v) => { await DB.update("tasks", t.id, v); await after("tasks"); toast("저장했어요."); } });
+    },
+    async distribute(el) {
+      const p = await findIn("projects", el.dataset.id);
+      if (p) openDistribute(p);
     },
     async toggleTask(el) {
       try { await DB.update("tasks", el.dataset.id, { done: el.checked }); await after("tasks"); }
@@ -789,7 +859,7 @@
     },
     addPastProject() {
       openForm({ title: "지난 사업 기록하기", fields: projectFields({ council: true, past: true }), submitLabel: "기록",
-        intro: '<p class="muted small">이전 학생회의 기획안과 결과보고서 링크를 남겨두면, 다음 학생회가 같은 사업을 할 때 큰 도움이 돼요.</p>',
+        intro: '<p class="muted small">이전 학생회의 기획안 링크와 남길 말을 기록해 두면, 다음 학생회가 같은 사업을 할 때 큰 도움이 돼요.</p>',
         values: { year: S.settings.currentYear - 1, status: "완료" },
         onSubmit: async (v) => {
           if (v.generation && v.generation === S.settings.generation) throw new Error("지금 학생회(" + S.settings.generation + ") 사업은 [사업 기획안] 메뉴에서 추가해 주세요.");
@@ -801,8 +871,10 @@
       if (!p) return;
       openForm({ title: "사업 수정", fields: projectFields({ council: true }), values: p,
         extraButtons: canDelete(p) ? [{ label: "삭제", cls: "danger", onClick: async () => {
-          if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.")) return;
-          await DB.remove("projects", p.id); closeModal(); await after("projects"); toast("삭제했어요.");
+          if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)")) return;
+          await DB.remove("projects", p.id);
+          for (const t of (await col("tasks")).filter((x) => x.projectId === p.id)) await DB.update("tasks", t.id, { projectId: "" });
+          closeModal(); await after("projects", "tasks"); toast("삭제했어요.");
         } }] : [],
         onSubmit: async (v) => { await DB.update("projects", p.id, v); await after("projects"); toast("저장했어요."); } });
     },
@@ -819,11 +891,16 @@
         fields: projectFields(),
         values: { name: p.name, dept: p.dept, year: S.settings.currentYear, status: "기획중", budget: p.budget, summary: "" },
         onSubmit: async (v) => {
-          await DB.add("projects", Object.assign(v, {
+          const data = Object.assign(v, {
             generation: S.settings.generation, councilName: S.settings.councilName,
             prevNote: who + " " + p.name + (p.summary ? " — " + p.summary : ""), prevPlanUrl: safeUrl(p.planUrl) || safeUrl(p.resultUrl),
-          }, stamp()));
+          }, stamp());
+          const id = await DB.add("projects", data);
+          const oldTasks = (await tasksByProject())[p.id] || [];
           dirty("projects"); location.hash = "projects"; toast("사업 기획안에 추가했어요.");
+          // 이전 업무 분배를 불러와서 마감일만 새로 넣게 함
+          if (oldTasks.length) setTimeout(() => openDistribute(Object.assign({ id: id }, data),
+            oldTasks.map((t) => ({ dept: t.dept, title: t.title, dueDate: "" })), who), 0);
         } });
     },
 

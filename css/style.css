@@ -353,3 +353,28 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .rgroup li .lead { font-weight: 700; }
 .rgroup li .ph { margin-left: auto; color: var(--ink); text-decoration: none; font-variant-numeric: tabular-nums; font-size: 13px; }
 .rgroup li .ph:hover { color: var(--accent); }
+
+/* ===== 사업 ↔ 업무 분배 ===== */
+.ptask-add { margin-top: 8px; }
+.ptasks { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.ptasks-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.ptasks-head small { color: var(--muted); }
+.ptasks-head .linkbtn { margin-left: auto; color: var(--accent); text-decoration: none; }
+.pbar { height: 4px; background: var(--bg); border-radius: 2px; margin: 6px 0 4px; overflow: hidden; }
+.pbar i { display: block; height: 100%; background: var(--ok); }
+.ptasks ul { list-style: none; margin: 0; padding: 0; }
+.ptasks li { display: flex; align-items: center; gap: 6px; padding: 5px 0; font-size: 13px; cursor: pointer; }
+.ptasks li .tt { flex: 1; min-width: 0; }
+.ptasks li .dt { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.ptasks li.done .tt { text-decoration: line-through; color: var(--muted); }
+.ptasks li.done .dt { color: var(--ok); }
+.ptasks li.late .dt { color: var(--late); font-weight: 700; }
+.ptag { font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--bg); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+.dlist { display: grid; gap: 8px; margin: 4px 0 10px; }
+.drow { display: grid; grid-template-columns: 120px 1fr 150px 28px; gap: 6px; align-items: center; }
+.drow select, .drow input { font: inherit; font-size: 15px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); min-width: 0; }
+.drow .x { font-size: 22px; }
+@media (max-width: 760px) {
+  .drow { grid-template-columns: 1fr 1fr 28px; }
+  .drow .d-title { grid-column: 1 / -1; grid-row: 1; }
+}

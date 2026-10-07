@@ -143,6 +143,11 @@
     P("p6", { name: "중간고사 간식 행사", year: Y - 1, dept: "내무국", status: "완료", startDate: (Y - 1) + "-10-20", endDate: (Y - 1) + "-10-21", owner: "내무국장", budget: "700,000원", summary: "수량 부족으로 2일차 오전에 조기 소진.", planUrl: "https://docs.google.com/document/d/old2", resultUrl: "https://docs.google.com/document/d/old2r" });
     P("p7", { name: "새내기 배움터", year: Y - 1, dept: "회장단", status: "완료", startDate: (Y - 1) + "-02-20", endDate: (Y - 1) + "-02-22", owner: "회장단", summary: "2박 3일, 신입생 85명 참여.", planUrl: "https://docs.google.com/document/d/old3" });
     P("p8", { name: "학과 체육대회", year: Y - 2, dept: "내무국", status: "완료", startDate: (Y - 2) + "-05-15", endDate: (Y - 2) + "-05-15", owner: "내무국장", summary: "풋살·피구·계주.", planUrl: "https://docs.google.com/document/d/old4" });
+    // 사업에 연결된 업무 (업무 분배 예시)
+    ["t1", "t2", "t4"].forEach((k) => (tasks[k].projectId = "p2"));
+    [["내무국", "간식 업체 견적 비교", "-10-10"], ["재무국", "예산안 작성", "-10-12"], ["소통국", "신청 폼 공지", "-10-14"], ["홍보국", "자보 제작", "-10-15"]].forEach(function (x, i) {
+      tasks["old" + i] = { title: x[1], dept: x[0], dueDate: (Y - 1) + x[2], done: true, projectId: "p6", assignee: "", memo: "", createdBy: "demo-president", createdAt: now };
+    });
 
     const councils = {
       "제27대": { memberUids: ["demo-ob"], generation: "제27대", councilName: "다온(예시)", endedAt: (Y - 2) + "-11-28", members: [
