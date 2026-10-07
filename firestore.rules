@@ -1,0 +1,88 @@
+rules_version = '2';
+
+// ================================================================
+//  학생회 사이트 보안 규칙
+//  최고 관리자: 학생회 공용 gmail (js/config.js 의 ownerEmail 과 같아야 함)
+//  공용 gmail을 바꾸게 되면 아래 주소와 config.js 를 함께 바꾸세요.
+// ================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function ownerEmail() { return 'kudl.council@gmail.com'; }
+
+    function signedIn() { return request.auth != null; }
+    function isOwner() {
+      return signedIn() && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == ownerEmail().lower();
+    }
+    function myDoc() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function me() { return get(myDoc()).data; }
+    function hasProfile() { return signedIn() && exists(myDoc()); }
+    function approved() { return isOwner() || (hasProfile() && me().status == 'approved'); }
+    // 임기를 마친 OB (탈퇴자는 제외): 사업 기록과 학생회 멤버 명단만 읽기 가능
+    function alumni() {
+      return hasProfile() && me().status == 'inactive' && me().get('inactiveReason', '') == '임기 종료';
+    }
+    function admin() { return isOwner() || (approved() && me().get('isAdmin', false) == true); }
+    function unchanged(f) { return request.resource.data.get(f, null) == resource.data.get(f, null); }
+
+    // ---- 회원 정보 (연락망) ----
+    match /users/{uid} {
+      // 본인 정보는 본인이, 전체 명단은 승인된 회원만
+      allow read: if (signedIn() && request.auth.uid == uid) || approved();
+
+      // 가입 신청: 본인 것만, 반드시 '승인 대기' 상태로 (공용계정은 예외)
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.email == request.auth.token.email.lower()
+        && (isOwner() || (request.resource.data.status == 'pending'
+                          && request.resource.data.isAdmin == false));
+
+      // 수정: 회장단은 모두 가능 / 본인은 이름·전화번호 등만
+      //   - 본인이 스스로 회장단 권한을 얻을 수는 없음 (내려놓는 것만 가능)
+      //   - 상태 변경은 두 가지만: 스스로 탈퇴(활동 중 → 탈퇴), 재신청(종료·반려 → 승인 대기)
+      allow update: if admin() || (
+        signedIn() && request.auth.uid == uid
+        && unchanged('email')
+        && (unchanged('isAdmin') || request.resource.data.isAdmin == false)
+        && ((unchanged('status') && unchanged('inactiveReason'))
+            || (resource.data.status == 'approved'
+                && request.resource.data.status == 'inactive'
+                && request.resource.data.inactiveReason == '탈퇴')
+            || (resource.data.status in ['inactive', 'rejected']
+                && request.resource.data.status == 'pending'
+                && request.resource.data.isAdmin == false))
+      );
+
+      allow delete: if admin();
+    }
+
+    // ---- 역대 학생회 기록 (멤버 이름·국·직책·번호) ----
+    //   번호가 들어 있으므로 그 학생회 멤버였던 사람과 회장단만 볼 수 있음
+    match /councils/{id} {
+      allow read: if admin()
+        || (signedIn() && request.auth.uid in resource.data.get('memberUids', []));
+      allow write: if admin();
+    }
+
+    // ---- 사이트 설정 (국 목록 등) ----
+    match /settings/{doc} {
+      allow read: if signedIn();
+      allow write: if admin();
+    }
+
+    // ---- 업무 · 회의록 · 사업: 승인된 회원 누구나 작성/수정, 삭제는 작성자 또는 회장단 ----
+    match /tasks/{id} {
+      allow read, create, update: if approved();
+      allow delete: if admin() || (approved() && resource.data.createdBy == request.auth.uid);
+    }
+    match /minutes/{id} {
+      allow read, create, update: if approved();
+      allow delete: if admin() || (approved() && resource.data.createdBy == request.auth.uid);
+    }
+    match /projects/{id} {
+      allow read: if approved() || alumni();
+      allow create, update: if approved();
+      allow delete: if admin() || (approved() && resource.data.createdBy == request.auth.uid);
+    }
+  }
+}
