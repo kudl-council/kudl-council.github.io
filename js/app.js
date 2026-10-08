@@ -728,8 +728,9 @@
     }
     const taskRow = (x) => '<li class="trow ' + (x.dueDate < t ? "late" : "") + (x.dept === myDept ? " mine" : "") + '" data-act="editTask" data-id="' + esc(x.id) + '">' +
       '<span class="dd">' + dday(x.dueDate) + "</span>" + deptTag(x.dept) + '<span class="tt">' + esc(x.title) + '</span><span class="dt">' + fmtDate(x.dueDate) + "</span></li>";
-    if (S.me && S.me.profileCheck) pendingNote = '<div class="notice info"><b>' + esc(curCouncil()) + ' 학생회가 시작됐어요!</b> 소속 국서나 직책이 바뀌었다면 연락망이 맞게 나오도록 수정해 주세요.' +
-      '<div class="actions" style="margin-top:8px"><button class="btn sm primary" data-act="editMe">내 정보 수정</button><button class="btn sm" data-act="profileOk">그대로 맞아요</button></div></div>' + pendingNote;
+    if (S.me && S.me.profileCheck) pendingNote = '<div class="notice info"><b>' + esc(curCouncil()) + ' 학생회가 시작됐어요!</b> 지금 연락망에 <b>' + esc([S.me.grade, S.me.dept, S.me.position].filter(Boolean).join(" · ")) + "</b>(으)로 나와요. " +
+      (isAdmin() ? "바뀌었다면 내 정보에서 수정해 주세요." : "소속 국서나 직책이 바뀌었다면 회장단에게 말해 주세요. 회장단이 [관리]에서 바꿔 줘요.") +
+      '<div class="actions" style="margin-top:8px">' + (isAdmin() ? '<button class="btn sm primary" data-act="editMe">내 정보 수정</button>' : "") + '<button class="btn sm" data-act="profileOk">확인했어요</button></div></div>' + pendingNote;
     return pendingNote +
       '<div class="hello"><h2>' + (S.me ? esc(S.me.name) + "님, 안녕하세요" : "안녕하세요") + '</h2><p class="muted">' + fmtDate(t, true) + "</p></div>" +
       (pick ? '<a class="home-msg" href="#messages"><span class="lbl">선배의 한마디</span><span class="mtext">' + esc(pick.text) + '</span><span class="by">' + esc(msgByline(pick)) + "</span></a>" : "") +
@@ -1016,7 +1017,7 @@
     obs.forEach((u) => { const h = lastGen(u); const k = h ? h.generation : "기록 없음"; (obG[k] = obG[k] || { name: h ? h.councilName : "", list: [] }).list.push(Object.assign({}, u, h ? { dept: h.dept || u.dept, position: h.position || u.position } : {})); });
     const stLabel = { approved: "활동 중", inactive: "임기 종료", rejected: "반려" };
     const pendingHTML = pending.length ? pending.map((u) =>
-      '<div class="prow"><div><b>' + esc(u.name) + "</b> " + deptTag(u.dept) + " " + esc(u.position) +
+      '<div class="prow"><div><b>' + esc(u.name) + "</b> " + (u.grade ? '<span class="gtag">' + esc(u.grade) + "</span> " : "") + deptTag(u.dept) + " " + esc(u.position) +
       '<div class="muted small">' + esc(u.studentId) + " · " + esc(u.phone) + " · " + esc(u.email) + "</div></div>" +
       '<div class="btns"><button class="btn sm ghost" data-act="rejectUser" data-id="' + esc(u.id) + '">반려</button><button class="btn sm primary" data-act="approveUser" data-id="' + esc(u.id) + '">승인</button></div></div>').join("")
       : '<p class="empty-s">대기 중인 가입 신청이 없어요.</p>';
@@ -1174,7 +1175,13 @@
     },
     editMe() {
       if (!S.me) return;
-      openForm({ title: "내 정보 수정", fields: profileFields(), values: S.me,
+      // 활동 중인 회원은 학년·국서·직책을 직접 못 바꿈 (회장단이 [관리 → 회원 편집]에서 변경)
+      const locked = S.me.status !== "pending" && !isAdmin();
+      const lockKeys = ["grade", "dept", "position"];
+      const fields = locked ? profileFields().filter((f) => lockKeys.indexOf(f.name) < 0) : profileFields();
+      openForm({ title: "내 정보 수정", fields: fields, values: S.me,
+        intro: locked ? '<p class="muted small">지금: <b>' + esc([S.me.grade, S.me.dept, S.me.position].filter(Boolean).join(" · ")) +
+          "</b><br>학년 · 소속 국서 · 직책이 바뀌었으면 회장단에게 말해 주세요. 회장단이 [관리]에서 바꿔 줘요.</p>" : "",
         extraButtons: S.me.status === "approved" ? [{ label: "학생회 탈퇴", cls: "danger", onClick: () => withdraw(S.me, true) }] : [],
         onSubmit: async (v) => {
         await DB.update("users", S.authUser.uid, Object.assign(v, { profileCheck: false }));

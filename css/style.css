@@ -469,3 +469,5 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .psched li { display: grid; grid-template-columns: 1fr; gap: 1px; }
 .psched li .tt { font-weight: 600; }
 .psched li .dt { white-space: normal; text-align: left; }
+
+.gtag { font-size: 11.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); }

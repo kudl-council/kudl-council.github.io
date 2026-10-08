@@ -42,22 +42,42 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.email == request.auth.token.email.lower()
         && (isOwner() || (request.resource.data.status == 'pending'
-                          && request.resource.data.isAdmin == false));
+                          && request.resource.data.isAdmin == false
+                          && request.resource.data.keys().hasOnly(['name', 'studentId', 'grade', 'dept', 'position',
+                               'phone', 'obPhone', 'email', 'status', 'isAdmin', 'createdAt'])));
 
-      // 수정: 회장단은 모두 가능 / 본인은 이름·전화번호 등만
-      //   - 본인이 스스로 회장단 권한을 얻을 수는 없음 (내려놓는 것만 가능)
+      // 수정: 회장단은 모두 가능 / 본인은 이름·학번·전화번호만
+      //   - 학년·소속 국서·직책·지난 학생회 기록은 회장단만 바꿀 수 있음
+      //     (1학년이 스스로 2학년으로 바꿔서 타임캡슐 등을 보는 것을 막음)
+      //   - 승인 대기 중이거나 재신청할 때는 정보를 고칠 수 있음 (회장단이 확인 후 승인)
       //   - 상태 변경은 두 가지만: 스스로 탈퇴(활동 중 → 탈퇴), 재신청(종료·반려 → 승인 대기)
       allow update: if admin() || (
         signedIn() && request.auth.uid == uid
-        && unchanged('email')
+        && unchanged('email') && unchanged('generations') && unchanged('history')
         && (unchanged('isAdmin') || request.resource.data.isAdmin == false)
-        && ((unchanged('status') && unchanged('inactiveReason'))
-            || (resource.data.status == 'approved'
-                && request.resource.data.status == 'inactive'
-                && request.resource.data.inactiveReason == '탈퇴')
-            || (resource.data.status in ['inactive', 'rejected']
-                && request.resource.data.status == 'pending'
-                && request.resource.data.isAdmin == false))
+        && (
+          // 승인 대기 중: 가입 정보 수정
+          (resource.data.status == 'pending' && unchanged('status') && unchanged('inactiveReason'))
+          // 활동 중·OB: 이름·학번·전화번호만
+          || (unchanged('status') && unchanged('inactiveReason')
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['name', 'studentId', 'phone', 'obPhone', 'profileCheck', 'updatedAt']))
+          // 학년이 비어 있던 예전 회원: 학년 한 번 입력
+          || (resource.data.status == 'approved' && unchanged('status') && unchanged('inactiveReason')
+              && resource.data.get('grade', '') == ''
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['grade', 'name', 'studentId', 'phone', 'obPhone', 'profileCheck', 'updatedAt']))
+          // 스스로 탈퇴
+          || (resource.data.status == 'approved'
+              && request.resource.data.status == 'inactive'
+              && request.resource.data.inactiveReason == '탈퇴'
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['status', 'inactiveReason', 'isAdmin', 'phone', 'leftAt']))
+          // 재신청 (다시 승인 대기로)
+          || (resource.data.status in ['inactive', 'rejected']
+              && request.resource.data.status == 'pending'
+              && request.resource.data.isAdmin == false)
+        )
       );
 
       allow delete: if admin();
