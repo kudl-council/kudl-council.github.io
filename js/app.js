@@ -20,9 +20,7 @@
     minutesFolderUrl: "",
   };
   const GRADES = ["1학년", "2학년"];
-  const STATUSES = ["기획중", "예정", "완료", "취소"];
-  // 예전 상태 이름 '진행중'은 '예정'으로 보여줌 (수정해서 저장하면 '예정'으로 바뀜)
-  const fixStatus = (list) => { (list || []).forEach((p) => { if (p.status === "진행중") p.status = "예정"; }); return list; };
+  const STATUSES = ["기획중", "예정", "진행중", "완료", "취소"];
   const PALETTE = ["#9b1c31", "#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2", "#65a30d", "#ea580c", "#475569"];
   const NAV = [
     ["home", "홈"], ["contacts", "비상연락망"], ["calendar", "업무 캘린더"], ["minutes", "회의록"],
@@ -177,7 +175,6 @@
           S.cache[name] = past.length ? await DB.queryIn(name, "generation", past) : [];
         } else S.cache[name] = await DB.queryIn(name, "generation", gens);
       } else S.cache[name] = await DB.list(name);
-      if (name === "projects") fixStatus(S.cache[name]);
     }
     return S.cache[name];
   }
@@ -524,7 +521,7 @@
     const page = document.getElementById("page");
     try {
       const hist = (me.history || []).slice().sort((a, b) => genNum(b.generation) - genNum(a.generation));
-      const projects = fixStatus(await DB.list("projects"));
+      const projects = await DB.list("projects");
       let myMsgs = [];
       try { myMsgs = await DB.queryEq("messages", "authorUid", S.authUser.uid); } catch (e) { /* 없음 */ }
       let obMinutes = [];
@@ -721,7 +718,7 @@
     const late = open.filter((x) => x.dueDate < t).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     const soon = open.filter((x) => x.dueDate >= t && x.dueDate <= in14).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     const myDept = S.me && S.me.dept;
-    const live = projects.filter((p) => isCurrent(p) && (p.status === "예정" || p.status === "기획중"))
+    const live = projects.filter((p) => isCurrent(p) && (p.status === "예정" || p.status === "기획중" || p.status === "진행중"))
       .sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
     const recent = minutes.slice().sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 5);
     let pendingNote = "";
