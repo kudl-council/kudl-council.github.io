@@ -1,0 +1,14 @@
+{
+  "name": "고려대학교 생명과학부 학생회",
+  "short_name": "생명과학부 학생회",
+  "start_url": "./",
+  "scope": "./",
+  "display": "browser",
+  "background_color": "#f6f4f2",
+  "theme_color": "#9b1c31",
+  "icons": [
+    { "src": "img/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

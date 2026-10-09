@@ -133,9 +133,16 @@ service cloud.firestore {
       allow delete: if admin() || (approved() && resource.data.authorUid == request.auth.uid);
     }
 
+    // ---- 회장단 공지 (홈 맨 위): 활동 중인 회원이 읽고, 회장단만 올리고 고침
+    match /notices/{id} {
+      allow read: if approved();
+      allow write: if admin();
+    }
+
     // ---- 사이트 설정 (국 목록 등) ----
+    //   settings/public 에는 학생회 기수·이름만 있음 → 로그인 화면에 보여 주려고 누구나 읽기 가능
     match /settings/{doc} {
-      allow read: if signedIn();
+      allow read: if signedIn() || doc == 'public';
       allow write: if admin();
     }
 

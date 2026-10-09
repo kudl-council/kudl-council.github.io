@@ -206,6 +206,14 @@
       }
     } catch (e) { S.settings = Object.assign({}, DEFAULTS); }
     S.settings.currentYear = new Date().getFullYear();
+    // 로그인 화면에 보일 학생회 이름 (기수·이름만, 누구나 볼 수 있음) — 회장단이 접속할 때 맞춰 둠
+    if (isAdmin()) {
+      try {
+        const pub = await DB.get("settings", "public");
+        if (!pub || pub.generation !== S.settings.generation || (pub.councilName || "") !== (S.settings.councilName || ""))
+          await DB.set("settings", "public", { generation: S.settings.generation, councilName: S.settings.councilName || "" });
+      } catch (e) { console.warn(e); }
+    }
   }
   async function loadMe() {
     S.me = null;
@@ -432,9 +440,23 @@
       body = '<button class="btn google wide" data-act="login"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg> 구글 계정으로 로그인</button>' +
         '<p class="muted small center">처음이라면 로그인 후 가입 신청서를 작성하고, 회장단 승인을 기다리면 돼요.</p>';
     }
-    app.innerHTML = demoBar() + '<main class="center-screen"><div class="card login">' +
-      '<div class="mark big">BIO</div><h1>' + esc(CFG.siteName || "학생회") + "</h1>" +
-      '<p class="muted">학생회 구성원 전용 공간입니다.</p>' + body + "</div></main>";
+    // 왼쪽: 학생회 소개 (지금 학생회 이름은 로그인 전에도 볼 수 있는 settings/public 에서 가져옴)
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem("councilPublic") || "null"); } catch (e) { /* 무시 */ }
+    app.innerHTML = demoBar() + '<main class="split">' +
+      '<section class="brand"><div class="mark brand-mark">BIO</div>' +
+      '<div class="brand-mid"><p class="eyebrow">고려대학교 · 생명과학부</p><h1 id="brandName">' + esc((cached && cached.councilName) || "학생회") + "</h1>" +
+      '<p class="brand-sub" id="brandSub">' + esc(cached && cached.generation ? cached.generation + " 생명과학부 학생회" : "생명과학부 학생회 업무 공간") + "</p></div>" +
+      '<p class="brand-foot">비상연락망 · 업무 캘린더 · 회의록 · 사업 기획안</p></section>' +
+      '<section class="panel"><div class="card login2"><h2>학생회 로그인</h2>' +
+      '<p class="muted small">학생회 구성원만 들어올 수 있는 공간이에요.</p>' + body + "</div></section></main>";
+    DB.get("settings", "public").then((pub) => {
+      if (!pub || !pub.generation) return;
+      try { localStorage.setItem("councilPublic", JSON.stringify({ generation: pub.generation, councilName: pub.councilName || "" })); } catch (e) { /* 무시 */ }
+      const n = document.getElementById("brandName"), sub = document.getElementById("brandSub");
+      if (n) n.textContent = pub.councilName || "학생회";
+      if (sub) sub.textContent = pub.generation + " 생명과학부 학생회";
+    }).catch(() => {});
   }
 
   function renderSignup() {
@@ -707,8 +729,25 @@
   };
 
   /* ----- 홈 ----- */
+  // 회장단 공지 (홈 맨 위에 고정). 표시 종료일이 지나면 자동으로 안 보임
+  function noticeBoardHTML(list) {
+    const t = today();
+    const act = (list || []).filter((n) => !n.until || n.until >= t).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    if (!act.length) return isAdmin() ? '<div class="nb-empty"><button class="btn sm" data-act="addNotice">📌 공지 올리기</button> <span class="muted small">홈 맨 위에 모두에게 보여요</span></div>' : "";
+    return '<section class="noticeboard"><div class="nb-head"><b>📌 공지</b>' + (isAdmin() ? '<button class="linkbtn small" data-act="addNotice">+ 공지 올리기</button>' : "") + "</div>" +
+      act.map((n) => '<div class="nb-item"><p class="nb-text">' + esc(n.text).replace(/\n/g, "<br>") + "</p>" +
+        '<div class="nb-meta">' + (safeUrl(n.url) ? '<a class="btn sm" href="' + esc(safeUrl(n.url)) + '" target="_blank" rel="noopener">자세히 보기 ↗</a>' : "") +
+        '<span class="muted small">' + esc(n.authorName || "회장단") + " · " + fmtDate((n.createdAt || "").slice(0, 10)) + (n.until ? " · " + fmtDate(n.until) + "까지" : "") + "</span>" +
+        (isAdmin() ? '<button class="linkbtn small" data-act="editNotice" data-id="' + esc(n.id) + '">수정</button><button class="linkbtn small del" data-act="delNotice" data-id="' + esc(n.id) + '">내리기</button>' : "") +
+        "</div></div>").join("") + "</section>";
+  }
+  const noticeFields = () => [
+    { name: "text", label: "공지 내용", type: "textarea", rows: 4, required: true, placeholder: "예: 이번 주 전체회의는 목요일 저녁 7시, 과방에서 해요." },
+    { name: "url", label: "관련 링크 (선택)", type: "url", placeholder: "https://…" },
+    { name: "until", label: "언제까지 보여줄까요? (선택)", type: "date", help: "이 날이 지나면 자동으로 내려가요. 비워 두면 직접 [내리기]를 누를 때까지 보여요." },
+  ];
   PAGES.home = async function () {
-    const [tasks, projects, minutes, msgs] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => [])]);
+    const [tasks, projects, minutes, msgs, notices] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => []), col("notices").catch(() => [])]);
     const mine = S.me && S.me.dept;
     const pool = msgs.filter((m) => m.toDept === "모두에게" || (mine && m.toDept === "다음 " + mine + "에게"));
     const pick = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
@@ -733,6 +772,7 @@
       '<div class="actions" style="margin-top:8px">' + (isAdmin() ? '<button class="btn sm primary" data-act="editMe">내 정보 수정</button>' : "") + '<button class="btn sm" data-act="profileOk">확인했어요</button></div></div>' + pendingNote;
     return pendingNote +
       '<div class="hello"><h2>' + (S.me ? esc(S.me.name) + "님, 안녕하세요" : "안녕하세요") + '</h2><p class="muted">' + fmtDate(t, true) + "</p></div>" +
+      noticeBoardHTML(notices) +
       (pick ? '<a class="home-msg" href="#messages"><span class="lbl">선배의 한마디</span><span class="mtext">' + esc(pick.text) + '</span><span class="by">' + esc(msgByline(pick)) + "</span></a>" : "") +
       '<div class="grid2">' +
       '<section class="card"><div class="card-head"><h3>다가오는 마감 <small>2주 이내</small></h3><a href="#calendar" class="more">캘린더 →</a></div>' +
@@ -1045,7 +1085,10 @@
       '<dl class="meta wide"><dt>지금 학생회</dt><dd><b>' + esc(curCouncil()) + "</b></dd>" +
       "</dd><dt>국서 목록</dt><dd>" + S.settings.depts.map(deptTag).join(" ") + "</dd><dt>직책</dt><dd>" + esc(execDept()) + ": " + esc(execPositions().join(", ")) + " / 그 밖의 국서: " + esc(deptPositions().join(", ")) +
       "</dd><dt>회의 종류</dt><dd>" + esc(S.settings.minuteTypes.join(", ")) + "</dd><dt>회의록 폴더</dt><dd>" + (safeUrl(S.settings.minutesFolderUrl) ? '<a href="' + esc(safeUrl(S.settings.minutesFolderUrl)) + '" target="_blank" rel="noopener">열기 ↗</a>' : '<span class="muted">미등록</span>') + "</dd></dl></section>" +
+      '<section class="card"><div class="card-head"><h3>전체 백업</h3><button class="btn sm primary" data-act="backup">백업 파일 받기</button></div>' +
+      '<p class="muted small">회원 명단·사업·업무·회의록·소통방 등 사이트에 저장된 내용을 파일 하나로 내려받아요. 사이트 안에서 지운 건 되살릴 수 없으니, <b>학기마다·인수인계 전에</b> 한 번씩 받아서 학생회 구글 드라이브(회장단만 볼 수 있는 폴더)에 넣어 두세요. 전화번호가 들어 있으니 단톡방 등에 올리지 마세요.</p></section>' +
       '<section class="card"><div class="card-head"><h3>새 학생회 인수인계 순서</h3><button class="btn sm primary" data-act="handover">새 학생회로 넘기기</button></div><ol class="steps">' +
+      "<li>넘기기 전에 위의 <b>[백업 파일 받기]</b>로 지금까지의 기록을 받아 두기</li>" +
       "<li>새 학생회원들이 사이트에 로그인해서 <b>가입 신청</b></li>" +
       "<li>지금 회장단이 신청을 <b>승인</b>하고, 새 회장·부회장에게 <b>회장단 권한</b> 부여</li>" +
       "<li>[새 학생회로 넘기기]에서 새 <b>기수와 학생회 이름</b> 입력, <b>계속 활동할 회원</b> 체크 → 나머지는 자동 임기 종료, " + esc(curCouncil()) + "의 사업은 아카이브로</li>" +
@@ -1284,6 +1327,38 @@
           closeModal(); await after("projects", "tasks"); toast("삭제했어요.");
         } }] : [],
         onSubmit: async (v) => { await DB.update("projects", p.id, v); await after("projects"); toast("저장했어요."); } });
+    },
+    addNotice() {
+      openForm({ title: "📌 공지 올리기", fields: noticeFields(), submitLabel: "올리기",
+        intro: '<p class="muted small">활동 중인 학생회원 모두의 홈 화면 맨 위에 보여요.</p>',
+        onSubmit: async (v) => {
+          await DB.add("notices", Object.assign(v, { authorName: (S.me && S.me.name) || "회장단", generation: S.settings.generation }, stamp()));
+          await after("notices"); toast("공지를 올렸어요.");
+        } });
+    },
+    async editNotice(el) {
+      const n = await findIn("notices", el.dataset.id);
+      if (!n) return;
+      openForm({ title: "공지 수정", fields: noticeFields(), values: n,
+        onSubmit: async (v) => { await DB.update("notices", n.id, v); await after("notices"); toast("저장했어요."); } });
+    },
+    async delNotice(el) {
+      if (!confirm("이 공지를 내릴까요?")) return;
+      await DB.remove("notices", el.dataset.id); await after("notices"); toast("공지를 내렸어요.");
+    },
+    async backup() {
+      const names = ["settings", "users", "projects", "tasks", "minutes", "notices", "councils", "messages", "capsules", "talk", "talkComments"];
+      const data = {};
+      toast("백업 파일을 만드는 중…");
+      for (const n of names) { try { data[n] = await DB.list(n); } catch (e) { data[n] = { error: errMsg(e) }; } }
+      const out = { site: CFG.siteName, council: curCouncil(), exportedAt: new Date().toISOString(), data: data };
+      const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "council-backup-" + today() + ".json";
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 3000);
+      toast("백업 파일을 내려받았어요. 학생회 구글 드라이브에 보관해 주세요.");
     },
     async editSchedule(el) {
       const p = await findIn("projects", el.dataset.id);

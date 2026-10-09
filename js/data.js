@@ -192,12 +192,16 @@
       cp1: { text: "1학년들아, 1년 동안 진짜 고마웠어. 너희가 이끌 30대 학생회가 벌써 기대돼!", toDept: "모두에게", showName: true, authorUid: "demo-president", authorName: "김하늘", authorDept: "회장단", authorPosition: "회장", generation: "제29대", councilName: "윤슬", createdAt: ago(5) },
       cp2: { text: "회계 장부는 매주 금요일에 정리하는 습관 들이기! 화이팅", toDept: "다음 재무국에게", showName: true, authorUid: "demo-member", authorName: "박지민", authorDept: "재무국", authorPosition: "국장", generation: "제29대", councilName: "윤슬", createdAt: ago(8) },
     };
+    const notices = {
+      nt1: { text: "이번 주 전체회의는 목요일 저녁 7시, 과방에서 해요. 각 국서 진행 상황 정리해 오기!", url: "", until: day(5), authorName: "김하늘", createdAt: ago(1) },
+    };
     return {
+      notices: notices,
       talk: talk, talkComments: talkComments, capsules: capsules,
       messages: messages,
       councils: councils,
       users: users, tasks: tasks, minutes: minutes, projects: projects,
-      settings: { site: { generation: "제29대", councilName: "윤슬", prevGeneration: "제28대", minutesFolderUrl: "https://drive.google.com/drive/folders/example" } },
+      settings: { public: { generation: "제29대", councilName: "윤슬" }, site: { generation: "제29대", councilName: "윤슬", prevGeneration: "제28대", minutesFolderUrl: "https://drive.google.com/drive/folders/example" } },
     };
   }
 
