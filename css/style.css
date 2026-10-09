@@ -484,18 +484,18 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 
 /* ===== 로그인 첫 화면 (왼쪽 학생회 소개 + 오른쪽 로그인) ===== */
 .split { min-height: 100vh; display: grid; grid-template-columns: 1.15fr 1fr; text-align: left; }
-.split .brand { align-items: flex-start; }
-.brand { position: relative; overflow: hidden; color: #fff; padding: 52px 64px; display: flex; flex-direction: column; justify-content: space-between; gap: 40px;
+.split .lg-brand { align-items: flex-start; }
+.lg-brand { position: relative; overflow: hidden; color: #fff; padding: 52px 64px; display: flex; flex-direction: column; justify-content: space-between; gap: 40px;
   background: linear-gradient(150deg, #a8253d 0%, #7c1527 55%, #5c0e1c 100%); }
-.brand::before, .brand::after { content: ""; position: absolute; border-radius: 50%; background: rgba(255,255,255,.06); pointer-events: none; }
-.brand::before { width: 520px; height: 520px; right: -180px; top: -160px; }
-.brand::after { width: 380px; height: 380px; left: -140px; bottom: -170px; background: rgba(255,255,255,.04); }
-.brand > * { position: relative; z-index: 1; }
-.brand-mark { width: 54px; height: 54px; border-radius: 15px; background: #fff; color: #8f1b30; font-size: 15px; font-weight: 900; }
-.brand .eyebrow { margin: 0 0 14px; font-size: 15px; font-weight: 600; opacity: .85; letter-spacing: .02em; }
-.brand h1 { margin: 0; font-size: clamp(48px, 7vw, 84px); font-weight: 900; letter-spacing: -.03em; line-height: 1.05; }
-.brand-sub { margin: 16px 0 0; font-size: 17px; opacity: .85; }
-.brand-foot { margin: 0; font-size: 13.5px; opacity: .7; }
+.lg-brand::before, .lg-brand::after { content: ""; position: absolute; border-radius: 50%; background: rgba(255,255,255,.06); pointer-events: none; }
+.lg-brand::before { width: 520px; height: 520px; right: -180px; top: -160px; }
+.lg-brand::after { width: 380px; height: 380px; left: -140px; bottom: -170px; background: rgba(255,255,255,.04); }
+.lg-brand > * { position: relative; z-index: 1; }
+.lg-mark { width: 54px; height: 54px; border-radius: 15px; background: #fff; color: #8f1b30; font-size: 15px; font-weight: 900; }
+.lg-brand .eyebrow { margin: 0 0 14px; font-size: 15px; font-weight: 600; opacity: .85; letter-spacing: .02em; }
+.lg-brand h1 { margin: 0; font-size: clamp(48px, 7vw, 84px); font-weight: 900; letter-spacing: -.03em; line-height: 1.05; }
+.lg-sub { margin: 16px 0 0; font-size: 17px; opacity: .85; }
+.lg-foot { margin: 0; font-size: 13.5px; opacity: .7; }
 .panel { display: flex; align-items: center; justify-content: center; padding: 40px 24px;
   background: radial-gradient(circle at 70% 20%, color-mix(in srgb, var(--accent) 6%, var(--bg)), var(--bg) 60%); }
 .login2 { width: 100%; max-width: 400px; padding: 34px 30px; border-radius: 20px; box-shadow: 0 20px 50px -20px rgba(120, 20, 40, .25); }
@@ -505,13 +505,13 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .login2 .center { text-align: center; }
 @media (max-width: 760px) {
   .split { grid-template-columns: 1fr; }
-  .brand { padding: 28px 24px 34px; gap: 22px; min-height: 0; }
-  .brand::before { width: 300px; height: 300px; right: -110px; top: -120px; }
-  .brand-mark { width: 44px; height: 44px; font-size: 13px; border-radius: 12px; }
-  .brand .eyebrow { margin-bottom: 8px; font-size: 13.5px; }
-  .brand h1 { font-size: 46px; }
-  .brand-sub { margin-top: 8px; font-size: 15px; }
-  .brand-foot { display: none; }
+  .lg-brand { padding: 28px 24px 34px; gap: 22px; min-height: 0; }
+  .lg-brand::before { width: 300px; height: 300px; right: -110px; top: -120px; }
+  .lg-mark { width: 44px; height: 44px; font-size: 13px; border-radius: 12px; }
+  .lg-brand .eyebrow { margin-bottom: 8px; font-size: 13.5px; }
+  .lg-brand h1 { font-size: 46px; }
+  .lg-sub { margin-top: 8px; font-size: 15px; }
+  .lg-foot { display: none; }
   .panel { align-items: flex-start; padding: 24px 16px 40px; }
   .login2 { padding: 26px 22px; }
 }

@@ -444,10 +444,10 @@
     let cached = null;
     try { cached = JSON.parse(localStorage.getItem("councilPublic") || "null"); } catch (e) { /* 무시 */ }
     app.innerHTML = demoBar() + '<main class="split">' +
-      '<section class="brand"><div class="mark brand-mark">BIO</div>' +
-      '<div class="brand-mid"><p class="eyebrow">고려대학교 · 생명과학부</p><h1 id="brandName">' + esc((cached && cached.councilName) || "학생회") + "</h1>" +
-      '<p class="brand-sub" id="brandSub">' + esc(cached && cached.generation ? cached.generation + " 생명과학부 학생회" : "생명과학부 학생회 업무 공간") + "</p></div>" +
-      '<p class="brand-foot">비상연락망 · 업무 캘린더 · 회의록 · 사업 기획안</p></section>' +
+      '<section class="lg-brand"><div class="mark lg-mark">BIO</div>' +
+      '<div class="lg-mid"><p class="eyebrow">고려대학교 · 생명과학부</p><h1 id="brandName">' + esc((cached && cached.councilName) || "학생회") + "</h1>" +
+      '<p class="lg-sub" id="brandSub">' + esc(cached && cached.generation ? cached.generation + " 생명과학부 학생회" : "생명과학부 학생회 업무 공간") + "</p></div>" +
+      '<p class="lg-foot">비상연락망 · 업무 캘린더 · 회의록 · 사업 기획안</p></section>' +
       '<section class="panel"><div class="card login2"><h2>학생회 로그인</h2>' +
       '<p class="muted small">학생회 구성원만 들어올 수 있는 공간이에요.</p>' + body + "</div></section></main>";
     DB.get("settings", "public").then((pub) => {
