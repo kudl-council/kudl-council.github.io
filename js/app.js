@@ -444,7 +444,7 @@
     let cached = null;
     try { cached = JSON.parse(localStorage.getItem("councilPublic") || "null"); } catch (e) { /* 무시 */ }
     app.innerHTML = demoBar() + '<main class="split">' +
-      '<section class="lg-brand"><div class="mark lg-mark">BIO</div>' +
+      '<section class="lg-brand"><div class="mark lg-mark">DLS</div>' +
       '<div class="lg-mid"><p class="eyebrow">고려대학교 · 생명과학부</p><h1 id="brandName">' + esc((cached && cached.councilName) || "학생회") + "</h1>" +
       '<p class="lg-sub" id="brandSub">' + esc(cached && cached.generation ? cached.generation + " 생명과학부 학생회" : "생명과학부 학생회 업무 공간") + "</p></div>" +
       '<p class="lg-foot">비상연락망 · 업무 캘린더 · 회의록 · 사업 기획안</p></section>' +
@@ -537,7 +537,7 @@
   async function renderAlumni() {
     const me = S.me;
     app.innerHTML = demoBar() + '<header class="topbar"><div class="topbar-in">' +
-      '<a class="brand" href="#"><span class="mark">BIO</span><span><b>' + esc(CFG.siteName || "학생회") + '</b><small>OB 기록실</small></span></a>' +
+      '<a class="brand" href="#"><span class="mark">DLS</span><span><b>' + esc(CFG.siteName || "학생회") + '</b><small>OB 기록실</small></span></a>' +
       '<div class="me"><span class="who">' + esc(me.name) + ' <span class="muted">OB</span></span><button class="btn sm ghost" data-act="logout">로그아웃</button></div></div></header>' +
       '<main class="page" id="page"><div class="loading">불러오는 중…</div></main>';
     const page = document.getElementById("page");
@@ -582,7 +582,7 @@
       .map((n) => '<a href="#' + n[0] + '" class="' + (navKey(route) === n[0] ? "on" : "") + '">' + n[1] + (n[0] === "admin" ? '<span class="badge" id="pendingBadge" hidden></span>' : "") + "</a>").join("");
     app.innerHTML = demoBar() +
       '<header class="topbar"><div class="topbar-in">' +
-      '<a class="brand" href="#home"><span class="mark">BIO</span><span><b>' + esc(CFG.siteName || "학생회") + '</b><small>' + esc(councilLabel(S.settings.generation + " 학생회", S.settings.councilName)) + "</small></span></a>" +
+      '<a class="brand" href="#home"><span class="mark">DLS</span><span><b>' + esc(CFG.siteName || "학생회") + '</b><small>' + esc(councilLabel(S.settings.generation + " 학생회", S.settings.councilName)) + "</small></span></a>" +
       '<div class="me"><span class="who">' + who + "</span>" +
       (me ? '<button class="btn sm ghost" data-act="editMe">내 정보</button>' : "") +
       '<button class="btn sm ghost" data-act="logout">로그아웃</button></div></div>' +
