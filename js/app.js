@@ -23,13 +23,13 @@
   const STATUSES = ["기획중", "예정", "진행중", "완료", "취소"];
   const PALETTE = ["#9b1c31", "#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2", "#65a30d", "#ea580c", "#475569"];
   const NAV = [
-    ["home", "홈"], ["contacts", "비상연락망"], ["calendar", "업무 캘린더"], ["minutes", "회의록"],
+    ["home", "홈"], ["contacts", "비상연락망"], ["calendar", "업무 캘린더"], ["room", "국서방"], ["minutes", "회의록"],
     ["projects", "사업 기획안"], ["archive", "사업 아카이브"], ["talk", "소통방"], ["admin", "관리"],
   ];
 
   const navKey = (r) => (r === "messages" ? "talk" : r);   // 선배들의 한마디는 소통방 탭 안에 있음
   const S = { authUser: null, me: null, settings: Object.assign({}, DEFAULTS), cache: {}, route: "home",
-    calMonth: null, calFilter: "", q: {}, archiveDept: "", projDept: "", minType: "" };
+    calMonth: null, calFilter: "", q: {}, archiveDept: "", projDept: "", minType: "", room: "" };
 
   /* ---------- 작은 도구들 ---------- */
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -94,6 +94,46 @@
   const execDept = () => (S.settings.depts || [])[0] || "회장단";
   const execPositions = () => S.settings.execPositions || DEFAULTS.execPositions;
   const deptPositions = () => (S.settings.positions || DEFAULTS.positions).filter((x) => execPositions().indexOf(x) < 0);
+  // 국장·회장·부회장(그리고 회장단 권한자): 업무 추가·국서별 업무 분배·맡기기를 할 수 있음
+  const isHead = () => isAdmin() || !!(S.me && S.me.status === "approved" &&
+    (S.me.position === deptPositions()[0] || execPositions().indexOf(S.me.position) >= 0));
+  // 업무 완료 체크: 국장·회장단 또는 그 업무를 맡은 국서 사람
+  const canTickTask = (t) => isHead() || !!(S.me && S.me.status === "approved" && t && S.me.dept === t.dept);
+  const membersOf = (d) => (S.cache.users || []).filter((u) => u.status === "approved" && u.dept === d)
+    .sort((a, b) => posRank(a.position) - posRank(b.position) || (a.name || "").localeCompare(b.name || ""));
+  // 담당자 칸: 국서를 고르면 그 국서 사람만 나옴. 예전에 글자로 적어 둔 담당자는 "txt:이름"으로 유지
+  const memberValue = (dept, uid, name) => {
+    if (uid) return uid;
+    if (!name) return "";
+    const u = membersOf(dept).find((x) => x.name === name);
+    return u ? u.id : "txt:" + name;
+  };
+  const memberOf = (v) => {
+    if (!v) return { uid: "", name: "" };
+    if (v.indexOf("txt:") === 0) return { uid: "", name: v.slice(4) };
+    const u = (S.cache.users || []).find((x) => x.id === v);
+    return { uid: v, name: u ? u.name : "" };
+  };
+  function memberOptions(dept, cur) {
+    const ms = membersOf(dept);
+    let html = '<option value="">' + (dept ? "정하지 않음" : "국서를 먼저 고르세요") + "</option>" +
+      ms.map((u) => '<option value="' + esc(u.id) + '"' + (u.id === cur ? " selected" : "") + ">" + esc(u.name + " · " + u.position) + "</option>").join("");
+    if (cur && cur.indexOf("txt:") === 0) html += '<option value="' + esc(cur) + '" selected>' + esc(cur.slice(4)) + " (직접 적은 이름)</option>";
+    else if (cur && !ms.some((u) => u.id === cur)) { const u = memberOf(cur); if (u.name) html += '<option value="' + esc(cur) + '" selected>' + esc(u.name) + "</option>"; }
+    return html;
+  }
+  function bindDeptMember(root) {
+    root.querySelectorAll("select[data-member-of]").forEach(function (m) {
+      const d = root.querySelector('[name="' + m.dataset.memberOf + '"]');
+      if (!d) return;
+      d.addEventListener("change", function () { m.innerHTML = memberOptions(d.value, ""); });
+    });
+  }
+  // 국서방: 우리 국서 방만 보임. 회장단(국서 목록 맨 위)과 회장단 권한자는 모든 국서 방을 볼 수 있음
+  const canSeeAllRooms = () => isAdmin() || !!(S.me && S.me.dept === execDept());
+  // 그 국서 방의 할 일을 쓰고 고칠 수 있는 사람: 그 국서의 국장(회장단은 회장·부회장) + 회장단 권한자
+  const isRoomHead = (d) => isAdmin() || !!(S.me && S.me.status === "approved" && S.me.dept === d &&
+    (S.me.position === deptPositions()[0] || execPositions().indexOf(S.me.position) >= 0));
   const positionsFor = (dept) => (dept === execDept() ? execPositions() : deptPositions());
   function posRank(p) { const i = execPositions().concat(deptPositions()).indexOf(p); return i < 0 ? 99 : i; }
   // 폼에서 국을 바꾸면 직책 목록도 그 국에 맞게 바뀜
@@ -162,6 +202,11 @@
   };
   const isSenior = () => !!(S.me && S.me.status === "approved" && S.me.grade === "2학년");
   async function col(name) {
+    if (!S.cache[name] && name === "deptTasks") {
+      // 국서방 할 일: 지금 학생회 것만. 회장단은 전체, 나머지는 우리 국서 것만 불러옴 (보안 규칙도 같은 기준)
+      const all = canSeeAllRooms() ? await DB.list(name) : (S.me && S.me.dept ? await DB.queryEq(name, "dept", S.me.dept) : []);
+      S.cache[name] = all.filter((x) => (x.generation || S.settings.generation) === S.settings.generation);
+    }
     if (!S.cache[name]) {
       if (RECENT_ONLY.indexOf(name) >= 0) {
         if (name === "minutes" && isAdmin()) await stampOldMinutes();
@@ -261,6 +306,8 @@
         input = '<textarea id="' + id + '" name="' + f.name + '" rows="' + (f.rows || 3) + '" placeholder="' + esc(f.placeholder || "") + '"' + req + ">" + esc(Array.isArray(v) ? v.join("\n") : v) + "</textarea>";
       } else if (f.type === "checkbox") {
         return '<div class="field check"><label><input type="checkbox" id="' + id + '" name="' + f.name + '"' + (v ? " checked" : "") + "> " + esc(f.label) + "</label>" + help + "</div>";
+      } else if (f.type === "member") {
+        input = '<select id="' + id + '" name="' + f.name + '" data-member-of="' + esc(f.deptField || "dept") + '">' + memberOptions(values[f.deptField || "dept"] || "", v) + "</select>";
       } else if (f.type === "date") {
         input = dateInputHTML('id="' + id + '" name="' + f.name + '"' + req, v);
       } else if (f.type === "money") {
@@ -326,6 +373,7 @@
       catch (er) { errEl.hidden = false; errEl.textContent = er.message && !er.code ? er.message : errMsg(er); btn.disabled = false; btn.textContent = o.submitLabel || "저장"; }
     });
     bindDeptPosition(form);
+    bindDeptMember(form);
     const first = form.querySelector("input:not([type=checkbox]),select,textarea");
     if (first && window.innerWidth > 700) first.focus();
   }
@@ -352,7 +400,7 @@
       { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
       { name: "dueDate", label: "마감일", type: "date", required: true, half: true },
       { name: "projectId", label: "관련 사업 (선택)", type: "select", options: ps.map((p) => p.id), labels: labels },
-      { name: "assignee", label: "담당자", placeholder: "예: 강다은 (비워도 됨)" },
+      { name: "assigneeSel", label: "맡을 사람", type: "member", deptField: "dept", help: "정하면 그 사람의 국서방에도 보여요." },
       { name: "memo", label: "메모", type: "textarea", rows: 2 },
     ];
   };
@@ -394,7 +442,7 @@
     { name: "year", label: "연도", type: "number", required: true, half: true },
     { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
     { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true },
-    { name: "owner", label: "담당자", half: true },
+    o && o.past ? { name: "owner", label: "담당자", half: true } : { name: "ownerSel", label: "담당자", type: "member", deptField: "dept", half: true, help: "담당 국서를 고르면 그 국서 사람이 나와요." },
     { name: "startDate", label: "사업 날짜 (시행일)", type: "date", half: true, help: "캘린더에 사업 일정으로 표시돼요." },
     { name: "endDate", label: "끝나는 날 (여러 날일 때만)", type: "date", half: true, help: "1박 2일 등일 때만 넣으세요." },
     { name: "budget", label: "예산", type: "money", placeholder: "숫자만 입력 (예: 1200000)" },
@@ -747,7 +795,10 @@
     { name: "until", label: "언제까지 보여줄까요? (선택)", type: "date", help: "이 날이 지나면 자동으로 내려가요. 비워 두면 직접 [내리기]를 누를 때까지 보여요." },
   ];
   PAGES.home = async function () {
-    const [tasks, projects, minutes, msgs, notices] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => []), col("notices").catch(() => [])]);
+    const [tasks, projects, minutes, msgs, notices, roomTasks] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => []), col("notices").catch(() => []), col("deptTasks").catch(() => [])]);
+    const myUid = S.authUser && S.authUser.uid;
+    const myRoom = roomTasks.filter((x) => !x.done && S.me && x.dept === S.me.dept && (x.assigneeUid === myUid || !x.assigneeUid))
+      .concat(tasks.filter((x) => !x.done && x.assigneeUid && x.assigneeUid === myUid));
     const mine = S.me && S.me.dept;
     const pool = msgs.filter((m) => m.toDept === "모두에게" || (mine && m.toDept === "다음 " + mine + "에게"));
     const pick = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
@@ -773,6 +824,8 @@
     return pendingNote +
       '<div class="hello"><h2>' + (S.me ? esc(S.me.name) + "님, 안녕하세요" : "안녕하세요") + '</h2><p class="muted">' + fmtDate(t, true) + "</p></div>" +
       noticeBoardHTML(notices) +
+      (myRoom.length ? '<a class="notice info link roomlink" href="#room"><b>📋 ' + esc(S.me.dept) + "방에 내가 할 일 " + myRoom.length + "개</b> — " +
+        esc(myRoom.slice(0, 2).map((x) => x.title).join(", ")) + (myRoom.length > 2 ? " 외" : "") + " →</a>" : "") +
       (pick ? '<a class="home-msg" href="#messages"><span class="lbl">선배의 한마디</span><span class="mtext">' + esc(pick.text) + '</span><span class="by">' + esc(msgByline(pick)) + "</span></a>" : "") +
       '<div class="grid2">' +
       '<section class="card"><div class="card-head"><h3>다가오는 마감 <small>2주 이내</small></h3><a href="#calendar" class="more">캘린더 →</a></div>' +
@@ -881,8 +934,8 @@
         '<span class="dd">' + schedState(r.s) + "</span></li>" : evRow(r.p)).join("") + "</ul></section>" : "";
     const chips = '<button class="fchip' + (!S.calFilter ? " on" : "") + '" data-act="calFilter" data-dept="">전체</button>' +
       S.settings.depts.map((d) => '<button class="fchip' + (S.calFilter === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="calFilter" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "</button>").join("");
-    return '<div class="page-head"><div><h2>업무 캘린더</h2><p class="muted">색이 꽉 찬 칸은 <b>사업 날짜</b>, 테두리 칸은 <b>사업 세부 일정</b>(조사 기간 등), 연한 칸은 국서별 <b>업무 마감</b> · 날짜를 누르면 업무 추가</p></div>' +
-      '<div class="actions"><button class="btn primary" data-act="addTask" data-date="">+ 업무 추가</button></div></div>' +
+    return '<div class="page-head"><div><h2>업무 캘린더</h2><p class="muted">색이 꽉 찬 칸은 <b>사업 날짜</b>, 테두리 칸은 <b>사업 세부 일정</b>(조사 기간 등), 연한 칸은 국서별 <b>업무 마감</b>' + (isHead() ? " · 날짜를 누르면 업무 추가" : "") + "</p></div>" +
+      (isHead() ? '<div class="actions"><button class="btn primary" data-act="addTask" data-date="">+ 업무 추가</button></div>' : "") + "</div>" +
       '<div class="filters">' + chips + "</div>" +
       '<div class="card cal-card"><div class="cal-nav"><button class="btn sm ghost" data-act="calMove" data-d="-1" aria-label="이전 달">‹</button>' +
       "<h3>" + y + "년 " + (m + 1) + '월</h3><button class="btn sm ghost" data-act="calMove" data-d="1" aria-label="다음 달">›</button>' +
@@ -892,11 +945,83 @@
       '<section class="card"><h3>' + (m + 1) + "월 업무 목록 <small>" + monthList.length + "개</small></h3>" +
       (monthList.length ? '<ul class="tlist big">' + monthList.map((x) =>
         '<li class="trow' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '">' +
-        '<input type="checkbox" class="tick" data-act="toggleTask" data-id="' + esc(x.id) + '"' + (x.done ? " checked" : "") + ' aria-label="완료 표시">' +
+        '<input type="checkbox" class="tick" data-act="toggleTask" data-id="' + esc(x.id) + '"' + (x.done ? " checked" : "") + (canTickTask(x) ? "" : " disabled") + ' aria-label="완료 표시">' +
         '<span class="dt">' + fmtDate(x.dueDate) + "</span>" + deptTag(x.dept) +
         '<span class="tt" data-act="editTask" data-id="' + esc(x.id) + '">' + esc(x.title) + (pname[x.projectId] ? ' <span class="ptag">' + esc(pname[x.projectId]) + "</span>" : "") + (x.assignee ? ' <small class="muted">· ' + esc(x.assignee) + "</small>" : "") + "</span>" +
         '<span class="dd">' + (x.done ? "완료" : dday(x.dueDate)) + "</span></li>").join("") + "</ul>" : '<p class="empty-s">이 달에 등록된 업무가 없어요.</p>') +
       "</section>";
+  };
+
+  /* ----- 국서방: 국장이 국원별로 할 일을 적고, 국원은 끝나면 체크 ----- */
+  PAGES.room = async function () {
+    const myDept = (S.me && S.me.dept) || "";
+    const all = canSeeAllRooms();
+    if (!S.room || (!all && S.room !== myDept)) S.room = myDept || execDept();
+    const room = S.room;
+    const [items, users, calTasks, projects] = await Promise.all([col("deptTasks"), col("users"), col("tasks"), col("projects")]);
+    const ago30 = ymd(new Date(Date.now() - 30 * 86400000));
+    const pname = {};
+    projects.forEach((p) => (pname[p.id] = p.name));
+    // 국서방 할 일 + 업무 캘린더에서 이 국서에 분배된 업무(📅)를 같이 보여 줌
+    const list = items.filter((x) => x.dept === room)
+      .concat(calTasks.filter((x) => x.dept === room && (!x.done || (x.dueDate || "") >= ago30)).map((x) => Object.assign({ cal: true }, x)));
+    const myProjects = projects.filter((p) => isCurrent(p) && p.dept === room && p.status !== "완료" && p.status !== "취소")
+      .sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
+    const members = users.filter((u) => u.status === "approved" && u.dept === room)
+      .sort((a, b) => posRank(a.position) - posRank(b.position) || (a.name || "").localeCompare(b.name || ""));
+    const head = isRoomHead(room);
+    const me = S.authUser && S.authUser.uid;
+    const t = today();
+    const done = list.filter((x) => x.done).length;
+    const canTick = (x) => head || (myDept === room && (!x.assigneeUid || x.assigneeUid === me));
+    const assignSel = (x) => head && x.cal && !x.assigneeUid && !x.done ? '<select class="assign" data-act="assignTask" data-id="' + esc(x.id) + '" aria-label="맡을 사람">' +
+      '<option value="">맡을 사람 정하기…</option>' + members.map((u) => '<option value="' + esc(u.id) + '">' + esc(u.name) + "</option>").join("") + "</select>" : "";
+    const row = (x) => '<li class="rrow' + (x.done ? " done" : x.dueDate && x.dueDate < t ? " late" : "") + '">' +
+      '<input type="checkbox" class="tick" data-act="' + (x.cal ? "toggleTask" : "toggleRoomTask") + '" data-id="' + esc(x.id) + '"' + (x.done ? " checked" : "") + (canTick(x) ? "" : " disabled") + ' aria-label="끝냄 표시">' +
+      '<span class="tt"' + (x.cal ? ' data-act="editTask" data-id="' + esc(x.id) + '"' : head ? ' data-act="editRoomTask" data-id="' + esc(x.id) + '"' : "") + ">" +
+      (x.cal ? '<span class="calb" title="업무 캘린더에 있는 분배 업무">📅</span> ' : "") + esc(x.title) +
+      (x.cal && pname[x.projectId] ? ' <span class="ptag">' + esc(pname[x.projectId]) + "</span>" : "") +
+      (x.memo ? '<small class="muted">' + esc(x.memo) + "</small>" : "") + assignSel(x) + "</span>" +
+      '<span class="dd">' + (x.done ? "완료" : x.dueDate ? dday(x.dueDate) : "") + "</span></li>";
+    const block = (title, sub, arr, isMe) => {
+      const open = arr.filter((x) => !x.done).sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9"));
+      const fin = arr.filter((x) => x.done).sort((a, b) => (b.doneAt || "").localeCompare(a.doneAt || ""));
+      return '<section class="card rblock' + (isMe ? " myblock" : "") + '"><div class="card-head"><h3>' + esc(title) + (sub ? " <small>" + esc(sub) + "</small>" : "") + "</h3>" +
+        '<span class="muted small">' + fin.length + "/" + arr.length + " 완료</span></div>" +
+        (open.length ? '<ul class="rlist">' + open.map(row).join("") + "</ul>" : '<p class="empty-s">' + (arr.length ? "다 끝냈어요 👏" : "맡은 일이 없어요.") + "</p>") +
+        (fin.length ? '<details class="rdone"><summary>끝낸 일 ' + fin.length + "개</summary><ul class=\"rlist\">" + fin.map(row).join("") + "</ul></details>" : "") + "</section>";
+    };
+    const common = list.filter((x) => !x.assigneeUid);
+    const known = {};
+    members.forEach((u) => (known[u.id] = true));
+    const orphan = list.filter((x) => x.assigneeUid && !known[x.assigneeUid]);
+    const ownLabel = (u) => { const ps = myProjects.filter((p) => p.ownerUid === u.id).map((p) => p.name); return u.position + (ps.length ? " · 담당 사업: " + ps.join(", ") : ""); };
+    const blocks = members.map((u) => block(u.name + (u.id === me ? " (나)" : ""), ownLabel(u), list.filter((x) => x.assigneeUid === u.id), u.id === me))
+      .concat(common.length || head ? [block(room + " 전체", "누구나 체크", common)] : [])
+      .concat(orphan.length ? [block("예전 담당자", "지금은 이 국서에 없음", orphan)] : []);
+    const tabs = all ? '<div class="filters">' + S.settings.depts.map((d) => '<button class="fchip' + (room === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="roomTab" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "방</button>").join("") + "</div>" : "";
+    return '<div class="page-head"><div><h2>' + esc(room) + "방</h2>" +
+      '<p class="muted">' + (head ? "국원별로 할 일을 적어 주세요. 끝나면 각자 체크해요." : "내 이름 아래 할 일을 끝내면 체크해 주세요.") +
+      (all && room !== myDept ? " · 회장단은 모든 국서 방을 볼 수 있어요" : "") + "</p></div>" +
+      (head ? '<div class="actions"><button class="btn primary" data-act="addRoomTask">+ 할 일 추가</button></div>' : "") + "</div>" + tabs +
+      '<div class="card rsum" style="--c:' + deptColor(room) + '"><b>' + esc(room) + " 진행률</b><span>" + done + " / " + list.length + '</span><div class="pbar"><i style="width:' + (list.length ? Math.round((done / list.length) * 100) : 0) + '%"></i></div></div>' +
+      (myProjects.length ? '<section class="card rproj"><div class="card-head"><h3>' + esc(room) + ' 담당 사업</h3><a href="#projects" class="more">사업 기획안 →</a></div><ul class="plist">' +
+        myProjects.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span><b>" + esc(p.name) + "</b>" +
+          (p.owner ? '<span class="muted small">담당 ' + esc(p.owner) + "</span>" : "") + '<span class="dt">' + (p.startDate ? fmtDate(p.startDate) + (p.startDate >= t ? " · " + dday(p.startDate) : "") : "") + "</span></li>").join("") + "</ul></section>" : "") +
+      '<div class="rgrid">' + blocks.join("") + "</div>" +
+      '<p class="muted small center">국서방은 ' + (all ? "회장단과 " : "") + "같은 국서 사람만 볼 수 있어요. 📅 표시는 업무 캘린더에서 이 국서에 분배된 업무예요 (캘린더에서도 같이 체크돼요).</p>";
+  };
+  const roomFields = (room) => {
+    const members = (S.cache.users || []).filter((u) => u.status === "approved" && u.dept === room)
+      .sort((a, b) => posRank(a.position) - posRank(b.position));
+    const labels = { _all: room + " 전체 (누구나 체크)" };
+    members.forEach((u) => (labels[u.id] = u.name + " · " + u.position));
+    return [
+      { name: "title", label: "할 일", required: true, placeholder: "예: 9월 영수증 정리해서 드라이브에 올리기" },
+      { name: "assigneeUid", label: "맡을 사람", type: "select", options: members.map((u) => u.id).concat(["_all"]), labels: labels, required: true, half: true },
+      { name: "dueDate", label: "마감일 (선택)", type: "date", half: true },
+      { name: "memo", label: "메모 (선택)", type: "textarea", rows: 2 },
+    ];
   };
 
   /* ----- 회의록 ----- */
@@ -973,7 +1098,7 @@
   // 사업 카드 안의 "업무 분배" 목록
   function projectTasksHTML(p, opts) {
     const ts = opts.tasks || [];
-    const canAdd = !opts.readonly && !opts.archive;
+    const canAdd = !opts.readonly && !opts.archive && isHead();
     if (!ts.length) return canAdd ? '<button class="btn sm ptask-add" data-act="distribute" data-id="' + esc(p.id) + '">+ 국서별 업무 분배하기</button>' : "";
     const t = today(), done = ts.filter((x) => x.done).length;
     const depts = [];
@@ -1101,6 +1226,16 @@
      ============================================================ */
   async function after(...names) { names.forEach(dirty); await renderPage(); }
   const stamp = () => ({ createdBy: S.authUser.uid, createdAt: new Date().toISOString() });
+  function ownerFrom(v) {
+    if (!("ownerSel" in v)) return v;
+    const m = memberOf(v.ownerSel); delete v.ownerSel;
+    v.owner = m.name; v.ownerUid = m.uid; return v;
+  }
+  function assigneeFrom(v) {
+    if (!("assigneeSel" in v)) return v;
+    const m = memberOf(v.assigneeSel); delete v.assigneeSel;
+    v.assignee = m.name; v.assigneeUid = m.uid; return v;
+  }
 
   async function findIn(c, id) { return (await col(c)).find((x) => x.id === id); }
 
@@ -1241,9 +1376,12 @@
     },
     calFilter(el) { S.calFilter = el.dataset.dept; renderPage(); },
     async addTask(el) {
+      if (!isHead()) { if (!el.classList.contains("cell")) toast("업무 추가·분배는 국장과 회장단만 할 수 있어요.", true); return; }
+      await col("users");
       openForm({ title: "업무 추가", fields: taskFields(await linkableProjects()),
         values: { dueDate: el.dataset.date || today(), dept: S.calFilter || (S.me && S.me.dept) || "" },
         submitLabel: "추가", onSubmit: async (v) => {
+          assigneeFrom(v);
           await DB.add("tasks", Object.assign(v, { done: false }, stamp()));
           await after("tasks"); toast("캘린더에 추가했어요.");
         } });
@@ -1251,17 +1389,37 @@
     async editTask(el) {
       const t = await findIn("tasks", el.dataset.id);
       if (!t) return;
+      await col("users");
+      if (!isHead()) {
+        // 국원: 내용 보기 + (우리 국서 업무면) 완료 체크만
+        const pn = t.projectId ? ((await col("projects")).find((p) => p.id === t.projectId) || {}).name : "";
+        openForm({ title: "업무 보기", fields: [],
+          intro: '<dl class="meta wide"><dt>할 일</dt><dd><b>' + esc(t.title) + "</b></dd><dt>국서</dt><dd>" + deptTag(t.dept) + "</dd><dt>마감일</dt><dd>" + fmtDate(t.dueDate) + " (" + (t.done ? "완료" : dday(t.dueDate)) + ")</dd>" +
+            (pn ? "<dt>관련 사업</dt><dd>" + esc(pn) + "</dd>" : "") + (t.assignee ? "<dt>맡은 사람</dt><dd>" + esc(t.assignee) + "</dd>" : "") +
+            (t.memo ? "<dt>메모</dt><dd>" + esc(t.memo) + "</dd>" : "") + "</dl>" +
+            '<p class="muted small">업무 내용은 국장과 회장단이 고칠 수 있어요.</p>',
+          extraButtons: canTickTask(t) ? [{ label: t.done ? "완료 취소" : "완료했어요 ✓", cls: t.done ? "" : "primary", onClick: async () => {
+            await DB.update("tasks", t.id, { done: !t.done }); closeModal(); await after("tasks"); toast(t.done ? "완료를 취소했어요." : "완료했어요!");
+          } }] : [] });
+        return;
+      }
       const fields = taskFields(await linkableProjects(t.projectId)).concat([{ name: "done", label: "완료한 업무예요", type: "checkbox" }]);
-      openForm({ title: "업무 보기 · 수정", fields: fields, values: t,
+      openForm({ title: "업무 보기 · 수정", fields: fields, values: Object.assign({}, t, { assigneeSel: memberValue(t.dept, t.assigneeUid, t.assignee) }),
         extraButtons: canDelete(t) ? [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("이 업무를 삭제할까요?")) return;
           await DB.remove("tasks", t.id); closeModal(); await after("tasks"); toast("삭제했어요.");
         } }] : [],
-        onSubmit: async (v) => { await DB.update("tasks", t.id, v); await after("tasks"); toast("저장했어요."); } });
+        onSubmit: async (v) => { assigneeFrom(v); await DB.update("tasks", t.id, v); await after("tasks"); toast("저장했어요."); } });
     },
     async distribute(el) {
+      if (!isHead()) { toast("국서별 업무 분배는 국장과 회장단만 할 수 있어요.", true); return; }
       const p = await findIn("projects", el.dataset.id);
       if (p) openDistribute(p);
+    },
+    async assignTask(el) {
+      const m = memberOf(el.value);
+      try { await DB.update("tasks", el.dataset.id, { assigneeUid: m.uid, assignee: m.name }); await after("tasks"); toast(m.name ? m.name + "에게 맡겼어요." : "담당자를 비웠어요."); }
+      catch (e) { toast(errMsg(e), true); }
     },
     async toggleTask(el) {
       try { await DB.update("tasks", el.dataset.id, { done: el.checked }); await after("tasks"); }
@@ -1298,10 +1456,12 @@
     /* 사업 */
     projDept(el) { S.projDept = el.dataset.dept; renderPage(); },
     archiveDept(el) { S.archiveDept = el.dataset.dept; renderPage(); },
-    addProject() {
+    async addProject() {
+      await col("users");
       openForm({ title: "사업 추가", fields: projectFields(), submitLabel: "추가",
         values: { year: S.settings.currentYear, status: "기획중", dept: S.projDept || (S.me && S.me.dept) || "" },
         onSubmit: async (v) => {
+          ownerFrom(v);
           // 지금 학생회 이름이 자동으로 기록됨
           await DB.add("projects", Object.assign(v, { generation: S.settings.generation, councilName: S.settings.councilName }, stamp()));
           await after("projects"); toast("추가했어요.");
@@ -1319,14 +1479,50 @@
     async editProject(el) {
       const p = await findIn("projects", el.dataset.id);
       if (!p) return;
-      openForm({ title: "사업 수정", fields: projectFields({ council: true }), values: p,
+      await col("users");
+      openForm({ title: "사업 수정", fields: projectFields({ council: true }), values: Object.assign({}, p, { ownerSel: memberValue(p.dept, p.ownerUid, p.owner) }),
         extraButtons: canDelete(p) ? [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)")) return;
           await DB.remove("projects", p.id);
-          for (const t of (await col("tasks")).filter((x) => x.projectId === p.id)) await DB.update("tasks", t.id, { projectId: "" });
+          try { for (const t of (await col("tasks")).filter((x) => x.projectId === p.id)) await DB.update("tasks", t.id, { projectId: "" }); } catch (e) { /* 국원은 업무를 못 고침 — 업무는 그대로 남음 */ }
           closeModal(); await after("projects", "tasks"); toast("삭제했어요.");
         } }] : [],
-        onSubmit: async (v) => { await DB.update("projects", p.id, v); await after("projects"); toast("저장했어요."); } });
+        onSubmit: async (v) => { ownerFrom(v); await DB.update("projects", p.id, v); await after("projects"); toast("저장했어요."); } });
+    },
+    roomTab(el) { S.room = el.dataset.dept; renderPage(); },
+    async addRoomTask() {
+      const room = S.room;
+      await col("users");
+      openForm({ title: room + "방 · 할 일 추가", fields: roomFields(room), submitLabel: "추가",
+        onSubmit: async (v) => {
+          if (v.assigneeUid === "_all") v.assigneeUid = "";
+          const u = (S.cache.users || []).find((x) => x.id === v.assigneeUid);
+          await DB.add("deptTasks", Object.assign(v, { dept: room, assigneeName: u ? u.name : "", done: false, generation: S.settings.generation }, stamp()));
+          await after("deptTasks"); toast("추가했어요.");
+        } });
+    },
+    async editRoomTask(el) {
+      const x = await findIn("deptTasks", el.dataset.id);
+      if (!x) return;
+      await col("users");
+      openForm({ title: x.dept + "방 · 할 일 수정", fields: roomFields(x.dept), values: Object.assign({}, x, { assigneeUid: x.assigneeUid || "_all" }),
+        extraButtons: [{ label: "삭제", cls: "danger", onClick: async () => {
+          if (!confirm("이 할 일을 지울까요?")) return;
+          await DB.remove("deptTasks", x.id); closeModal(); await after("deptTasks"); toast("지웠어요.");
+        } }],
+        onSubmit: async (v) => {
+          if (v.assigneeUid === "_all") v.assigneeUid = "";
+          const u = (S.cache.users || []).find((y) => y.id === v.assigneeUid);
+          await DB.update("deptTasks", x.id, Object.assign(v, { assigneeName: u ? u.name : "" }));
+          await after("deptTasks"); toast("저장했어요.");
+        } });
+    },
+    async toggleRoomTask(el) {
+      const on = el.checked;
+      try {
+        await DB.update("deptTasks", el.dataset.id, on ? { done: true, doneAt: new Date().toISOString(), doneBy: S.authUser.uid } : { done: false, doneAt: "", doneBy: "" });
+        await after("deptTasks");
+      } catch (e) { toast(errMsg(e), true); el.checked = !on; }
     },
     addNotice() {
       openForm({ title: "📌 공지 올리기", fields: noticeFields(), submitLabel: "올리기",
@@ -1347,7 +1543,7 @@
       await DB.remove("notices", el.dataset.id); await after("notices"); toast("공지를 내렸어요.");
     },
     async backup() {
-      const names = ["settings", "users", "projects", "tasks", "minutes", "notices", "councils", "messages", "capsules", "talk", "talkComments"];
+      const names = ["settings", "users", "projects", "tasks", "deptTasks", "minutes", "notices", "councils", "messages", "capsules", "talk", "talkComments"];
       const data = {};
       toast("백업 파일을 만드는 중…");
       for (const n of names) { try { data[n] = await DB.list(n); } catch (e) { data[n] = { error: errMsg(e) }; } }
@@ -1394,11 +1590,13 @@
       const p = await findIn("projects", el.dataset.id);
       if (!p) return;
       const who = councilLabel(p.generation, p.councilName) || p.year + "년";
+      await col("users");
       openForm({ title: "참고해서 새로 기획하기", submitLabel: "만들기",
         intro: '<p class="muted small">' + esc(who) + "의 '" + esc(p.name) + "'을 바탕으로 " + esc(curCouncil()) + " 사업을 새로 만들어요. 이전 기획안 링크는 참고용으로 함께 붙어요.</p>",
         fields: projectFields(),
         values: { name: p.name, dept: p.dept, year: S.settings.currentYear, status: "기획중", budget: p.budget, summary: "" },
         onSubmit: async (v) => {
+          ownerFrom(v);
           const data = Object.assign(v, {
             generation: S.settings.generation, councilName: S.settings.councilName,
             prevNote: who + " " + p.name + (p.summary ? " — " + p.summary : ""), prevPlanUrl: safeUrl(p.planUrl) || safeUrl(p.resultUrl),
@@ -1408,7 +1606,7 @@
           const oldTasks = (await tasksByProject())[p.id] || [];
           dirty("projects"); location.hash = "projects"; toast("사업 기획안에 추가했어요.");
           // 이전 업무 분배를 불러와서 마감일만 새로 넣게 함
-          if (oldTasks.length) setTimeout(() => openDistribute(Object.assign({ id: id }, data),
+          if (oldTasks.length && isHead()) setTimeout(() => openDistribute(Object.assign({ id: id }, data),
             oldTasks.map((t) => ({ dept: t.dept, title: t.title, dueDate: "" })), who), 0);
         } });
     },
@@ -1574,7 +1772,7 @@
   /* ---------- 이벤트 연결 ---------- */
   document.addEventListener("click", function (e) {
     const el = e.target.closest("[data-act]");
-    if (!el || el.tagName === "INPUT") return;
+    if (!el || el.tagName === "INPUT" || el.tagName === "SELECT") return;
     const fn = ACTS[el.dataset.act];
     if (!fn) return;
     e.preventDefault();
@@ -1583,7 +1781,7 @@
   });
   document.addEventListener("change", function (e) {
     const el = e.target;
-    if (el.matches("input[data-act]")) { const fn = ACTS[el.dataset.act]; if (fn) fn(el, e); }
+    if (el.matches("input[data-act], select[data-act]")) { const fn = ACTS[el.dataset.act]; if (fn) fn(el, e); }
   });
   // 세부 일정 창의 줄 추가 / 지우기
   document.addEventListener("click", function (e) {

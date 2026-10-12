@@ -515,3 +515,31 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
   .panel { align-items: flex-start; padding: 24px 16px 40px; }
   .login2 { padding: 26px 22px; }
 }
+
+/* ===== 국서방 ===== */
+.rsum { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 12px; margin-bottom: 14px; border-left: 4px solid var(--c); }
+.rsum span { justify-self: end; font-weight: 700; }
+.rsum .pbar { grid-column: 1 / -1; margin: 2px 0 0; height: 6px; }
+.rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; margin-bottom: 16px; }
+.rblock.myblock { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent); }
+.rlist { list-style: none; margin: 0; padding: 0; }
+.rrow { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.rrow:first-child { border-top: 0; }
+.rrow .tick { margin-top: 2px; }
+.rrow .tick:disabled { cursor: default; opacity: .5; }
+.rrow .tt { flex: 1; min-width: 0; font-size: 14.5px; }
+.rrow .tt[data-act] { cursor: pointer; }
+.rrow .tt small { display: block; font-size: 12.5px; margin-top: 2px; white-space: pre-wrap; }
+.rrow .dd { font-size: 12.5px; color: var(--muted); white-space: nowrap; font-weight: 600; }
+.rrow.late .dd { color: var(--late); }
+.rrow.done .tt { text-decoration: line-through; color: var(--muted); }
+.rrow.done .dd { color: var(--ok); }
+.rdone { margin-top: 8px; }
+.rdone summary { cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600; }
+.roomlink { margin-bottom: 14px; }
+
+/* 국서방 ↔ 업무 캘린더 연결 */
+.rrow .calb { font-size: 12px; }
+.rrow select.assign { display: block; margin-top: 6px; font: inherit; font-size: 13px; padding: 5px 8px; border: 1px dashed var(--accent); border-radius: 8px; background: var(--surface); color: var(--accent); font-weight: 600; max-width: 100%; }
+.rproj { margin-bottom: 14px; }
+.rproj .plist li .muted { margin-left: 4px; }

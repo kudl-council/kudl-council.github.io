@@ -162,6 +162,8 @@
     P("p8", { name: "학과 체육대회", year: Y - 2, dept: "내무국", status: "완료", startDate: (Y - 2) + "-05-15", endDate: (Y - 2) + "-05-15", owner: "내무국장", summary: "풋살·피구·계주.", planUrl: "https://docs.google.com/document/d/old4" });
     // 사업에 연결된 업무 (업무 분배 예시)
     ["t1", "t2", "t4"].forEach((k) => (tasks[k].projectId = "p2"));
+    // 소통국 업무 하나는 국원에게 맡겨 둠 (국서방 연결 예시)
+    Object.keys(tasks).forEach((k) => { if (tasks[k].dept === "소통국" && tasks[k].projectId === "p2") { tasks[k].assigneeUid = "u8"; tasks[k].assignee = "임채원"; } });
     [["내무국", "간식 업체 견적 비교", "-10-10"], ["재무국", "예산안 작성", "-10-12"], ["소통국", "신청 폼 공지", "-10-14"], ["홍보국", "자보 제작", "-10-15"]].forEach(function (x, i) {
       tasks["old" + i] = { title: x[1], dept: x[0], dueDate: (Y - 1) + x[2], done: true, projectId: "p6", assignee: "", memo: "", createdBy: "demo-president", createdAt: now };
     });
@@ -192,11 +194,17 @@
       cp1: { text: "1학년들아, 1년 동안 진짜 고마웠어. 너희가 이끌 30대 학생회가 벌써 기대돼!", toDept: "모두에게", showName: true, authorUid: "demo-president", authorName: "김하늘", authorDept: "회장단", authorPosition: "회장", generation: "제29대", councilName: "윤슬", createdAt: ago(5) },
       cp2: { text: "회계 장부는 매주 금요일에 정리하는 습관 들이기! 화이팅", toDept: "다음 재무국에게", showName: true, authorUid: "demo-member", authorName: "박지민", authorDept: "재무국", authorPosition: "국장", generation: "제29대", councilName: "윤슬", createdAt: ago(8) },
     };
+    const deptTasks = {
+      dt1: { dept: "재무국", title: "9월 영수증 정리해서 드라이브에 올리기", assigneeUid: "demo-member", assigneeName: "박지민", dueDate: day(3), memo: "", done: false, generation: "제29대", createdBy: "demo-member", createdAt: ago(3) },
+      dt2: { dept: "소통국", title: "중간고사 간식행사 신청 폼 만들기", assigneeUid: "u8", assigneeName: "임채원", dueDate: day(1), memo: "구글폼, 학번·이름·간식 선택", done: false, generation: "제29대", createdBy: "u6", createdAt: ago(2) },
+      dt3: { dept: "소통국", title: "인스타 스토리 공지 올리기", assigneeUid: "u8", assigneeName: "임채원", dueDate: day(-1), memo: "", done: true, doneAt: ago(1), generation: "제29대", createdBy: "u6", createdAt: ago(4) },
+      dt4: { dept: "소통국", title: "단톡방 공지 문구 검토", assigneeUid: "", assigneeName: "", dueDate: day(2), memo: "", done: false, generation: "제29대", createdBy: "u6", createdAt: ago(2) },
+    };
     const notices = {
       nt1: { text: "이번 주 전체회의는 목요일 저녁 7시, 과방에서 해요. 각 국서 진행 상황 정리해 오기!", url: "", until: day(5), authorName: "김하늘", createdAt: ago(1) },
     };
     return {
-      notices: notices,
+      notices: notices, deptTasks: deptTasks,
       talk: talk, talkComments: talkComments, capsules: capsules,
       messages: messages,
       councils: councils,
