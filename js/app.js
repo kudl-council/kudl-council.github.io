@@ -21,6 +21,15 @@
   };
   const GRADES = ["1학년", "2학년"];
   const STATUSES = ["기획중", "예정", "진행중", "완료", "취소"];
+  // 사업 날짜에 맞춰 상태 자동 변경: 사업 기간 중이면 '진행중', 끝난 다음 날부터 '완료'
+  //   (기획중·예정·진행중만 바뀜. 완료·취소, 날짜 없는 사업은 그대로)
+  function autoStatus(p) {
+    if (!p || !p.startDate || ["기획중", "예정", "진행중"].indexOf(p.status) < 0) return p && p.status;
+    const t = today(), end = p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate;
+    if (t > end) return "완료";
+    if (t >= p.startDate) return "진행중";
+    return p.status;
+  }
   const PALETTE = ["#9b1c31", "#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2", "#65a30d", "#ea580c", "#475569"];
   const NAV = [
     ["home", "홈"], ["contacts", "비상연락망"], ["calendar", "업무 캘린더"], ["room", "국서방"], ["minutes", "회의록"],
@@ -202,6 +211,15 @@
   };
   const isSenior = () => !!(S.me && S.me.status === "approved" && S.me.grade === "2학년");
   async function col(name) {
+    if (!S.cache[name] && name === "projects") {
+      const list = await DB.list(name);
+      const fix = [];
+      list.forEach((p) => { const st = autoStatus(p); if (st !== p.status) { p.status = st; fix.push(p); } });
+      S.cache[name] = list;
+      // 바뀐 상태는 저장해 둠 (조용히, 실패해도 화면엔 맞게 보임)
+      if (fix.length && S.me && S.me.status === "approved")
+        fix.forEach((p) => DB.update("projects", p.id, { status: p.status }).catch((e) => console.warn(e)));
+    }
     if (!S.cache[name] && name === "deptTasks") {
       // 국서방 할 일: 지금 학생회 것만. 회장단은 전체, 나머지는 우리 국서 것만 불러옴 (보안 규칙도 같은 기준)
       const all = canSeeAllRooms() ? await DB.list(name) : (S.me && S.me.dept ? await DB.queryEq(name, "dept", S.me.dept) : []);
@@ -441,7 +459,7 @@
   ] : []).concat([
     { name: "year", label: "연도", type: "number", required: true, half: true },
     { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
-    { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true },
+    { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true, help: "사업 날짜가 되면 자동으로 '진행중', 끝나면 '완료'가 돼요." },
     o && o.past ? { name: "owner", label: "담당자", half: true } : { name: "ownerSel", label: "담당자", type: "member", deptField: "dept", half: true, help: "담당 국서를 고르면 그 국서 사람이 나와요." },
     { name: "startDate", label: "사업 날짜 (시행일)", type: "date", half: true, help: "캘린더에 사업 일정으로 표시돼요." },
     { name: "endDate", label: "끝나는 날 (여러 날일 때만)", type: "date", half: true, help: "1박 2일 등일 때만 넣으세요." },
@@ -591,7 +609,7 @@
     const page = document.getElementById("page");
     try {
       const hist = (me.history || []).slice().sort((a, b) => genNum(b.generation) - genNum(a.generation));
-      const projects = await DB.list("projects");
+      const projects = (await DB.list("projects")).map((p) => Object.assign(p, { status: autoStatus(p) }));
       let myMsgs = [];
       try { myMsgs = await DB.queryEq("messages", "authorUid", S.authUser.uid); } catch (e) { /* 없음 */ }
       let obMinutes = [];
@@ -1461,7 +1479,7 @@
       openForm({ title: "사업 추가", fields: projectFields(), submitLabel: "추가",
         values: { year: S.settings.currentYear, status: "기획중", dept: S.projDept || (S.me && S.me.dept) || "" },
         onSubmit: async (v) => {
-          ownerFrom(v);
+          ownerFrom(v); v.status = autoStatus(v);
           // 지금 학생회 이름이 자동으로 기록됨
           await DB.add("projects", Object.assign(v, { generation: S.settings.generation, councilName: S.settings.councilName }, stamp()));
           await after("projects"); toast("추가했어요.");
@@ -1487,7 +1505,7 @@
           try { for (const t of (await col("tasks")).filter((x) => x.projectId === p.id)) await DB.update("tasks", t.id, { projectId: "" }); } catch (e) { /* 국원은 업무를 못 고침 — 업무는 그대로 남음 */ }
           closeModal(); await after("projects", "tasks"); toast("삭제했어요.");
         } }] : [],
-        onSubmit: async (v) => { ownerFrom(v); await DB.update("projects", p.id, v); await after("projects"); toast("저장했어요."); } });
+        onSubmit: async (v) => { ownerFrom(v); v.status = autoStatus(v); await DB.update("projects", p.id, v); await after("projects"); toast("저장했어요."); } });
     },
     roomTab(el) { S.room = el.dataset.dept; renderPage(); },
     async addRoomTask() {
