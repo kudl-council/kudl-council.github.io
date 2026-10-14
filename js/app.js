@@ -115,7 +115,12 @@
   const isHead = () => isAdmin() || !!(S.me && S.me.status === "approved" &&
     (S.me.position === deptPositions()[0] || execPositions().indexOf(S.me.position) >= 0));
   // 업무 완료 체크: 국장·회장단 또는 그 업무를 맡은 국서 사람
-  const canTickTask = (t) => isHead() || !!(S.me && S.me.status === "approved" && t && S.me.dept === t.dept);
+  // 회장·부회장(회장단 직책)과 회장단 권한자: 모든 국서 관리 / 국장: 자기 국서만
+  const isExecPos = () => !!(S.me && S.me.status === "approved" && execPositions().indexOf(S.me.position) >= 0);
+  const isDeptHead = () => !!(S.me && S.me.status === "approved" && S.me.position === deptPositions()[0]);
+  const canManage = (d) => isAdmin() || isExecPos() || (isDeptHead() && S.me.dept === d);
+  const manageableDepts = () => (S.settings.depts || []).filter(canManage);
+  const canTickTask = (t) => canManage(t && t.dept) || !!(S.me && S.me.status === "approved" && t && S.me.dept === t.dept);
   const membersOf = (d) => (S.cache.users || []).filter((u) => u.status === "approved" && u.dept === d)
     .sort((a, b) => posRank(a.position) - posRank(b.position) || (a.name || "").localeCompare(b.name || ""));
   // 담당자 칸: 국서를 고르면 그 국서 사람만 나옴. 예전에 글자로 적어 둔 담당자는 "txt:이름"으로 유지
@@ -169,8 +174,7 @@
   // 국서방: 우리 국서 방만 보임. 회장단(국서 목록 맨 위)과 회장단 권한자는 모든 국서 방을 볼 수 있음
   const canSeeAllRooms = () => isAdmin() || !!(S.me && S.me.dept === execDept());
   // 그 국서 방의 할 일을 쓰고 고칠 수 있는 사람: 그 국서의 국장(회장단은 회장·부회장) + 회장단 권한자
-  const isRoomHead = (d) => isAdmin() || !!(S.me && S.me.status === "approved" && S.me.dept === d &&
-    (S.me.position === deptPositions()[0] || execPositions().indexOf(S.me.position) >= 0));
+  const isRoomHead = (d) => canManage(d);
   const positionsFor = (dept) => (dept === execDept() ? execPositions() : deptPositions());
   function posRank(p) { const i = execPositions().concat(deptPositions()).indexOf(p); return i < 0 ? 99 : i; }
   // 폼에서 국을 바꾸면 직책 목록도 그 국에 맞게 바뀜
@@ -253,7 +257,7 @@
       list.forEach((p) => { const st = autoStatus(p); if (st !== p.status) { p.status = st; fix.push(p); } });
       S.cache[name] = list;
       // 바뀐 상태는 저장해 둠 (조용히, 실패해도 화면엔 맞게 보임)
-      if (fix.length && S.me && S.me.status === "approved")
+      if (fix.length && isHead())
         fix.forEach((p) => DB.update("projects", p.id, { status: p.status }).catch((e) => console.warn(e)));
     }
     if (!S.cache[name] && name === "deptTasks") {
@@ -457,7 +461,8 @@
     ps.forEach((p) => (labels[p.id] = p.name));
     return [
       { name: "title", label: "할 일", required: true, placeholder: "예: 개강파티 가수요조사 공지글 작성" },
-      { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
+      { name: "dept", label: "담당 국서", type: "select", options: manageableDepts(), required: true, half: true,
+        help: isAdmin() || isExecPos() ? "" : "국장은 우리 국서 업무만 넣을 수 있어요." },
       { name: "dueDate", label: "마감일", type: "date", required: true, half: true },
       { name: "projectId", label: "관련 사업 (선택)", type: "select", options: ps.map((p) => p.id), labels: labels },
       { name: "assigneeSel", label: "맡을 사람 (여러 명 가능)", type: "members", deptField: "dept", emptyLabel: "고른 사람의 국서방에 보여요. 아무도 안 고르면 국서 전체 일이 돼요." },
@@ -1137,8 +1142,8 @@
       (links ? '<div class="plinks">' + links + "</div>" : "") +
       projectSchedHTML(p, opts) +
       projectTasksHTML(p, opts) +
-      (opts.readonly ? "" : '<div class="pfoot">' + (opts.archive ? '<button class="btn sm" data-act="reuseProject" data-id="' + esc(p.id) + '">참고해서 새로 기획하기</button>' : "") +
-      '<button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button></div>') + "</article>";
+      (opts.readonly ? "" : '<div class="pfoot">' + (opts.archive && isHead() ? '<button class="btn sm" data-act="reuseProject" data-id="' + esc(p.id) + '">참고해서 새로 기획하기</button>' : "") +
+      (isHead() ? '<button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button>' : "") + "</div>") + "</article>";
   }
   const schedRowHTML = (r) => '<div class="srow"><input class="s-title" placeholder="예: 가수요조사 기간" value="' + esc(r.title || "") + '" aria-label="일정 이름">' +
     dateInputHTML('class="s-start" aria-label="시작일"', r.start || "") + dateInputHTML('class="s-end" aria-label="끝나는 날 (선택)"', r.end || "") +
@@ -1146,7 +1151,7 @@
   // 사업 카드 안의 "세부 일정" (가수요조사 기간 등)
   function projectSchedHTML(p, opts) {
     const list = schedOf(p).slice().sort((a, b) => (a.start || "9").localeCompare(b.start || "9"));
-    const canEdit = !opts.readonly && !opts.archive;
+    const canEdit = !opts.readonly && !opts.archive && isHead();
     if (!list.length) return canEdit ? '<button class="btn sm ptask-add" data-act="editSchedule" data-id="' + esc(p.id) + '">+ 세부 일정 (조사 기간 등)</button> ' : "";
     return '<div class="ptasks psched"><div class="ptasks-head"><b>세부 일정</b>' +
       (canEdit ? '<button class="linkbtn small" data-act="editSchedule" data-id="' + esc(p.id) + '">수정</button>' : "") + "</div>" +
@@ -1186,7 +1191,7 @@
         (items.map((p) => projectCard(p, { tasks: tmap[p.id] })).join("") || '<p class="empty-s">없음</p>') + "</div>";
     }).join("");
     return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌고, 끝난 지 2주가 지나면 [사업 아카이브]로 옮겨져요</p></div>" +
-      '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a><button class="btn primary" data-act="addProject">+ 사업 추가</button></div></div>' +
+      '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
       '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
       '<div class="kanban">' + cols + "</div>";
   };
@@ -1219,7 +1224,7 @@
       '<details class="year"' + (i < 2 || q ? " open" : "") + '><summary><b>' + esc(g.title) + "</b> <small>" + esc(g.sub) + "</small></summary>" +
       '<div class="pgrid">' + g.items.sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9")).map((p) => projectCard(p, { archive: true, tasks: tmap[p.id] })).join("") + "</div></details>").join("");
     return '<div class="page-head"><div><h2>사업 아카이브</h2><p class="muted">역대 학생회 사업과, 지금 학생회에서 끝난 지 2주가 지난 사업이 학생회별로 쌓여요 · 지금까지 ' + past.length + "개</p></div>" +
-      '<div class="actions"><button class="btn primary" data-act="addPastProject">+ 지난 사업 기록하기</button></div></div>' +
+      (isHead() ? '<div class="actions"><button class="btn primary" data-act="addPastProject">+ 지난 사업 기록하기</button></div>' : "") + "</div>" +
       '<div class="notice info small">학생회가 바뀔 때 관리 → 사이트 설정에서 <b>기수와 학생회 이름</b>을 바꾸면, ' + esc(curCouncil()) + '의 사업이 자동으로 이곳에 쌓여요.</div>' +
       '<input class="search" data-search="archive" placeholder="사업 이름 · 학생회 이름으로 검색 (예: 개강파티, 윤슬)" value="' + esc(S.q.archive || "") + '">' +
       '<div class="filters">' + deptFilterChips("archiveDept", "archiveDept") + "</div>" +
@@ -1300,8 +1305,11 @@
 
   /* 사업 하나에 국서별 업무를 한 번에 나눠 넣기 → 업무 캘린더에도 표시 */
   function openDistribute(p, rows, fromWho) {
-    rows = rows && rows.length ? rows : [{}, {}, {}];
-    const deptOpts = (sel) => '<option value="">국서 선택</option>' + S.settings.depts.map((d) => '<option value="' + esc(d) + '"' + (d === sel ? " selected" : "") + ">" + esc(d) + "</option>").join("");
+    const okDepts = manageableDepts();
+    rows = (rows || []).filter((r) => !r.dept || okDepts.indexOf(r.dept) >= 0);
+    rows = rows.length ? rows : [{}, {}, {}];
+    if (okDepts.length === 1) rows.forEach((r) => (r.dept = r.dept || okDepts[0]));
+    const deptOpts = (sel) => '<option value="">국서 선택</option>' + okDepts.map((d) => '<option value="' + esc(d) + '"' + (d === sel ? " selected" : "") + ">" + esc(d) + "</option>").join("");
     const rowHTML = (r) => '<div class="drow"><select class="d-dept" aria-label="담당 국서">' + deptOpts(r.dept || "") + "</select>" +
       '<input class="d-title" placeholder="할 일 (예: 공지글 작성)" value="' + esc(r.title || "") + '" aria-label="할 일">' +
       dateInputHTML('class="d-date" aria-label="마감일"', r.dueDate || "") +
@@ -1438,7 +1446,7 @@
       if (!isHead()) { if (!el.classList.contains("cell")) toast("업무 추가·분배는 국장과 회장단만 할 수 있어요.", true); return; }
       await col("users");
       openForm({ title: "업무 추가", fields: taskFields(await linkableProjects()),
-        values: { dueDate: el.dataset.date || today(), dept: S.calFilter || (S.me && S.me.dept) || "" },
+        values: { dueDate: el.dataset.date || today(), dept: (canManage(S.calFilter) && S.calFilter) || (canManage(S.me && S.me.dept) ? S.me.dept : manageableDepts()[0] || "") },
         submitLabel: "추가", onSubmit: async (v) => {
           assigneeFrom(v);
           await DB.add("tasks", Object.assign(v, { done: false }, stamp()));
@@ -1449,14 +1457,14 @@
       const t = await findIn("tasks", el.dataset.id);
       if (!t) return;
       await col("users");
-      if (!isHead()) {
-        // 국원: 내용 보기 + (우리 국서 업무면) 완료 체크만
+      if (!canManage(t.dept)) {
+        // 국원·다른 국서 국장: 내용 보기 + (우리 국서 업무면) 완료 체크만
         const pn = t.projectId ? ((await col("projects")).find((p) => p.id === t.projectId) || {}).name : "";
         openForm({ title: "업무 보기", fields: [],
           intro: '<dl class="meta wide"><dt>할 일</dt><dd><b>' + esc(t.title) + "</b></dd><dt>국서</dt><dd>" + deptTag(t.dept) + "</dd><dt>마감일</dt><dd>" + fmtDate(t.dueDate) + " (" + (t.done ? "완료" : dday(t.dueDate)) + ")</dd>" +
             (pn ? "<dt>관련 사업</dt><dd>" + esc(pn) + "</dd>" : "") + (t.assignee ? "<dt>맡은 사람</dt><dd>" + esc(t.assignee) + "</dd>" : "") +
             (t.memo ? "<dt>메모</dt><dd>" + esc(t.memo) + "</dd>" : "") + "</dl>" +
-            '<p class="muted small">업무 내용은 국장과 회장단이 고칠 수 있어요.</p>',
+            '<p class="muted small">업무 내용은 ' + esc(t.dept) + " 국장과 회장·부회장이 고칠 수 있어요.</p>",
           extraButtons: canTickTask(t) ? [{ label: t.done ? "완료 취소" : "완료했어요 ✓", cls: t.done ? "" : "primary", onClick: async () => {
             await DB.update("tasks", t.id, { done: !t.done }); closeModal(); await after("tasks"); toast(t.done ? "완료를 취소했어요." : "완료했어요!");
           } }] : [] });
@@ -1464,10 +1472,10 @@
       }
       const fields = taskFields(await linkableProjects(t.projectId)).concat([{ name: "done", label: "완료한 업무예요", type: "checkbox" }]);
       openForm({ title: "업무 보기 · 수정", fields: fields, values: Object.assign({}, t, { assigneeSel: uidsOf(t).length ? uidsOf(t) : (t.assignee ? t.assignee.split(/,\s*/).map((n) => memberValue(t.dept, "", n)) : []) }),
-        extraButtons: (isHead() || canDelete(t)) ? [{ label: "삭제", cls: "danger", onClick: async () => {
+        extraButtons: [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("이 업무를 삭제할까요?")) return;
           await DB.remove("tasks", t.id); closeModal(); await after("tasks"); toast("삭제했어요.");
-        } }] : [],
+        } }],
         onSubmit: async (v) => { assigneeFrom(v); await DB.update("tasks", t.id, v); await after("tasks"); toast("저장했어요."); } });
     },
     async distribute(el) {
@@ -1540,7 +1548,7 @@
       if (!p) return;
       await col("users");
       openForm({ title: "사업 수정", fields: projectFields({ council: true }), values: Object.assign({}, p, { ownerSel: memberValue(p.dept, p.ownerUid, p.owner) }),
-        extraButtons: (isHead() || canDelete(p)) ? [{ label: "삭제", cls: "danger", onClick: async () => {
+        extraButtons: isHead() ? [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)")) return;
           await DB.remove("projects", p.id);
           try { for (const t of (await col("tasks")).filter((x) => x.projectId === p.id)) await DB.update("tasks", t.id, { projectId: "" }); } catch (e) { /* 국원은 업무를 못 고침 — 업무는 그대로 남음 */ }

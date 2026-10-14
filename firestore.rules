@@ -134,21 +134,24 @@ service cloud.firestore {
     }
 
     // ---- 국서방 할 일: 같은 국서 사람만 보고, 회장단(국서 목록 맨 위)은 모든 국서 방을 봄
-    //   쓰기·고치기·지우기: 그 국서의 국장(회장단 방은 회장·부회장)과 회장단 권한자
+    //   쓰기·고치기·지우기: 그 국서의 국장, 회장·부회장, 회장단 권한자
     //   국원: 자기에게 맡겨진 일(여러 명 중 한 명이어도 됨, 또는 국서 전체 일)의 '완료' 체크만
     function siteVal(k, d) { return exists(siteDoc()) ? get(siteDoc()).data.get(k, d) : d; }
     function execDeptName() { return siteVal('depts', ['회장단'])[0]; }
-    function isHead() {
-      return approved() && hasProfile()
-        && (me().position == siteVal('positions', ['국장', '국원'])[0]
-            || me().position in siteVal('execPositions', ['회장', '부회장']));
+    // 국서 대표 직책: 직책 목록에서 회장단 직책(회장·부회장)을 뺀 첫 번째 (기본: 국장)
+    function headPosition() {
+      return siteVal('positions', ['국장', '국원']).removeAll(siteVal('execPositions', ['회장', '부회장']))[0];
+    }
+    function isExecPos() { return approved() && hasProfile() && me().position in siteVal('execPositions', ['회장', '부회장']); }
+    function isDeptHeadPos() { return me().position == '국장' || me().position == headPosition(); }
+    // 회장·부회장·국장 (사업 추가·수정·삭제)
+    function isHead() { return approved() && hasProfile() && (isDeptHeadPos() || isExecPos()); }
+    // 그 국서의 업무를 관리할 수 있는 사람: 회장단 권한자, 회장·부회장, 그 국서의 국장
+    function canManage(d) {
+      return admin() || isExecPos() || (approved() && hasProfile() && me().dept == d && isDeptHeadPos());
     }
     function roomViewer(d) { return approved() && hasProfile() && (me().dept == d || me().dept == execDeptName()); }
-    function roomHead(d) {
-      return approved() && hasProfile() && me().dept == d
-        && (me().position == siteVal('positions', ['국장', '국원'])[0]
-            || me().position in siteVal('execPositions', ['회장', '부회장']));
-    }
+    function roomHead(d) { return canManage(d); }
     match /deptTasks/{id} {
       allow read: if admin() || roomViewer(resource.data.dept);
       allow create: if admin() || (roomHead(request.resource.data.dept)
@@ -176,17 +179,17 @@ service cloud.firestore {
       allow write: if admin();
     }
 
-    // ---- 회의록 · 사업: 승인된 회원 누구나 작성/수정, 삭제는 작성자 또는 회장단 ----
+    // ---- 회의록: 승인된 회원 누구나 작성/수정, 삭제는 작성자 또는 회장단 ----
     // 업무 캘린더 업무: 모두 볼 수 있음
-    //   추가·국서별 분배·수정·맡기기·삭제: 국장·회장·부회장과 회장단 권한자
+    //   추가·국서별 분배·수정·맡기기·삭제: 그 국서의 국장, 회장·부회장, 회장단 권한자
     //   국원: 우리 국서 업무의 '완료' 체크만
     match /tasks/{id} {
       allow read: if approved();
-      allow create: if admin() || isHead();
-      allow update: if admin() || isHead()
+      allow create: if canManage(request.resource.data.dept);
+      allow update: if (canManage(resource.data.dept) && canManage(request.resource.data.dept))
         || (approved() && hasProfile() && me().dept == resource.data.dept
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done', 'doneAt', 'doneBy']));
-      allow delete: if admin() || isHead();
+      allow delete: if canManage(resource.data.dept);
     }
     // 회의록: 지금 학생회 것은 모두, 지난 학생회 것은 그 학생회에 있었던 사람만 (OB 포함)
     match /minutes/{id} {
@@ -196,10 +199,10 @@ service cloud.firestore {
       allow create, update: if approved();
       allow delete: if admin() || (approved() && resource.data.createdBy == request.auth.uid);
     }
+    // 사업: 추가·수정·삭제는 회장·부회장·국장과 회장단 권한자
     match /projects/{id} {
       allow read: if approved() || alumni();
-      allow create, update: if approved();
-      allow delete: if admin() || isHead() || (approved() && resource.data.createdBy == request.auth.uid);
+      allow create, update, delete: if admin() || isHead();
     }
   }
 }
