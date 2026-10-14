@@ -23,6 +23,14 @@
   const STATUSES = ["기획중", "예정", "진행중", "완료", "취소"];
   // 사업 날짜에 맞춰 상태 자동 변경: 사업 기간 중이면 '진행중', 끝난 다음 날부터 '완료'
   //   (기획중·예정·진행중만 바뀜. 완료·취소, 날짜 없는 사업은 그대로)
+  // 이미 '완료'된 사업의 날짜를 앞으로 미루면 다시 '예정'(또는 기간 중이면 '진행중')으로 되돌림
+  function reviveStatus(before, v) {
+    if (v.status !== "완료" || !v.startDate) return v;
+    if (v.startDate === before.startDate && (v.endDate || "") === (before.endDate || "")) return v;
+    const end = v.endDate && v.endDate > v.startDate ? v.endDate : v.startDate;
+    if (end >= today()) v.status = today() >= v.startDate ? "진행중" : "예정";
+    return v;
+  }
   function autoStatus(p) {
     if (!p || !p.startDate || ["기획중", "예정", "진행중"].indexOf(p.status) < 0) return p && p.status;
     const t = today(), end = p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate;
@@ -185,6 +193,14 @@
   const curCouncil = () => councilLabel(S.settings.generation, S.settings.councilName);
   // 지금 학생회의 사업인지: 기수로 판단 (기수 기록이 없는 옛 자료는 올해 것만)
   const isCurrent = (p) => (p.generation ? p.generation === S.settings.generation : Number(p.year) === S.settings.currentYear);
+  // 완료·취소된 사업은 사업 날짜(끝나는 날)로부터 2주가 지나면 [사업 기획안]에서 빠지고 [사업 아카이브]로 감
+  const ARCHIVE_AFTER_DAYS = 14;
+  const isAutoArchived = (p) => {
+    if (!p || (p.status !== "완료" && p.status !== "취소") || !p.startDate) return false;
+    const end = p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate;
+    return ymd(new Date(new Date(end + "T00:00:00").getTime() + ARCHIVE_AFTER_DAYS * 86400000)) < today();
+  };
+  const isActive = (p) => isCurrent(p) && !isAutoArchived(p);
   const genNum = (g) => { const m = String(g || "").match(/\d+/); return m ? Number(m[0]) : 0; };
   // 활동 이력: 지금 학생회에서의 국서·직책을 회원 기록에 남김 (같은 기수는 덮어씀)
   function withHistory(u) {
@@ -1136,7 +1152,7 @@
   /* ----- 사업 기획안 (지금 학생회) ----- */
   PAGES.projects = async function () {
     const tmap = await tasksByProject();
-    const list = (await col("projects")).filter((p) => isCurrent(p) && (!S.projDept || p.dept === S.projDept ||
+    const list = (await col("projects")).filter((p) => isActive(p) && (!S.projDept || p.dept === S.projDept ||
       (tmap[p.id] || []).some((t) => t.dept === S.projDept)));
     const cols = STATUSES.map((st) => {
       const items = list.filter((p) => p.status === st).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
@@ -1144,7 +1160,7 @@
       return '<div class="kcol"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small></h3>" +
         (items.map((p) => projectCard(p, { tasks: tmap[p.id] })).join("") || '<p class="empty-s">없음</p>') + "</div>";
     }).join("");
-    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 이미 끝난 올해 사업도 여기에 '완료'로 넣으세요</p></div>" +
+    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌고, 끝난 지 2주가 지나면 [사업 아카이브]로 옮겨져요</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a><button class="btn primary" data-act="addProject">+ 사업 추가</button></div></div>' +
       '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
       '<div class="kanban">' + cols + "</div>";
@@ -1155,7 +1171,7 @@
     const q = (S.q.archive || "").toLowerCase();
     const all = await col("projects");
     const tmap = await tasksByProject();
-    const past = all.filter((p) => !isCurrent(p));
+    const past = all.filter((p) => !isActive(p));
     const list = past.filter((p) => (!S.archiveDept || p.dept === S.archiveDept) &&
       (!q || [p.name, p.summary, p.dept, p.owner, p.generation, p.councilName].join(" ").toLowerCase().includes(q)));
     // 학생회(기수)별로 묶기. 기수 기록이 없는 자료는 연도로 묶음
@@ -1177,7 +1193,7 @@
     const body = info.map((g, i) =>
       '<details class="year"' + (i < 2 || q ? " open" : "") + '><summary><b>' + esc(g.title) + "</b> <small>" + esc(g.sub) + "</small></summary>" +
       '<div class="pgrid">' + g.items.sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9")).map((p) => projectCard(p, { archive: true, tasks: tmap[p.id] })).join("") + "</div></details>").join("");
-    return '<div class="page-head"><div><h2>사업 아카이브</h2><p class="muted">역대 학생회가 진행한 사업이 학생회별로 쌓여요 · 지금까지 ' + past.length + "개</p></div>" +
+    return '<div class="page-head"><div><h2>사업 아카이브</h2><p class="muted">역대 학생회 사업과, 지금 학생회에서 끝난 지 2주가 지난 사업이 학생회별로 쌓여요 · 지금까지 ' + past.length + "개</p></div>" +
       '<div class="actions"><button class="btn primary" data-act="addPastProject">+ 지난 사업 기록하기</button></div></div>' +
       '<div class="notice info small">학생회가 바뀔 때 관리 → 사이트 설정에서 <b>기수와 학생회 이름</b>을 바꾸면, ' + esc(curCouncil()) + '의 사업이 자동으로 이곳에 쌓여요.</div>' +
       '<input class="search" data-search="archive" placeholder="사업 이름 · 학생회 이름으로 검색 (예: 개강파티, 윤슬)" value="' + esc(S.q.archive || "") + '">' +
@@ -1505,7 +1521,7 @@
           try { for (const t of (await col("tasks")).filter((x) => x.projectId === p.id)) await DB.update("tasks", t.id, { projectId: "" }); } catch (e) { /* 국원은 업무를 못 고침 — 업무는 그대로 남음 */ }
           closeModal(); await after("projects", "tasks"); toast("삭제했어요.");
         } }] : [],
-        onSubmit: async (v) => { ownerFrom(v); v.status = autoStatus(v); await DB.update("projects", p.id, v); await after("projects"); toast("저장했어요."); } });
+        onSubmit: async (v) => { ownerFrom(v); v.status = autoStatus(reviveStatus(p, v)); await DB.update("projects", p.id, v); await after("projects"); toast("저장했어요."); } });
     },
     roomTab(el) { S.room = el.dataset.dept; renderPage(); },
     async addRoomTask() {
@@ -1602,7 +1618,7 @@
     },
     async viewProject(el) {
       const p = await findIn("projects", el.dataset.id);
-      if (p) { location.hash = isCurrent(p) ? "projects" : "archive"; }
+      if (p) { location.hash = isActive(p) ? "projects" : "archive"; }
     },
     async reuseProject(el) {
       const p = await findIn("projects", el.dataset.id);
