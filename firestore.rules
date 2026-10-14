@@ -135,7 +135,7 @@ service cloud.firestore {
 
     // ---- 국서방 할 일: 같은 국서 사람만 보고, 회장단(국서 목록 맨 위)은 모든 국서 방을 봄
     //   쓰기·고치기·지우기: 그 국서의 국장(회장단 방은 회장·부회장)과 회장단 권한자
-    //   국원: 자기에게 맡겨진 일(또는 국서 전체 일)의 '완료' 체크만
+    //   국원: 자기에게 맡겨진 일(여러 명 중 한 명이어도 됨, 또는 국서 전체 일)의 '완료' 체크만
     function siteVal(k, d) { return exists(siteDoc()) ? get(siteDoc()).data.get(k, d) : d; }
     function execDeptName() { return siteVal('depts', ['회장단'])[0]; }
     function isHead() {
@@ -156,7 +156,9 @@ service cloud.firestore {
       allow update: if admin()
         || (roomHead(resource.data.dept) && request.resource.data.dept == resource.data.dept)
         || (approved() && hasProfile() && me().dept == resource.data.dept
-            && (resource.data.get('assigneeUid', '') == request.auth.uid || resource.data.get('assigneeUid', '') == '')
+            && (request.auth.uid in resource.data.get('assigneeUids', [])
+                || resource.data.get('assigneeUid', '') == request.auth.uid
+                || (resource.data.get('assigneeUid', '') == '' && resource.data.get('assigneeUids', []).size() == 0))
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['done', 'doneAt', 'doneBy']));
       allow delete: if admin() || roomHead(resource.data.dept);
     }
@@ -197,7 +199,7 @@ service cloud.firestore {
     match /projects/{id} {
       allow read: if approved() || alumni();
       allow create, update: if approved();
-      allow delete: if admin() || (approved() && resource.data.createdBy == request.auth.uid);
+      allow delete: if admin() || isHead() || (approved() && resource.data.createdBy == request.auth.uid);
     }
   }
 }

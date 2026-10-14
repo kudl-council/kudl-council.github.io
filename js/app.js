@@ -139,7 +139,27 @@
     else if (cur && !ms.some((u) => u.id === cur)) { const u = memberOf(cur); if (u.name) html += '<option value="' + esc(cur) + '" selected>' + esc(u.name) + "</option>"; }
     return html;
   }
+  // 맡은 사람 여러 명: assigneeUids 배열 (예전 자료는 assigneeUid 하나)
+  const uidsOf = (x) => (Array.isArray(x.assigneeUids) && x.assigneeUids.length ? x.assigneeUids : (x.assigneeUid ? [x.assigneeUid] : []));
+  function membersChecksHTML(name, dept, cur, emptyLabel) {
+    cur = cur || [];
+    const ms = membersOf(dept);
+    if (!dept) return '<p class="muted small">국서를 먼저 고르세요.</p>';
+    let html = ms.map((u) => '<label class="mchk"><input type="checkbox" name="' + esc(name) + '" value="' + esc(u.id) + '"' + (cur.indexOf(u.id) >= 0 ? " checked" : "") + "> " + esc(u.name) + ' <small>' + esc(u.position) + "</small></label>").join("");
+    cur.filter((v) => v.indexOf("txt:") === 0).forEach((v) => { html += '<label class="mchk"><input type="checkbox" name="' + esc(name) + '" value="' + esc(v) + '" checked> ' + esc(v.slice(4)) + " <small>직접 적은 이름</small></label>"; });
+    return html + '<small class="help">' + esc(emptyLabel || "아무도 안 고르면 국서 전체 일이 돼요.") + "</small>";
+  }
+  function membersFrom(arr) {
+    const uids = [], names = [];
+    (arr || []).forEach((v) => { const m = memberOf(v); if (m.uid) uids.push(m.uid); if (m.name) names.push(m.name); });
+    return { uids: uids, names: names };
+  }
   function bindDeptMember(root) {
+    root.querySelectorAll("[data-members-of]").forEach(function (box) {
+      const d = root.querySelector('[name="' + box.dataset.membersOf + '"]');
+      if (!d) return;
+      d.addEventListener("change", function () { box.innerHTML = membersChecksHTML(box.dataset.name, d.value, [], box.dataset.empty); });
+    });
     root.querySelectorAll("select[data-member-of]").forEach(function (m) {
       const d = root.querySelector('[name="' + m.dataset.memberOf + '"]');
       if (!d) return;
@@ -340,6 +360,11 @@
         input = '<textarea id="' + id + '" name="' + f.name + '" rows="' + (f.rows || 3) + '" placeholder="' + esc(f.placeholder || "") + '"' + req + ">" + esc(Array.isArray(v) ? v.join("\n") : v) + "</textarea>";
       } else if (f.type === "checkbox") {
         return '<div class="field check"><label><input type="checkbox" id="' + id + '" name="' + f.name + '"' + (v ? " checked" : "") + "> " + esc(f.label) + "</label>" + help + "</div>";
+      } else if (f.type === "members") {
+        const dept = f.dept || values[f.deptField || "dept"] || "";
+        input = '<div class="mchecks" id="' + id + '" data-name="' + esc(f.name) + '"' + (f.dept ? "" : ' data-members-of="' + esc(f.deptField || "dept") + '"') + ' data-empty="' + esc(f.emptyLabel || "") + '">' +
+          membersChecksHTML(f.name, dept, Array.isArray(v) ? v : [], f.emptyLabel) + "</div>";
+        return '<div class="field' + (f.half ? " half" : "") + '"><label>' + esc(f.label) + "</label>" + input + help + "</div>";
       } else if (f.type === "member") {
         input = '<select id="' + id + '" name="' + f.name + '" data-member-of="' + esc(f.deptField || "dept") + '">' + memberOptions(values[f.deptField || "dept"] || "", v) + "</select>";
       } else if (f.type === "date") {
@@ -356,6 +381,7 @@
   function readFields(root, fields) {
     const out = {};
     for (const f of fields) {
+      if (f.type === "members") { out[f.name] = Array.from(root.querySelectorAll('input[name="' + f.name + '"]:checked')).map((x) => x.value); continue; }
       const el = root.querySelector('[name="' + f.name + '"]');
       if (!el) continue;
       let v = f.type === "checkbox" ? el.checked : el.value.trim();
@@ -434,7 +460,7 @@
       { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
       { name: "dueDate", label: "마감일", type: "date", required: true, half: true },
       { name: "projectId", label: "관련 사업 (선택)", type: "select", options: ps.map((p) => p.id), labels: labels },
-      { name: "assigneeSel", label: "맡을 사람", type: "member", deptField: "dept", help: "정하면 그 사람의 국서방에도 보여요." },
+      { name: "assigneeSel", label: "맡을 사람 (여러 명 가능)", type: "members", deptField: "dept", emptyLabel: "고른 사람의 국서방에 보여요. 아무도 안 고르면 국서 전체 일이 돼요." },
       { name: "memo", label: "메모", type: "textarea", rows: 2 },
     ];
   };
@@ -831,8 +857,8 @@
   PAGES.home = async function () {
     const [tasks, projects, minutes, msgs, notices, roomTasks] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => []), col("notices").catch(() => []), col("deptTasks").catch(() => [])]);
     const myUid = S.authUser && S.authUser.uid;
-    const myRoom = roomTasks.filter((x) => !x.done && S.me && x.dept === S.me.dept && (x.assigneeUid === myUid || !x.assigneeUid))
-      .concat(tasks.filter((x) => !x.done && x.assigneeUid && x.assigneeUid === myUid));
+    const myRoom = roomTasks.filter((x) => !x.done && S.me && x.dept === S.me.dept && (uidsOf(x).indexOf(myUid) >= 0 || !uidsOf(x).length))
+      .concat(tasks.filter((x) => !x.done && uidsOf(x).indexOf(myUid) >= 0));
     const mine = S.me && S.me.dept;
     const pool = msgs.filter((m) => m.toDept === "모두에게" || (mine && m.toDept === "다음 " + mine + "에게"));
     const pick = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
@@ -1007,14 +1033,15 @@
     const me = S.authUser && S.authUser.uid;
     const t = today();
     const done = list.filter((x) => x.done).length;
-    const canTick = (x) => head || (myDept === room && (!x.assigneeUid || x.assigneeUid === me));
-    const assignSel = (x) => head && x.cal && !x.assigneeUid && !x.done ? '<select class="assign" data-act="assignTask" data-id="' + esc(x.id) + '" aria-label="맡을 사람">' +
+    const canTick = (x) => head || (myDept === room && (!uidsOf(x).length || uidsOf(x).indexOf(me) >= 0));
+    const assignSel = (x) => head && x.cal && !uidsOf(x).length && !x.done ? '<select class="assign" data-act="assignTask" data-id="' + esc(x.id) + '" aria-label="맡을 사람">' +
       '<option value="">맡을 사람 정하기…</option>' + members.map((u) => '<option value="' + esc(u.id) + '">' + esc(u.name) + "</option>").join("") + "</select>" : "";
     const row = (x) => '<li class="rrow' + (x.done ? " done" : x.dueDate && x.dueDate < t ? " late" : "") + '">' +
       '<input type="checkbox" class="tick" data-act="' + (x.cal ? "toggleTask" : "toggleRoomTask") + '" data-id="' + esc(x.id) + '"' + (x.done ? " checked" : "") + (canTick(x) ? "" : " disabled") + ' aria-label="끝냄 표시">' +
       '<span class="tt"' + (x.cal ? ' data-act="editTask" data-id="' + esc(x.id) + '"' : head ? ' data-act="editRoomTask" data-id="' + esc(x.id) + '"' : "") + ">" +
       (x.cal ? '<span class="calb" title="업무 캘린더에 있는 분배 업무">📅</span> ' : "") + esc(x.title) +
       (x.cal && pname[x.projectId] ? ' <span class="ptag">' + esc(pname[x.projectId]) + "</span>" : "") +
+      (uidsOf(x).length > 1 ? '<small class="muted">함께: ' + esc((x.assignee || x.assigneeName || "")) + "</small>" : "") +
       (x.memo ? '<small class="muted">' + esc(x.memo) + "</small>" : "") + assignSel(x) + "</span>" +
       '<span class="dd">' + (x.done ? "완료" : x.dueDate ? dday(x.dueDate) : "") + "</span></li>";
     const block = (title, sub, arr, isMe) => {
@@ -1025,12 +1052,12 @@
         (open.length ? '<ul class="rlist">' + open.map(row).join("") + "</ul>" : '<p class="empty-s">' + (arr.length ? "다 끝냈어요 👏" : "맡은 일이 없어요.") + "</p>") +
         (fin.length ? '<details class="rdone"><summary>끝낸 일 ' + fin.length + "개</summary><ul class=\"rlist\">" + fin.map(row).join("") + "</ul></details>" : "") + "</section>";
     };
-    const common = list.filter((x) => !x.assigneeUid);
+    const common = list.filter((x) => !uidsOf(x).length);
     const known = {};
     members.forEach((u) => (known[u.id] = true));
-    const orphan = list.filter((x) => x.assigneeUid && !known[x.assigneeUid]);
+    const orphan = list.filter((x) => uidsOf(x).length && !uidsOf(x).some((u) => known[u]));
     const ownLabel = (u) => { const ps = myProjects.filter((p) => p.ownerUid === u.id).map((p) => p.name); return u.position + (ps.length ? " · 담당 사업: " + ps.join(", ") : ""); };
-    const blocks = members.map((u) => block(u.name + (u.id === me ? " (나)" : ""), ownLabel(u), list.filter((x) => x.assigneeUid === u.id), u.id === me))
+    const blocks = members.map((u) => block(u.name + (u.id === me ? " (나)" : ""), ownLabel(u), list.filter((x) => uidsOf(x).indexOf(u.id) >= 0), u.id === me))
       .concat(common.length || head ? [block(room + " 전체", "누구나 체크", common)] : [])
       .concat(orphan.length ? [block("예전 담당자", "지금은 이 국서에 없음", orphan)] : []);
     const tabs = all ? '<div class="filters">' + S.settings.depts.map((d) => '<button class="fchip' + (room === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="roomTab" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "방</button>").join("") + "</div>" : "";
@@ -1048,11 +1075,9 @@
   const roomFields = (room) => {
     const members = (S.cache.users || []).filter((u) => u.status === "approved" && u.dept === room)
       .sort((a, b) => posRank(a.position) - posRank(b.position));
-    const labels = { _all: room + " 전체 (누구나 체크)" };
-    members.forEach((u) => (labels[u.id] = u.name + " · " + u.position));
     return [
       { name: "title", label: "할 일", required: true, placeholder: "예: 9월 영수증 정리해서 드라이브에 올리기" },
-      { name: "assigneeUid", label: "맡을 사람", type: "select", options: members.map((u) => u.id).concat(["_all"]), labels: labels, required: true, half: true },
+      { name: "assigneeSel", label: "맡을 사람 (여러 명 가능)", type: "members", dept: room, emptyLabel: "아무도 안 고르면 '" + room + " 전체' 일이 돼서 누구나 체크할 수 있어요." },
       { name: "dueDate", label: "마감일 (선택)", type: "date", half: true },
       { name: "memo", label: "메모 (선택)", type: "textarea", rows: 2 },
     ];
@@ -1267,8 +1292,8 @@
   }
   function assigneeFrom(v) {
     if (!("assigneeSel" in v)) return v;
-    const m = memberOf(v.assigneeSel); delete v.assigneeSel;
-    v.assignee = m.name; v.assigneeUid = m.uid; return v;
+    const m = membersFrom(v.assigneeSel); delete v.assigneeSel;
+    v.assigneeUids = m.uids; v.assigneeUid = m.uids[0] || ""; v.assignee = m.names.join(", "); return v;
   }
 
   async function findIn(c, id) { return (await col(c)).find((x) => x.id === id); }
@@ -1438,8 +1463,8 @@
         return;
       }
       const fields = taskFields(await linkableProjects(t.projectId)).concat([{ name: "done", label: "완료한 업무예요", type: "checkbox" }]);
-      openForm({ title: "업무 보기 · 수정", fields: fields, values: Object.assign({}, t, { assigneeSel: memberValue(t.dept, t.assigneeUid, t.assignee) }),
-        extraButtons: canDelete(t) ? [{ label: "삭제", cls: "danger", onClick: async () => {
+      openForm({ title: "업무 보기 · 수정", fields: fields, values: Object.assign({}, t, { assigneeSel: uidsOf(t).length ? uidsOf(t) : (t.assignee ? t.assignee.split(/,\s*/).map((n) => memberValue(t.dept, "", n)) : []) }),
+        extraButtons: (isHead() || canDelete(t)) ? [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("이 업무를 삭제할까요?")) return;
           await DB.remove("tasks", t.id); closeModal(); await after("tasks"); toast("삭제했어요.");
         } }] : [],
@@ -1452,7 +1477,7 @@
     },
     async assignTask(el) {
       const m = memberOf(el.value);
-      try { await DB.update("tasks", el.dataset.id, { assigneeUid: m.uid, assignee: m.name }); await after("tasks"); toast(m.name ? m.name + "에게 맡겼어요." : "담당자를 비웠어요."); }
+      try { await DB.update("tasks", el.dataset.id, { assigneeUid: m.uid, assigneeUids: m.uid ? [m.uid] : [], assignee: m.name }); await after("tasks"); toast(m.name ? m.name + "에게 맡겼어요." : "담당자를 비웠어요."); }
       catch (e) { toast(errMsg(e), true); }
     },
     async toggleTask(el) {
@@ -1515,7 +1540,7 @@
       if (!p) return;
       await col("users");
       openForm({ title: "사업 수정", fields: projectFields({ council: true }), values: Object.assign({}, p, { ownerSel: memberValue(p.dept, p.ownerUid, p.owner) }),
-        extraButtons: canDelete(p) ? [{ label: "삭제", cls: "danger", onClick: async () => {
+        extraButtons: (isHead() || canDelete(p)) ? [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)")) return;
           await DB.remove("projects", p.id);
           try { for (const t of (await col("tasks")).filter((x) => x.projectId === p.id)) await DB.update("tasks", t.id, { projectId: "" }); } catch (e) { /* 국원은 업무를 못 고침 — 업무는 그대로 남음 */ }
@@ -1529,9 +1554,8 @@
       await col("users");
       openForm({ title: room + "방 · 할 일 추가", fields: roomFields(room), submitLabel: "추가",
         onSubmit: async (v) => {
-          if (v.assigneeUid === "_all") v.assigneeUid = "";
-          const u = (S.cache.users || []).find((x) => x.id === v.assigneeUid);
-          await DB.add("deptTasks", Object.assign(v, { dept: room, assigneeName: u ? u.name : "", done: false, generation: S.settings.generation }, stamp()));
+          assigneeFrom(v); v.assigneeName = v.assignee; delete v.assignee;
+          await DB.add("deptTasks", Object.assign(v, { dept: room, done: false, generation: S.settings.generation }, stamp()));
           await after("deptTasks"); toast("추가했어요.");
         } });
     },
@@ -1539,15 +1563,14 @@
       const x = await findIn("deptTasks", el.dataset.id);
       if (!x) return;
       await col("users");
-      openForm({ title: x.dept + "방 · 할 일 수정", fields: roomFields(x.dept), values: Object.assign({}, x, { assigneeUid: x.assigneeUid || "_all" }),
+      openForm({ title: x.dept + "방 · 할 일 수정", fields: roomFields(x.dept), values: Object.assign({}, x, { assigneeSel: uidsOf(x) }),
         extraButtons: [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("이 할 일을 지울까요?")) return;
           await DB.remove("deptTasks", x.id); closeModal(); await after("deptTasks"); toast("지웠어요.");
         } }],
         onSubmit: async (v) => {
-          if (v.assigneeUid === "_all") v.assigneeUid = "";
-          const u = (S.cache.users || []).find((y) => y.id === v.assigneeUid);
-          await DB.update("deptTasks", x.id, Object.assign(v, { assigneeName: u ? u.name : "" }));
+          assigneeFrom(v); v.assigneeName = v.assignee; delete v.assignee;
+          await DB.update("deptTasks", x.id, v);
           await after("deptTasks"); toast("저장했어요.");
         } });
     },

@@ -543,3 +543,11 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .rrow select.assign { display: block; margin-top: 6px; font: inherit; font-size: 13px; padding: 5px 8px; border: 1px dashed var(--accent); border-radius: 8px; background: var(--surface); color: var(--accent); font-weight: 600; max-width: 100%; }
 .rproj { margin-bottom: 14px; }
 .rproj .plist li .muted { margin-left: 4px; }
+
+/* 맡을 사람 여러 명 고르기 */
+.mchecks { display: flex; flex-wrap: wrap; gap: 6px 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.mchecks .mchk { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; cursor: pointer; font-weight: 600; }
+.mchecks .mchk small { color: var(--muted); font-weight: 400; }
+.mchecks .mchk input { width: 16px; height: 16px; accent-color: var(--accent); }
+.mchecks .mchk:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.mchecks .help { flex-basis: 100%; }
