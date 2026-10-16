@@ -837,3 +837,8 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
   .shell-main .page { max-width: 1120px; padding: 48px 48px 40px 72px; }
   .shell-main .foot { padding: 8px 48px 26px 72px; }
 }
+@media (min-width: 901px) {
+  .shell { grid-template-columns: 248px minmax(0, 1fr); }
+  .shell-main .page { padding-left: 56px; }
+  .shell-main .foot { padding-left: 56px; }
+}
