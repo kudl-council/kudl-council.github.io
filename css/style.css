@@ -821,3 +821,19 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
   .field input, .field select, .field textarea { font-size: 13.5px; }
   .modal { max-width: 520px; }
 }
+
+/* ===== 왼쪽 메뉴 조금 키우고, 본문은 조금 오른쪽·아래에서 시작 ===== */
+@media (min-width: 901px) {
+  .shell { grid-template-columns: 232px minmax(0, 1fr); }
+  .side-brand .mark { width: 38px; height: 38px; font-size: 11px; border-radius: 10px; }
+  .side-brand b { font-size: 16px; }
+  .side-brand small { font-size: 11px; }
+  .side > .tabs { padding: 14px 12px; gap: 3px; }
+  .side > .tabs a { padding: 10px 14px; font-size: 14.5px; gap: 12px; }
+  .side .nico { width: 19px; height: 19px; }
+  .side-fold { font-size: 13px; }
+  .side-who b { font-size: 13.5px; }
+  .side-who small { font-size: 11.5px; }
+  .shell-main .page { max-width: 1120px; padding: 48px 48px 40px 72px; }
+  .shell-main .foot { padding: 8px 48px 26px 72px; }
+}
