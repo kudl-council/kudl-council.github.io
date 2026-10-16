@@ -744,3 +744,44 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
   .shell { display: block; }
   .side { display: none !important; }
 }
+
+/* ===== 전체 크기 한 단계 작게 (컴퓨터 화면) ===== */
+@media (min-width: 901px) {
+  body { font-size: 14px; }
+  .shell { grid-template-columns: 228px minmax(0, 1fr); }
+  .side-brand { padding: 18px 16px 16px; gap: 10px; }
+  .side-brand .mark { width: 38px; height: 38px; border-radius: 10px; font-size: 11px; }
+  .side-brand b { font-size: 16.5px; }
+  .side-brand small { font-size: 11px; }
+  .side > .tabs { padding: 12px 10px; gap: 2px; }
+  .side > .tabs a { padding: 9px 12px; font-size: 14.5px; gap: 11px; border-radius: 10px; }
+  .side .nico { width: 19px; height: 19px; }
+  .side-fold { margin: 0 10px 8px; padding: 8px 12px; font-size: 13px; gap: 11px; }
+  .fold-ico { width: 19px; font-size: 16px; }
+  .side-me { padding: 11px 10px 12px 16px; }
+  .side-who b { font-size: 14px; }
+  .side-who small { font-size: 11.5px; }
+  .side-out { width: 34px; height: 34px; }
+  .shell.folded { grid-template-columns: 68px minmax(0, 1fr); }
+  .shell-main .page { padding: 28px 36px 40px; }
+  .shell-main .foot { padding: 8px 36px 26px; }
+  .hello { margin-bottom: 18px; }
+  .hello p { font-size: 13.5px; margin-bottom: 4px; }
+  .hello h2 { font-size: 24px; }
+  .page-head h2, h2 { font-size: 21px; }
+  .page-head p { font-size: 13px; }
+  h3 { font-size: 15px; }
+  .card { padding: 18px; border-radius: 14px; }
+  .btn { min-height: 34px; font-size: 13.5px; padding: 0 12px; }
+  .btn.sm { min-height: 30px; font-size: 12.5px; }
+  .fchip { font-size: 12.5px; }
+  .notice { font-size: 13.5px; }
+  .prows { border-radius: 14px; }
+  .pr-head { padding: 11px 16px; gap: 10px; }
+  .pr-name { font-size: 14.5px; }
+  .pr-name small { font-size: 12px; }
+  .pr-meta { font-size: 12.5px; gap: 10px; }
+  .pr-prog { width: 52px; height: 5px; }
+  .pr-body { padding: 2px 18px 14px 40px; }
+  .plist2 { gap: 18px; }
+}
