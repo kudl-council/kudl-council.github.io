@@ -703,18 +703,27 @@
   function renderShell() {
     const route = S.route;
     const me = S.me;
-    const who = me ? esc(me.name) + ' <span class="muted">' + esc(me.dept || "") + " " + esc(me.position || "") + "</span>" : "학생회 공용계정";
     const nav = NAV.filter((n) => (n[0] !== "admin" || isAdmin()))
-      .map((n) => '<a href="#' + n[0] + '" class="' + (navKey(route) === n[0] ? "on" : "") + '">' + navIcon(n[0]) + "<span>" + n[1] + "</span>" + (n[0] === "admin" ? '<span class="badge" id="pendingBadge" hidden></span>' : "") + "</a>").join("");
+      .map((n) => '<a href="#' + n[0] + '" title="' + n[1] + '" class="' + (navKey(route) === n[0] ? "on" : "") + '">' + navIcon(n[0]) + "<span>" + n[1] + "</span>" + (n[0] === "admin" ? '<span class="badge" id="pendingBadge" hidden></span>' : "") + "</a>").join("");
+    const LOGOUT = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>';
+    let folded = false;
+    try { folded = localStorage.getItem("sideFolded") === "1"; } catch (e) { /* 무시 */ }
     app.innerHTML = demoBar() +
+      '<div class="shell' + (folded ? " folded" : "") + '">' +
+      // 폰에서만 보이는 위쪽 머리글
       '<header class="topbar"><div class="topbar-in">' +
       '<a class="brand" href="#home"><span class="mark">DLS</span><span><b>' + esc(CFG.siteName || "학생회") + '</b><small>' + esc(councilLabel(S.settings.generation + " 학생회", S.settings.councilName)) + "</small></span></a>" +
-      '<div class="me"><span class="who">' + who + "</span>" +
-      (me ? '<button class="btn sm ghost" data-act="editMe">내 정보</button>' : "") +
-      '<button class="btn sm ghost" data-act="logout">로그아웃</button></div></div>' +
-      "</header>" +
-      // 메뉴는 왼쪽 세로 줄 (폰에서는 위쪽 가로 줄)
-      '<div class="shell"><nav class="tabs">' + nav + "</nav>" +
+      '<div class="me">' + (me ? '<button class="btn sm ghost" data-act="editMe">내 정보</button>' : "") +
+      '<button class="btn sm ghost" data-act="logout">로그아웃</button></div></div></header>' +
+      // 컴퓨터: 왼쪽 메뉴 (학생회 이름 · 메뉴 · 접기 · 내 정보) / 폰: 위쪽 가로 메뉴
+      '<aside class="side">' +
+      '<a class="side-brand" href="#home"><span class="mark">DLS</span><span class="side-txt"><b>' + esc(S.settings.councilName || "학생회") + "</b><small>" + esc(CFG.siteName || "") + "</small></span></a>" +
+      '<nav class="tabs">' + nav + "</nav>" +
+      '<button class="side-fold" data-act="sideFold" title="메뉴 접기/펴기"><span class="fold-ico">«</span><span class="side-txt">접기</span></button>' +
+      '<div class="side-me"><button class="side-who" data-act="' + (me ? "editMe" : "logout") + '" title="내 정보"><b>' + esc(me ? me.name : "학생회 공용계정") + "</b><small>" +
+      esc(me ? [me.dept, me.position].filter(Boolean).join(" ") + " · 내 정보" : "로그아웃") + "</small></button>" +
+      '<button class="side-out" data-act="logout" title="로그아웃" aria-label="로그아웃">' + LOGOUT + "</button></div>" +
+      "</aside>" +
       '<div class="shell-main"><main class="page" id="page"><div class="loading">불러오는 중…</div></main>' +
       '<footer class="foot">' + esc(CFG.siteName || "") + " " + esc(curCouncil()) + " · 문의는 회장단에게</footer></div></div>";
     setHeaderHeight();
@@ -743,6 +752,11 @@
     const fn = PAGES[S.route] || PAGES.home;
     try {
       page.innerHTML = await fn();
+      if (S.scrollTo) {
+        const el = page.querySelector('[data-act="toggleProj"][data-id="' + S.scrollTo + '"]');
+        S.scrollTo = "";
+        if (el) setTimeout(() => el.scrollIntoView({ block: "center" }), 0);
+      }
     } catch (e) {
       console.error(e);
       page.innerHTML = '<div class="card empty">' + esc(errMsg(e)) + '<br><button class="btn" data-act="reload">다시 시도</button></div>';
@@ -881,6 +895,14 @@
     { name: "url", label: "관련 링크 (선택)", type: "url", placeholder: "https://…" },
     { name: "until", label: "언제까지 보여줄까요? (선택)", type: "date", help: "이 날이 지나면 자동으로 내려가요. 비워 두면 직접 [내리기]를 누를 때까지 보여요." },
   ];
+  function greeting() {
+    const h = new Date().getHours();
+    if (h < 5) return "이 시간까지 고생 많아요";
+    if (h < 11) return "좋은 아침이에요";
+    if (h < 17) return "오늘도 화이팅이에요";
+    if (h < 22) return "오늘 하루도 수고했어요";
+    return "늦게까지 고생 많아요";
+  }
   PAGES.home = async function () {
     const [tasks, projects, minutes, msgs, notices, roomTasks] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => []), col("notices").catch(() => []), col("deptTasks").catch(() => [])]);
     const myUid = S.authUser && S.authUser.uid;
@@ -909,7 +931,7 @@
       (isAdmin() ? "바뀌었다면 내 정보에서 수정해 주세요." : "소속 국서나 직책이 바뀌었다면 회장단에게 말해 주세요. 회장단이 [관리]에서 바꿔 줘요.") +
       '<div class="actions" style="margin-top:8px">' + (isAdmin() ? '<button class="btn sm primary" data-act="editMe">내 정보 수정</button>' : "") + '<button class="btn sm" data-act="profileOk">확인했어요</button></div></div>' + pendingNote;
     return pendingNote +
-      '<div class="hello"><h2>' + (S.me ? esc(S.me.name) + "님, 안녕하세요" : "안녕하세요") + '</h2><p class="muted">' + fmtDate(t, true) + "</p></div>" +
+      '<div class="hello"><p class="muted">' + fmtDate(t, true) + "</p><h2>" + greeting() + (S.me ? ", " + esc(S.me.name) + "님" : "") + " 👋</h2></div>" +
       noticeBoardHTML(notices) +
       (myRoom.length ? '<a class="notice info link roomlink" href="#room"><b>📋 ' + esc(S.me.dept) + "방에 내가 할 일 " + myRoom.length + "개</b> — " +
         esc(myRoom.slice(0, 2).map((x) => x.title).join(", ")) + (myRoom.length > 2 ? " 외" : "") + " →</a>" : "") +
@@ -1202,22 +1224,52 @@
       S.settings.depts.map((d) => '<button class="fchip' + (S[key] === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="' + act + '" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "</button>").join("");
   }
 
+  /* 사업 한 줄 (사업 기획안 목록) — 누르면 아래로 펼쳐져서 세부 일정·업무 분배·신청 페이지가 보임 */
+  S.openProj = {};
+  function projectRow(p, opts) {
+    const ts = opts.tasks || [], done = ts.filter((x) => x.done).length, t = today();
+    const f = opts.forms && opts.forms[p.id];
+    const when = p.startDate ? fmtDate(p.startDate) + (p.endDate && p.endDate > p.startDate ? " ~ " + fmtDate(p.endDate) : "") : "날짜 미정";
+    const dd = p.startDate && p.startDate >= t && (p.status === "예정" || p.status === "기획중") ? '<span class="pr-dd">' + dday(p.startDate) + "</span>" : "";
+    const links = [["기획안", p.planUrl], ["기타 자료", p.extraUrl]]
+      .filter((l) => safeUrl(l[1])).map((l) => '<a class="btn sm" href="' + esc(safeUrl(l[1])) + '" target="_blank" rel="noopener">' + l[0] + " ↗</a>").join("");
+    const formBtn = opts.forms ? projectFormBtn(p, f, opts) : "";
+    const open = !!S.openProj[p.id];
+    return '<div class="prow' + (open ? " open" : "") + '" style="--c:' + deptColor(p.dept) + '">' +
+      '<button class="pr-head" data-act="toggleProj" data-id="' + esc(p.id) + '" aria-expanded="' + open + '">' +
+      '<span class="pr-chev" aria-hidden="true">›</span>' + deptTag(p.dept) +
+      '<span class="pr-name">' + esc(p.name) + (p.owner ? '<small>' + esc(p.owner) + "</small>" : "") + "</span>" +
+      '<span class="pr-meta">' +
+      (ts.length ? '<span class="pr-prog" title="업무 분배 ' + done + "/" + ts.length + ' 완료"><i style="width:' + Math.round((done / ts.length) * 100) + '%"></i></span><span class="pr-cnt">업무 ' + done + "/" + ts.length + "</span>" : "") +
+      (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") +
+      '<span class="pr-when">' + when + "</span>" + dd + "</span></button>" +
+      '<div class="pr-body">' +
+      '<dl class="meta">' + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
+      (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
+      (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
+      (links || formBtn ? '<div class="plinks">' + links + formBtn + "</div>" : "") +
+      '<div class="pr-cols">' + projectSchedHTML(p, opts) + projectTasksHTML(p, opts) + "</div>" +
+      (isHead() ? '<div class="pfoot"><button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button></div>' : "") +
+      "</div></div>";
+  }
+
   /* ----- 사업 기획안 (지금 학생회) ----- */
   PAGES.projects = async function () {
     const tmap = await tasksByProject();
     const forms = await formsMap();
     const list = (await col("projects")).filter((p) => isActive(p) && (!S.projDept || p.dept === S.projDept ||
       (tmap[p.id] || []).some((t) => t.dept === S.projDept)));
-    const cols = STATUSES.map((st) => {
+    // 진행중 → 예정 → 기획중 → 완료 → 취소 순서로, 사업마다 한 줄씩
+    const cols = ["진행중", "예정", "기획중", "완료", "취소"].map((st) => {
       const items = list.filter((p) => p.status === st).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
-      if (st === "취소" && !items.length) return "";
-      return '<div class="kcol"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small></h3>" +
-        (items.map((p) => projectCard(p, { tasks: tmap[p.id], forms: forms })).join("") || '<p class="empty-s">없음</p>') + "</div>";
+      if ((st === "취소" || st === "진행중") && !items.length) return "";
+      return '<section class="pgroup"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small></h3>" +
+        (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
     }).join("");
     return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌고, 끝난 지 2주가 지나면 [사업 아카이브]로 옮겨져요</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
       '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
-      '<div class="kanban">' + cols + "</div>";
+      '<div class="plist2">' + cols + "</div>";
   };
 
   /* ----- 사업 아카이브 (지난 학생회별) ----- */
@@ -1823,6 +1875,17 @@
     async login() { try { await DB.signIn(); } catch (e) { toast(errMsg(e), true); } },
     async demoLogin(el) { await DB.signInAs(el.dataset.uid); },
     demoSwitch() { S.cache = {}; DB.signOut(); },
+    toggleProj(el) {
+      const row = el.closest(".prow"), id = el.dataset.id;
+      S.openProj[id] = !S.openProj[id];
+      row.classList.toggle("open", S.openProj[id]);
+      el.setAttribute("aria-expanded", S.openProj[id]);
+    },
+    sideFold() {
+      const sh = document.querySelector(".shell"); if (!sh) return;
+      sh.classList.toggle("folded");
+      try { localStorage.setItem("sideFolded", sh.classList.contains("folded") ? "1" : "0"); } catch (e) { /* 무시 */ }
+    },
     async logout() { S.cache = {}; S.route = "home"; try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* 무시 */ } await DB.signOut(); },
     openExternal() { location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(location.href); },
     reload() { S.cache = {}; renderPage(); },
@@ -2076,7 +2139,10 @@
     },
     async viewProject(el) {
       const p = await findIn("projects", el.dataset.id);
-      if (p) { location.hash = isActive(p) ? "projects" : "archive"; }
+      if (!p) return;
+      // 사업 기획안에서 그 사업 줄을 펼쳐서 보여 줌
+      if (isActive(p)) { S.openProj[p.id] = true; S.projDept = ""; S.scrollTo = p.id; location.hash = "projects"; if (S.route === "projects") await renderPage(); }
+      else location.hash = "archive";
     },
     async reuseProject(el) {
       const p = await findIn("projects", el.dataset.id);
