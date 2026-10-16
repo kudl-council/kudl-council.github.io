@@ -44,9 +44,9 @@
     ["projects", "사업 기획안"], ["archive", "사업 아카이브"], ["talk", "소통방"], ["admin", "관리"],
   ];
 
-  const navKey = (r) => (r === "messages" ? "talk" : r);   // 선배들의 한마디는 소통방 탭 안에 있음
+  const navKey = (r) => (r === "messages" ? "talk" : r === "form" ? "projects" : r);   // 신청 페이지는 사업 기획안 안에 있음   // 선배들의 한마디는 소통방 탭 안에 있음
   const S = { authUser: null, me: null, settings: Object.assign({}, DEFAULTS), cache: {}, route: "home",
-    calMonth: null, calFilter: "", q: {}, archiveDept: "", projDept: "", minType: "", room: "" };
+    routeArg: "", calMonth: null, calFilter: "", q: {}, archiveDept: "", projDept: "", minType: "", room: "" };
 
   /* ---------- 작은 도구들 ---------- */
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -699,14 +699,23 @@
       '<div class="me"><span class="who">' + who + "</span>" +
       (me ? '<button class="btn sm ghost" data-act="editMe">내 정보</button>' : "") +
       '<button class="btn sm ghost" data-act="logout">로그아웃</button></div></div>' +
-      '<nav class="tabs">' + nav + "</nav></header>" +
-      '<main class="page" id="page"><div class="loading">불러오는 중…</div></main>' +
-      '<footer class="foot">' + esc(CFG.siteName || "") + " " + esc(curCouncil()) + " · 문의는 회장단에게</footer>";
+      "</header>" +
+      // 메뉴는 왼쪽 세로 줄 (폰에서는 위쪽 가로 줄)
+      '<div class="shell"><nav class="tabs">' + nav + "</nav>" +
+      '<div class="shell-main"><main class="page" id="page"><div class="loading">불러오는 중…</div></main>' +
+      '<footer class="foot">' + esc(CFG.siteName || "") + " " + esc(curCouncil()) + " · 문의는 회장단에게</footer></div></div>";
+    setHeaderHeight();
     renderPage();
     if (isAdmin()) updatePendingBadge();
     if (me && me.status === "approved" && !me.grade) setTimeout(askGrade, 300);
   }
 
+  // 왼쪽 메뉴가 위쪽 머리글 바로 아래에 붙도록 머리글 높이를 기록
+  function setHeaderHeight() {
+    const h = document.querySelector(".topbar");
+    if (h) document.documentElement.style.setProperty("--hh", h.offsetHeight + "px");
+  }
+  window.addEventListener("resize", setHeaderHeight);
   async function updatePendingBadge() {
     try {
       const n = (await col("users")).filter((u) => u.status === "pending").length;
@@ -1140,6 +1149,7 @@
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
       (links ? '<div class="plinks">' + links + "</div>" : "") +
+      (opts.forms ? (function () { const b = projectFormBtn(p, opts.forms[p.id], opts); return b ? '<div class="plinks pform">' + b + "</div>" : ""; })() : "") +
       projectSchedHTML(p, opts) +
       projectTasksHTML(p, opts) +
       (opts.readonly ? "" : '<div class="pfoot">' + (opts.archive && isHead() ? '<button class="btn sm" data-act="reuseProject" data-id="' + esc(p.id) + '">참고해서 새로 기획하기</button>' : "") +
@@ -1182,13 +1192,14 @@
   /* ----- 사업 기획안 (지금 학생회) ----- */
   PAGES.projects = async function () {
     const tmap = await tasksByProject();
+    const forms = await formsMap();
     const list = (await col("projects")).filter((p) => isActive(p) && (!S.projDept || p.dept === S.projDept ||
       (tmap[p.id] || []).some((t) => t.dept === S.projDept)));
     const cols = STATUSES.map((st) => {
       const items = list.filter((p) => p.status === st).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
       if (st === "취소" && !items.length) return "";
       return '<div class="kcol"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small></h3>" +
-        (items.map((p) => projectCard(p, { tasks: tmap[p.id] })).join("") || '<p class="empty-s">없음</p>') + "</div>";
+        (items.map((p) => projectCard(p, { tasks: tmap[p.id], forms: forms })).join("") || '<p class="empty-s">없음</p>') + "</div>";
     }).join("");
     return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌고, 끝난 지 2주가 지나면 [사업 아카이브]로 옮겨져요</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
@@ -1288,6 +1299,407 @@
   /* ============================================================
      버튼 동작
      ============================================================ */
+  /* ============================================================
+     행사 신청 양식 · 참여자 명단 (사업 기획안 → 사업 카드 → 📝 신청 페이지)
+     - 학생은 apply.html?f=사업번호 링크로 로그인 없이 신청
+     - 양식 만들기·고치기: 양식 담당 국서(기본 소통국, 대협국 행사는 대협국)의 모든 국원 + 회장단
+     - 명단 보기·입금·출석 체크: 위 사람들 + 그 사업 담당 국서 사람들
+     - 개인정보: 보관 기한(기본: 행사 끝나고 2주)이 지나면 명단이 자동으로 지워짐
+     ============================================================ */
+  const AP = window.APPLY;
+  const respPath = (pid) => "forms/" + pid + "/responses";
+  const applyUrl = (pid) => location.href.split("#")[0].replace(/index\.html$/, "").replace(/[^/]*$/, "") + "apply.html?f=" + encodeURIComponent(pid);
+  const isExecMember = () => isAdmin() || isExecPos() || !!(S.me && S.me.status === "approved" && S.me.dept === execDept());
+  const formDeptFor = (p) => {
+    if (/대외|대협/.test(p.dept || "")) return p.dept;
+    return (S.settings.depts || []).find((d) => /소통/.test(d)) || p.dept;
+  };
+  const canEditForm = (f) => !!f && (isExecMember() || !!(S.me && S.me.status === "approved" && S.me.dept === f.ownerDept));
+  const canSeeRoster = (f) => !!f && (canEditForm(f) || !!(S.me && S.me.status === "approved" && S.me.dept === f.projectDept));
+  const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return ymd(d); };
+  const keepDefault = (p) => addDays((p.endDate && p.endDate > (p.startDate || "") ? p.endDate : p.startDate) || today(), 14);
+  S.fm = { pid: "" };
+
+  async function formsMap() {
+    if (!S.cache.forms) { try { S.cache.forms = await DB.list("forms"); } catch (e) { S.cache.forms = []; } }
+    const m = {};
+    S.cache.forms.forEach((f) => (m[f.id] = f));
+    return m;
+  }
+  // 사업 카드에 붙는 버튼
+  function projectFormBtn(p, f, opts) {
+    if (f) return '<a class="btn sm" href="#form/' + encodeURIComponent(p.id) + '">📝 신청 페이지 <span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "받는 중" : "닫힘") + "</span></a>";
+    if (opts.readonly || opts.archive || !canEditForm({ ownerDept: formDeptFor(p) })) return "";
+    return '<a class="btn sm ghost" href="#form/' + encodeURIComponent(p.id) + '">+ 신청 양식 만들기</a>';
+  }
+
+  // 명단: 제출 순서대로 정렬하고 번호·선착순 대기 계산
+  function ordered(f, list) {
+    list.sort((a, b) => (a.at || 0) - (b.at || 0) || String(a.id).localeCompare(String(b.id)));
+    return AP.place(f, list);
+  }
+  async function loadFm(pid, force) {
+    const fm = S.fm;
+    if (fm.pid !== pid || force) {
+      Object.assign(fm, { pid: pid, form: null, draft: null, dirty: false, resp: null, q: "", pv: null });
+      fm.form = await DB.get("forms", pid);
+      if (!fm.tab || !force) fm.tab = "";
+    }
+    const f = fm.form;
+    if (f && canSeeRoster(f) && !fm.resp) {
+      fm.resp = ordered(f, await DB.list(respPath(pid)));
+      // 보관 기한이 지난 명단은 자동으로 지움 (개인정보 보호)
+      if (fm.resp.length && f.keepUntil && today() > f.keepUntil) {
+        let n = 0;
+        for (const r of fm.resp) { try { await DB.remove(respPath(pid), r.id); n++; } catch (e) { console.warn(e); } }
+        fm.resp = ordered(f, await DB.list(respPath(pid)));
+        if (n) setTimeout(() => toast("보관 기한이 지나서 명단 " + n + "명을 지웠어요."), 300);
+      }
+    }
+  }
+  const curForm = () => S.fm.draft || S.fm.form;
+
+  PAGES.form = async function () {
+    const pid = S.routeArg;
+    const p = (await col("projects")).find((x) => x.id === pid);
+    if (!p) return '<div class="card empty">사업을 찾을 수 없어요.<br><a class="btn" href="#projects">사업 기획안으로</a></div>';
+    await loadFm(pid);
+    const fm = S.fm, f = fm.form;
+    const editable = canEditForm(f || { ownerDept: formDeptFor(p) });
+    const viewer = canSeeRoster(f);
+    if (!fm.tab) fm.tab = f ? (viewer ? "resp" : "preview") : "build";
+    if (fm.tab === "resp" && !viewer) fm.tab = "preview";
+    if (fm.tab === "build" && !editable) fm.tab = "preview";
+
+    let head = '<div class="fm-head"><a class="fm-back" href="#projects">← 사업 기획안</a>' +
+      '<div class="fm-title"><h2>' + esc(p.name) + "</h2>" + deptTag(p.dept) +
+      (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") + "</div>";
+    if (f) {
+      head += '<div class="fm-link"><code>' + esc(applyUrl(pid)) + "</code>" +
+        '<button class="btn sm primary" data-act="fmCopy">링크 복사</button><a class="btn sm" href="' + esc(applyUrl(pid)) + '" target="_blank" rel="noopener">열어 보기 ↗</a>' +
+        (editable ? '<button class="btn sm" data-act="fmOpen">' + (f.open ? "신청 닫기" : "신청 받기 시작") + "</button>" : "") + "</div>" +
+        '<p class="muted small" style="margin:0">양식 담당: <b>' + esc(f.ownerDept) + "</b> 국서 모두 + 회장단 · 명단 보기: 여기에 " + esc(f.projectDept) + " 국서 추가" +
+        (f.keepUntil ? " · 명단 보관 기한 <b>" + esc(dotDate(f.keepUntil)) + "</b> (지나면 자동 삭제)" : "") + "</p>";
+    }
+    head += "</div>";
+
+    if (!f && !fm.draft) {
+      if (!editable) return head + '<div class="card empty">아직 신청 양식이 없어요.<br><span class="small">양식은 ' + esc(formDeptFor(p)) + " 국서나 회장단이 만들어요.</span></div>";
+      return head + '<div class="card" style="max-width:560px"><h3>신청 양식 만들기</h3><p class="muted small">틀을 하나 고르면 질문이 미리 들어가요. 만든 뒤에 질문을 마음대로 고칠 수 있어요.</p>' +
+        '<div class="fm-tpl">' + Object.keys(AP.TEMPLATES).map((k, i) => '<label><input type="radio" name="fmTpl" value="' + k + '"' + (i === 0 ? " checked" : "") + "> " + esc(AP.TEMPLATES[k].label) + "</label>").join("") + "</div>" +
+        '<div style="margin-top:12px"><button class="btn primary" data-act="fmStart">이 틀로 시작하기</button></div></div>';
+    }
+
+    const tabs = [["resp", "참여자 명단" + (fm.resp ? " (" + fm.resp.length + ")" : ""), viewer && f], ["build", "양식 만들기", editable], ["preview", "학생 화면 미리보기", !editable]]
+      .filter((t) => t[2]).map((t) => '<a href="#" class="' + (fm.tab === t[0] ? "on" : "") + '" data-act="fmTab" data-tab="' + t[0] + '">' + t[1] + "</a>").join("");
+    let body = "";
+    if (fm.tab === "resp") body = rosterHTML(f);
+    else if (fm.tab === "build") body = buildHTML(p);
+    else body = '<div style="max-width:440px"><div class="fm-preview-label">학생이 보는 화면</div><div class="fm-preview" id="fmPreview">' + previewHTML() + "</div></div>";
+    return head + '<nav class="fm-tabs">' + tabs + "</nav>" + body;
+  };
+
+  /* ---------- 참여자 명단 ---------- */
+  function rosterStats(f, list) {
+    const going = list.filter((r) => AP.isGoing(f, r)), inn = going.filter((r) => !r.wait), fee = Number(f.fee) || 0;
+    const stat = (k, v) => '<div class="fm-stat"><span>' + k + "</span><b>" + v + "</b></div>";
+    return '<div class="fm-stats">' + stat("응답", list.length) +
+      stat(f.mode === "first" ? "정원 안 / 대기" : "참여", f.mode === "first" ? inn.length + " / " + (going.length - inn.length) : going.length) +
+      (AP.attendQ(f) ? stat("불참", list.length - going.length) : "") +
+      (fee ? stat("입금", inn.filter((r) => r.paid).length + "/" + inn.length) : "") +
+      stat("출석", inn.filter((r) => r.attended).length + "/" + inn.length) + "</div>" +
+      '<p class="muted small" style="margin:0">' + (fee ? "받을 돈 " + AP.won(inn.length * fee) + " · 입금 확인 " + AP.won(inn.filter((r) => r.paid).length * fee) : "참가비 없는 행사예요") + "</p>";
+  }
+  function rosterRows(f) {
+    const fm = S.fm, q = (fm.q || "").replace(/\s/g, "");
+    const list = fm.resp.filter((r) => !q || [r.name, r.sid, r.depositName].some((x) => String(x || "").indexOf(q) >= 0));
+    const qs = f.qs || [];
+    const editable = canEditForm(f), fee = Number(f.fee) > 0;
+    const cell = (x, r) => {
+      const v = (r.answers || {})[x.id];
+      if (x.type === "name") return "<b>" + esc(r.name || v) + "</b>";
+      if (x.type === "sid") return esc(r.sid || v);
+      if (x.type === "agree") return v ? '<span class="fm-pill ok">동의</span>' : "";
+      if (x.type === "yesno" && x.attend) return v === "예" ? '<span class="fm-pill ok">참여</span>' : v ? '<span class="fm-pill">불참</span>' : "";
+      return esc(Array.isArray(v) ? v.join(", ") : v);
+    };
+    const th = "<tr><th>번호</th><th>제출 시각</th>" + qs.map((x) => "<th>" + esc(x.label) + "</th>").join("") +
+      (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? "<th>입금자명</th><th>입금</th>" : "") + "<th>출석</th>" + (editable ? "<th></th>" : "") + "</tr>";
+    const n = 3 + qs.length + (fee ? 2 : 0) + (f.mode === "first" ? 1 : 0) + (editable ? 1 : 0);
+    const rows = list.map((r) => {
+      const going = AP.isGoing(f, r), active = going && !r.wait, sid = esc(r.id);
+      return '<tr class="' + (active ? "" : "off") + '">' +
+        '<td class="num">' + (r.no ? r.no : "–") + '</td><td class="num">' + esc(AP.stampText(r.at)) + "</td>" +
+        qs.map((x) => '<td class="' + (x.type === "phone" || x.type === "sid" || x.type === "name" ? "num" : "ans") + '">' + cell(x, r) + "</td>").join("") +
+        (f.mode === "first" ? "<td>" + (!going ? "" : r.wait ? '<span class="fm-pill warn">대기 ' + r.waitNo + "</span>" : '<span class="fm-pill ok">정원 안</span>') + "</td>" : "") +
+        (fee ? '<td class="num"><b>' + (active ? esc(r.depositName || AP.depositName(r.sid, r.name)) : "–") + "</b></td>" +
+          "<td>" + (active ? '<label class="fm-paid"><input type="checkbox" data-act="fmPaid" data-sid="' + sid + '"' + (r.paid ? " checked" : "") + "> " + (r.paid ? "확인" : "입금 전") + "</label>" : "") + "</td>" : "") +
+        "<td>" + (active ? '<button class="fm-att' + (r.attended ? " on" : "") + '" data-act="fmAtt" data-sid="' + sid + '">' + (r.attended ? "✓ " + esc(r.attendedAt || "") : "확인") + "</button>" : "") + "</td>" +
+        (editable ? '<td><button class="x" data-act="fmDelResp" data-sid="' + sid + '" aria-label="이 응답 지우기" title="이 응답 지우기">×</button></td>' : "") + "</tr>";
+    }).join("") || '<tr><td colspan="' + n + '" class="muted" style="text-align:center;padding:28px">' + (q ? "찾는 사람이 없어요." : "아직 응답이 없어요. 링크를 단톡방에 올려 보세요.") + "</td></tr>";
+    return "<thead>" + th + "</thead><tbody>" + rows + "</tbody>";
+  }
+  function rosterHTML(f) {
+    const fee = Number(f.fee) > 0;
+    return '<div id="fmStats">' + rosterStats(f, S.fm.resp) + "</div>" +
+      '<div class="fm-tools"><input type="search" data-fm-search placeholder="이름 · 학번 · 입금자명 찾기" value="' + esc(S.fm.q || "") + '">' +
+      (fee ? '<button class="btn sm" data-act="fmBank">통장 내역으로 입금 확인</button>' : "") +
+      '<button class="btn sm" data-act="fmCsv">엑셀(CSV) 받기</button><button class="btn sm ghost" data-act="fmReload">새로고침</button></div>' +
+      '<div class="fm-tablewrap"><table class="fm-table" id="fmTable">' + rosterRows(f) + "</table></div>" +
+      '<p class="muted small">입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 24123이다홍). 행사 당일엔 이 화면에서 [확인]을 눌러 출석을 체크해요.</p>';
+  }
+  function refreshRoster() {
+    const f = S.fm.form, t = document.getElementById("fmTable"), s = document.getElementById("fmStats");
+    if (t) t.innerHTML = rosterRows(f);
+    if (s) s.innerHTML = rosterStats(f, S.fm.resp);
+  }
+  const hm = () => { const d = new Date(); return z(d.getHours()) + ":" + z(d.getMinutes()); };
+
+  /* ---------- 양식 만들기 ---------- */
+  function buildHTML(p) {
+    const fm = S.fm;
+    if (!fm.draft) fm.draft = JSON.parse(JSON.stringify(fm.form));
+    const f = fm.draft;
+    const inp = (k, label, o) => { o = o || {};
+      return '<div class="field' + (o.half ? " half" : "") + '"' + (o.id ? ' id="' + o.id + '"' : "") + (o.hidden ? " hidden" : "") + '><label>' + label + "</label>" +
+        (o.area ? '<textarea data-fm="' + k + '" rows="' + (o.rows || 3) + '">' + esc(f[k]) + "</textarea>" : '<input data-fm="' + k + '" value="' + esc(f[k] == null ? "" : f[k]) + '"' + (o.num ? ' inputmode="numeric"' : "") + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : "") + ">") +
+        (o.help ? '<small class="help">' + o.help + "</small>" : "") + "</div>"; };
+    const sel = (k, label, opts, o) => '<div class="field' + (o && o.half ? " half" : "") + '"><label>' + label + '</label><select data-fm="' + k + '"' + (o && o.disabled ? " disabled" : "") + ">" +
+      opts.map((x) => '<option value="' + esc(x[0]) + '"' + (String(f[k]) === String(x[0]) ? " selected" : "") + ">" + esc(x[1]) + "</option>").join("") + "</select>" + (o && o.help ? '<small class="help">' + o.help + "</small>" : "") + "</div>";
+    const basics = '<div class="card"><h3>기본 정보</h3><div class="fields">' +
+      inp("title", "신청서 제목") + inp("desc", "안내문 (일시·장소 등)", { area: true }) +
+      sel("mode", "모집 방식", [["normal", "일반 (기간 안에 누구나)"], ["first", "선착순 (정원 넘으면 대기)"]], { half: true }) +
+      inp("cap", "정원", { half: true, num: true, id: "fmCapWrap", hidden: f.mode !== "first" }) +
+      inp("fee", "참가비 (0이면 입금 안내 없음)", { half: true, num: true }) +
+      inp("due", "입금 기한", { half: true, ph: "예: 10월 23일 (금)까지" }) +
+      inp("account", "입금 계좌", { ph: "예: 국민 123456-01-234567 (생명과학부 학생회)" }) +
+      sel("ownerDept", "양식 담당 국서", (S.settings.depts || []).map((d) => [d, d]), { half: true, disabled: !isExecMember(), help: isExecMember() ? "이 국서 사람 모두가 양식을 고칠 수 있어요" : "회장단만 바꿀 수 있어요" }) +
+      '<div class="field half"><label>명단 보관 기한</label>' + dateInputHTML('data-fm-date="keepUntil"', f.keepUntil || keepDefault(p)) + '<small class="help">이 날이 지나면 명단이 자동으로 지워져요</small></div>' +
+      "</div></div>";
+    return '<div class="fm-build"><div class="fm-edit">' + basics +
+      '<div class="card"><div class="fm-qhead" style="margin-bottom:10px"><h3>질문 <small>' + f.qs.length + "개</small></h3></div>" +
+      '<div id="fmQs" style="display:grid;gap:10px">' + qsHTML() + "</div>" +
+      '<div style="margin-top:12px"><div class="muted small" style="font-weight:700;margin-bottom:6px">질문 추가</div><div class="fm-add">' +
+      Object.keys(AP.TYPES).map((k) => '<button class="btn sm" data-act="fmAddQ" data-type="' + k + '">+ ' + AP.TYPES[k].label + "</button>").join("") + "</div></div></div>" +
+      '<div class="fm-save"><button class="btn primary" data-act="fmSave">저장</button><span class="dirty" id="fmDirty"' + (fm.dirty || !fm.form ? "" : " hidden") + ">" + (fm.form ? "저장 안 한 변경이 있어요" : "아직 저장 전이에요") + "</span>" +
+      (fm.form ? '<button class="btn ghost" data-act="fmDiscard">되돌리기</button><span style="flex:1"></span><button class="btn danger sm" data-act="fmDelete">양식·명단 삭제</button>' : '<button class="btn ghost" data-act="fmDiscard">취소</button>') + "</div></div>" +
+      '<div><div class="fm-preview-label">학생이 보는 화면 (고치면 바로 바뀌어요)</div><div class="fm-preview" id="fmPreview">' + previewHTML() + "</div></div></div>";
+  }
+  function qsHTML() {
+    const qs = S.fm.draft.qs;
+    if (!qs.length) return '<p class="muted small">질문이 없어요. 아래에서 추가해 주세요.</p>';
+    return qs.map(function (q, i) {
+      const t = AP.TYPES[q.type] || { label: q.type };
+      return '<div class="fm-q" data-q="' + esc(q.id) + '"><div class="fm-qhead"><span class="ord">질문 ' + (i + 1) + " · " + t.label + (t.hint ? " · " + t.hint : "") + "</span>" +
+        '<div class="fm-qtools"><button data-act="fmMoveQ" data-dir="-1" data-q="' + esc(q.id) + '" aria-label="위로"' + (i ? "" : " disabled") + ">↑</button>" +
+        '<button data-act="fmMoveQ" data-dir="1" data-q="' + esc(q.id) + '" aria-label="아래로"' + (i < qs.length - 1 ? "" : " disabled") + ">↓</button>" +
+        '<button data-act="fmDelQ" data-q="' + esc(q.id) + '" aria-label="삭제">×</button></div></div>' +
+        '<div class="fields"><div class="field"><label>질문</label><input data-fq="label" data-q="' + esc(q.id) + '" value="' + esc(q.label) + '"></div>' +
+        (q.type === "choice" || q.type === "multi" ? '<div class="field"><label>보기 (한 줄에 하나씩)</label><textarea rows="3" data-fq="options" data-q="' + esc(q.id) + '">' + esc((q.options || []).join("\n")) + "</textarea></div>" : "") +
+        (q.type === "agree" ? '<div class="field"><label>동의 안내문</label><textarea rows="4" data-fq="text" data-q="' + esc(q.id) + '">' + esc(q.text || "") + "</textarea></div>" : "") + "</div>" +
+        "<div>" + (t.fixed ? '<span class="muted small">항상 필수</span>' : '<label class="fm-chk"><input type="checkbox" data-fq="required" data-q="' + esc(q.id) + '"' + (q.required ? " checked" : "") + "> 필수</label>") +
+        (q.type === "yesno" ? '<label class="fm-chk"><input type="checkbox" data-fq="attend" data-q="' + esc(q.id) + '"' + (q.attend ? " checked" : "") + "> 참여 여부 질문 (‘아니오’면 입금 안내·명단 번호에서 빠짐)</label>" : "") + "</div></div>";
+    }).join("");
+  }
+  function previewHTML() {
+    const fm = S.fm, f = curForm();
+    if (!f) return "";
+    if (fm.pv) return AP.doneHTML(f, fm.pv, { preview: true });
+    return AP.formHTML(f, { preview: true });
+  }
+  let pvTimer;
+  function refreshPreview(now) {
+    clearTimeout(pvTimer);
+    pvTimer = setTimeout(function () {
+      const box = document.getElementById("fmPreview");
+      if (!box) return;
+      // 미리보기에 쓰던 답은 그대로 남김
+      const keep = [];
+      box.querySelectorAll('[name^="a_"]').forEach((el) => keep.push({ n: el.name, v: el.value, t: el.type, c: el.checked }));
+      box.innerHTML = previewHTML();
+      keep.forEach((k) => box.querySelectorAll('[name="' + k.n + '"]').forEach((el) => {
+        if (k.t === "radio" || k.t === "checkbox") { if (el.value === k.v) el.checked = k.c; } else el.value = k.v;
+      }));
+    }, now ? 0 : 120);
+  }
+  function markDirty() { S.fm.dirty = true; const d = document.getElementById("fmDirty"); if (d) { d.hidden = false; d.textContent = "저장 안 한 변경이 있어요"; } }
+  function redrawQs() { const b = document.getElementById("fmQs"); if (b) b.innerHTML = qsHTML(); markDirty(); refreshPreview(true); }
+  const findQ = (id) => S.fm.draft.qs.find((q) => q.id === id);
+
+  // 입력할 때마다 초안에 반영
+  document.addEventListener("input", function (e) {
+    const el = e.target;
+    if (!el.dataset) return;
+    if (el.dataset.fmSearch !== undefined) {
+      S.fm.q = el.value; refreshRoster(); return;
+    }
+    const f = S.fm.draft;
+    if (!f) return;
+    if (el.dataset.fm) {
+      const k = el.dataset.fm;
+      if (k === "cap" || k === "fee") { const d = el.value.replace(/\D/g, "").slice(0, 7); el.value = d; f[k] = Number(d) || 0; }
+      else f[k] = el.value;
+      if (k === "mode") { const w = document.getElementById("fmCapWrap"); if (w) w.hidden = f.mode !== "first"; }
+      markDirty(); refreshPreview();
+    } else if (el.dataset.fmDate) {
+      const iso = isoDate(fmtDots(el.value.replace(/\D/g, "").slice(0, 8))); if (iso) { f[el.dataset.fmDate] = iso; markDirty(); }
+    } else if (el.dataset.fq) {
+      const q = findQ(el.dataset.q); if (!q) return;
+      const k = el.dataset.fq;
+      if (k === "options") q.options = el.value.split("\n").map((s) => s.trim()).filter(Boolean);
+      else if (k === "required" || k === "attend") q[k] = el.checked;
+      else q[k] = el.value;
+      markDirty(); refreshPreview();
+    }
+  });
+  document.addEventListener("change", function (e) {
+    const el = e.target;
+    if (!el.dataset || !S.fm.draft) return;
+    if (el.dataset.fm === "mode" || el.dataset.fm === "ownerDept") el.dispatchEvent(new Event("input", { bubbles: true }));
+    else if (el.dataset.fq === "required" || el.dataset.fq === "attend") el.dispatchEvent(new Event("input", { bubbles: true }));
+    else if (el.classList.contains("dnative") && el.closest(".dwrap") && el.closest(".dwrap").querySelector("[data-fm-date]")) {
+      S.fm.draft[el.closest(".dwrap").querySelector("[data-fm-date]").dataset.fmDate] = el.value; markDirty();
+    }
+  });
+  // 미리보기에서 제출 눌러 보기 (저장은 안 됨)
+  document.addEventListener("submit", function (e) {
+    const form = e.target;
+    if (!form.classList || !form.classList.contains("ap-form") || !form.closest("#fmPreview")) return;
+    e.preventDefault();
+    const f = curForm(), r = AP.readAnswers(f, form), err = form.querySelector(".ap-err");
+    if (r.err) { err.hidden = false; err.textContent = r.err; return; }
+    S.fm.pv = { name: r.name, sid: r.sid, answers: r.answers, at: Date.now() };
+    refreshPreview(true);
+  });
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("[data-ap-back]")) { S.fm.pv = null; refreshPreview(true); return; }
+    const b = e.target.closest("#fmPreview [data-copy]");
+    if (b) toast("복사했어요: " + b.dataset.copy);
+  });
+
+  const FORM_ACTS = {
+    fmTab(el) { S.fm.tab = el.dataset.tab; S.fm.pv = null; renderPage(); },
+    fmStart() {
+      const p = (S.cache.projects || []).find((x) => x.id === S.fm.pid);
+      const tpl = (document.querySelector('input[name="fmTpl"]:checked') || {}).value || "basic";
+      S.fm.draft = Object.assign(AP.newForm(tpl, p.name), { ownerDept: formDeptFor(p), projectDept: p.dept, keepUntil: keepDefault(p) });
+      S.fm.tab = "build"; S.fm.dirty = true; renderPage();
+    },
+    fmAddQ(el) {
+      const t = el.dataset.type, multi = t === "choice" || t === "multi";
+      if ((t === "name" || t === "sid") && AP.qOf(S.fm.draft, t)) return toast("‘" + AP.TYPES[t].label + "’ 질문은 하나만 있으면 돼요.", true);
+      S.fm.draft.qs.push(AP.Q(t, multi || t === "text" ? "새 질문" : t === "agree" ? "안내 내용에 동의합니다" : AP.TYPES[t].label, multi ? { options: ["보기 1", "보기 2"] } : {}));
+      redrawQs();
+      const last = document.getElementById("fmQs").lastElementChild;
+      if (last) { last.scrollIntoView({ block: "center", behavior: "smooth" }); const i = last.querySelector("input"); if (i) i.select(); }
+    },
+    fmDelQ(el) {
+      const q = findQ(el.dataset.q);
+      if (q && AP.TYPES[q.type] && AP.TYPES[q.type].fixed) return toast("이름·학번 질문은 지울 수 없어요. (입금자명·중복 확인에 써요)", true);
+      S.fm.draft.qs = S.fm.draft.qs.filter((x) => x.id !== el.dataset.q); redrawQs();
+    },
+    fmMoveQ(el) {
+      const qs = S.fm.draft.qs, i = qs.findIndex((x) => x.id === el.dataset.q), j = i + Number(el.dataset.dir);
+      if (i < 0 || j < 0 || j >= qs.length) return;
+      const t = qs[i]; qs[i] = qs[j]; qs[j] = t; redrawQs();
+    },
+    async fmSave(el) {
+      const fm = S.fm, f = fm.draft, p = (S.cache.projects || []).find((x) => x.id === fm.pid);
+      const bad = AP.checkForm(f);
+      if (bad) return toast(bad, true);
+      const doc = Object.assign({}, f, { projectId: fm.pid, projectName: p ? p.name : f.projectName || "", projectDept: p ? p.dept : f.projectDept,
+        ownerDept: f.ownerDept || formDeptFor(p), keepUntil: f.keepUntil || keepDefault(p), cap: Number(f.cap) || 0, fee: Number(f.fee) || 0,
+        open: !!f.open, updatedAt: new Date().toISOString(), updatedBy: S.authUser.uid });
+      delete doc.id;
+      if (!canEditForm(doc)) return toast("양식 담당 국서를 우리 국서가 아닌 곳으로 바꾸면 저장할 수 없어요.", true);
+      el.disabled = true;
+      try { await DB.set("forms", fm.pid, doc); } catch (e) { el.disabled = false; throw e; }
+      const first = !fm.form;
+      dirty("forms");
+      await loadFm(fm.pid, true);
+      S.fm.tab = "build";
+      await renderPage();
+      toast(first ? "저장했어요. 준비되면 [신청 받기 시작]을 누르고 링크를 공유하세요." : "저장했어요. 학생 화면에 바로 반영돼요.");
+    },
+    fmDiscard() {
+      if (S.fm.dirty && !confirm("저장 안 한 변경을 버릴까요?")) return;
+      S.fm.draft = null; S.fm.dirty = false; S.fm.pv = null;
+      if (!S.fm.form) { location.hash = "projects"; return; }
+      renderPage();
+    },
+    async fmOpen() {
+      const f = S.fm.form;
+      if (S.fm.dirty) return toast("먼저 [저장]을 눌러 주세요.", true);
+      if (!f.open && !confirm("신청을 받기 시작할까요? 링크를 받은 학생이 바로 신청할 수 있어요.")) return;
+      await DB.update("forms", S.fm.pid, { open: !f.open });
+      dirty("forms"); await loadFm(S.fm.pid, true); await renderPage();
+      toast(S.fm.form.open ? "신청을 받기 시작했어요. 링크를 복사해서 공유하세요." : "신청을 닫았어요.");
+    },
+    fmCopy() {
+      const u = applyUrl(S.fm.pid);
+      Promise.resolve(navigator.clipboard && navigator.clipboard.writeText(u)).then(() => toast("신청 링크를 복사했어요.")).catch(() => toast("링크를 길게 눌러 복사해 주세요."));
+    },
+    async fmDelete() {
+      if (!confirm("이 신청 양식과 참여자 명단(" + (S.fm.resp ? S.fm.resp.length : 0) + "명)을 모두 지울까요? 되돌릴 수 없어요.")) return;
+      for (const r of (await DB.list(respPath(S.fm.pid)))) await DB.remove(respPath(S.fm.pid), r.id);
+      await DB.remove("forms", S.fm.pid);
+      dirty("forms"); S.fm = { pid: "" }; location.hash = "projects"; toast("삭제했어요.");
+    },
+    async fmReload() { S.fm.resp = null; await loadFm(S.fm.pid); refreshRoster(); toast("새로 불러왔어요."); },
+    async fmAtt(el) {
+      const r = S.fm.resp.find((x) => x.id === el.dataset.sid); if (!r) return;
+      const v = !r.attended, patch = { attended: v, attendedAt: v ? hm() : "" };
+      await DB.update(respPath(S.fm.pid), r.id, patch);
+      Object.assign(r, patch); refreshRoster();
+      if (v) toast(r.name + " 출석 확인 (" + patch.attendedAt + ")");
+    },
+    async fmPaid(el) {
+      const r = S.fm.resp.find((x) => x.id === el.dataset.sid); if (!r) return;
+      const patch = { paid: el.checked, paidAt: el.checked ? new Date().toISOString() : "" };
+      try { await DB.update(respPath(S.fm.pid), r.id, patch); } catch (e) { el.checked = !el.checked; throw e; }
+      Object.assign(r, patch); refreshRoster();
+    },
+    async fmDelResp(el) {
+      const r = S.fm.resp.find((x) => x.id === el.dataset.sid); if (!r) return;
+      if (!confirm(r.name + " (" + r.sid + ") 응답을 지울까요? 같은 학번으로 다시 신청할 수 있게 돼요.")) return;
+      await DB.remove(respPath(S.fm.pid), r.id);
+      S.fm.resp = ordered(S.fm.form, S.fm.resp.filter((x) => x !== r)); refreshRoster(); toast("지웠어요.");
+    },
+    fmBank() {
+      const f = S.fm.form;
+      openForm({ title: "통장 내역으로 입금 확인",
+        intro: '<p class="muted small" style="margin:0">은행 앱 거래내역을 복사해서 붙여넣으면, 명단의 <b>입금자명</b>(예: 24123이다홍)이 보이는 사람을 입금 확인으로 체크해요. 띄어쓰기는 무시해요.</p>',
+        fields: [{ name: "text", label: "거래내역 붙여넣기", type: "textarea", rows: 8, required: true, placeholder: "10.20 14:02  24123이다홍  3,000\n10.20 14:10  25088김민준  3,000" }],
+        submitLabel: "맞춰 보기",
+        onSubmit: async function (v) {
+          const txt = String(v.text || "").replace(/\s/g, "");
+          const todo = S.fm.resp.filter((r) => AP.needPay(f, r) && !r.paid);
+          const hit = todo.filter((r) => txt.indexOf(r.depositName || AP.depositName(r.sid, r.name)) >= 0);
+          const nameOnly = todo.filter((r) => hit.indexOf(r) < 0 && r.name && txt.indexOf(r.name) >= 0);
+          for (const r of hit) { const patch = { paid: true, paidAt: new Date().toISOString() }; await DB.update(respPath(S.fm.pid), r.id, patch); Object.assign(r, patch); }
+          setTimeout(function () {
+            refreshRoster();
+            infoModal("입금 확인 결과", "<p><b>" + hit.length + "명</b>을 입금 확인으로 체크했어요." + (hit.length ? "<br><span class='muted small'>" + hit.map((r) => esc(r.name)).join(", ") + "</span>" : "") + "</p>" +
+              (nameOnly.length ? '<div class="notice warn"><b>직접 확인해 주세요 (' + nameOnly.length + "명)</b><br>입금자명 형식은 다르지만 이름은 보여요: " + nameOnly.map((r) => esc(r.name) + " (" + esc(r.depositName) + ")").join(", ") + "</div>" : "") +
+              '<p class="muted small">아직 입금 안 된 사람: ' + (todo.length - hit.length) + "명</p>");
+          }, 0);
+        } });
+    },
+    fmCsv() {
+      const f = S.fm.form, extra = (f.qs || []).filter((x) => x.type !== "name" && x.type !== "sid");
+      const head = ["번호", "이름", "학번", "입금자명", f.mode === "first" ? "선착순" : "", "입금", "출석", "제출 시각"].filter(Boolean).concat(extra.map((x) => x.label));
+      const rows = S.fm.resp.map((r) => [r.no || "", r.name, r.sid, r.depositName, f.mode === "first" ? (!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안") : null,
+        r.paid ? "O" : "", r.attended ? "O " + (r.attendedAt || "") : "", AP.stampText(r.at)].filter((x) => x !== null)
+        .concat(extra.map((x) => { const v = (r.answers || {})[x.id]; return x.type === "agree" ? (v ? "동의" : "") : Array.isArray(v) ? v.join(", ") : (v == null ? "" : v); })));
+      const csv = "﻿" + [head].concat(rows).map((row) => row.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      a.download = "roster-" + S.fm.pid + "-" + today() + ".csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      toast("받았어요. 개인정보가 있으니 회장단 드라이브에만 보관하세요.");
+    },
+  };
+
   async function after(...names) { names.forEach(dirty); await renderPage(); }
   const stamp = () => ({ createdBy: S.authUser.uid, createdAt: new Date().toISOString() });
   function ownerFrom(v) {
@@ -1551,6 +1963,8 @@
         extraButtons: isHead() ? [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)")) return;
           await DB.remove("projects", p.id);
+          // 신청 양식·명단도 함께 지움 (권한이 없으면 보관 기한에 자동으로 지워짐)
+          try { if (await DB.get("forms", p.id)) { for (const r of await DB.list(respPath(p.id))) await DB.remove(respPath(p.id), r.id); await DB.remove("forms", p.id); dirty("forms"); } } catch (e) { console.warn(e); }
           try { for (const t of (await col("tasks")).filter((x) => x.projectId === p.id)) await DB.update("tasks", t.id, { projectId: "" }); } catch (e) { /* 국원은 업무를 못 고침 — 업무는 그대로 남음 */ }
           closeModal(); await after("projects", "tasks"); toast("삭제했어요.");
         } }] : [],
@@ -1835,6 +2249,7 @@
   };
 
   /* ---------- 이벤트 연결 ---------- */
+  Object.assign(ACTS, FORM_ACTS);
   document.addEventListener("click", function (e) {
     const el = e.target.closest("[data-act]");
     if (!el || el.tagName === "INPUT" || el.tagName === "SELECT") return;
@@ -1907,9 +2322,15 @@
     } catch (er) { toast(errMsg(er), true); btn.disabled = false; }
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modalRoot.innerHTML) closeModal(); });
-  window.addEventListener("hashchange", function () {
-    S.route = (location.hash || "#home").slice(1);
+  // 주소 뒤 #사업기획안 처럼 화면 이름 (#form/사업번호 처럼 뒤에 값이 붙기도 함)
+  function parseRoute() {
+    const h = (location.hash || "#home").slice(1), i = h.indexOf("/");
+    S.route = i < 0 ? h : h.slice(0, i);
+    S.routeArg = i < 0 ? "" : decodeURIComponent(h.slice(i + 1));
     if (!PAGES[S.route]) S.route = "home";
+  }
+  window.addEventListener("hashchange", function () {
+    parseRoute();
     if (S.authUser && isApproved()) {
       document.querySelectorAll(".tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + navKey(S.route)));
       window.scrollTo(0, 0);
@@ -1919,8 +2340,7 @@
 
   /* ---------- 시작 ---------- */
   (async function boot() {
-    S.route = (location.hash || "#home").slice(1);
-    if (!PAGES[S.route]) S.route = "home";
+    parseRoute();
     try {
       await DB.init();
     } catch (e) {

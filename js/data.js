@@ -19,6 +19,11 @@
     });
   }
   const clone = (o) => (o == null ? o : JSON.parse(JSON.stringify(o)));
+  // 서버 시각(Timestamp)은 천분의 1초 숫자로 바꿔서 넘김
+  function plain(o) {
+    Object.keys(o).forEach((k) => { if (o[k] && typeof o[k].toMillis === "function") o[k] = o[k].toMillis(); });
+    return o;
+  }
 
   /* ---------------- Firebase (실제 운영) ---------------- */
   const FirebaseBackend = {
@@ -54,11 +59,17 @@
     signOut() { return this.auth.signOut(); },
     async get(col, id) {
       const d = await this.fs.collection(col).doc(id).get();
-      return d.exists ? Object.assign({ id: d.id }, d.data()) : null;
+      return d.exists ? plain(Object.assign({ id: d.id }, d.data())) : null;
     },
     async list(col) {
       const s = await this.fs.collection(col).get();
-      return s.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+      return s.docs.map((d) => plain(Object.assign({ id: d.id }, d.data())));
+    },
+    // 행사 신청서 제출 (로그인 없이). 시각은 서버 시계로 저장 → 선착순이 공정하게 정해짐
+    // 같은 학번 문서가 이미 있으면 보안 규칙이 막음 (중복 신청 방지)
+    async submitResponse(formId, sid, data) {
+      await this.fs.collection("forms").doc(formId).collection("responses").doc(sid)
+        .set(Object.assign({}, data, { at: firebase.firestore.FieldValue.serverTimestamp() }));
     },
     async queryEq(col, field, value) {
       const snap = await this.fs.collection(col).where(field, "==", value).get();
@@ -203,7 +214,30 @@
     const notices = {
       nt1: { text: "이번 주 전체회의는 목요일 저녁 7시, 과방에서 해요. 각 국서 진행 상황 정리해 오기!", url: "", until: day(5), authorName: "김하늘", createdAt: ago(1) },
     };
+    // 행사 신청 양식 예시 (중간고사 간식 행사, 양식은 소통국 담당)
+    const forms = {
+      p2: { projectId: "p2", projectName: "중간고사 간식 행사", projectDept: "내무국", ownerDept: "소통국", title: "중간고사 간식행사 신청",
+        desc: "시험 기간 응원 간식을 나눠 드려요!\n배부: " + day(6).slice(5).replace("-", "월 ") + "일 12:00, 과방", mode: "normal", cap: 30, fee: 3000,
+        due: day(4).slice(5).replace("-", "월 ") + "일까지", account: "국민 123456-01-234567 (생명과학부 학생회)", open: true, keepUntil: day(21),
+        qs: [
+          { id: "qn", type: "name", label: "이름", required: true, options: [], attend: false, text: "" },
+          { id: "qs", type: "sid", label: "학번", required: true, options: [], attend: false, text: "" },
+          { id: "qp", type: "phone", label: "전화번호", required: true, options: [], attend: false, text: "" },
+          { id: "qy", type: "yesno", label: "행사에 참여하시나요?", required: true, options: [], attend: true, text: "" },
+          { id: "qc", type: "choice", label: "간식 선택", required: true, options: ["샌드위치", "김밥", "도넛"], attend: false, text: "" },
+          { id: "qa", type: "agree", label: "개인정보 수집·이용에 동의합니다", required: true, options: [], attend: false, text: "수집 항목: 이름, 학번, 전화번호\n목적: 중간고사 간식 행사 참여 확인과 연락\n보관: 행사가 끝나고 2주 뒤 삭제\n학생회 안에서만 봐요." },
+        ], updatedAt: now, updatedBy: "u6" },
+    };
+    const resp = {};
+    ["김민준", "이서연", "박지호", "최서윤", "정하은", "강도윤", "조수아", "윤시우", "장지민", "한예준", "오하린", "서지안"].forEach(function (n, i) {
+      const sid = (i % 3 ? "2026" : "2025") + "25" + String(1000 + i * 137).slice(-4);
+      const going = i % 6 !== 5;
+      resp[sid] = { sid: sid, name: n, depositName: sid.slice(2, 4) + sid.slice(-3) + n, at: Date.now() - (40 - i) * 3600000 - i * 7919,
+        answers: { qn: n, qs: sid, qp: "010-" + (3000 + i * 411) + "-" + (1000 + i * 733), qy: going ? "예" : "아니오", qc: going ? ["샌드위치", "김밥", "도넛"][i % 3] : "", qa: true },
+        paid: going && i < 7, attended: false };
+    });
     return {
+      forms: forms, "forms/p2/responses": resp,
       notices: notices, deptTasks: deptTasks,
       talk: talk, talkComments: talkComments, capsules: capsules,
       messages: messages,
@@ -245,6 +279,12 @@
       c[id] = Object.assign(c[id], clone(data));
     },
     async remove(col, id) { if (this.store[col]) delete this.store[col][id]; },
+    async submitResponse(formId, sid, data) {
+      const f = (this.store.forms || {})[formId];
+      const path = "forms/" + formId + "/responses";
+      if (!f || !f.open || ((this.store[path] || {})[sid])) { const e = new Error("permission-denied"); e.code = "permission-denied"; throw e; }
+      await this.set(path, sid, Object.assign({}, data, { at: Date.now() }));
+    },
   };
 
   window.DB = configured ? FirebaseBackend : DemoBackend;

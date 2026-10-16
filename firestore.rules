@@ -204,5 +204,40 @@ service cloud.firestore {
       allow read: if approved() || alumni();
       allow create, update, delete: if admin() || isHead();
     }
+
+    // ---- 행사 신청 양식 (사업마다 하나, 문서 번호 = 사업 번호) ----
+    //   양식: 누구나 읽기 (학생들이 로그인 없이 신청 페이지를 봄 — 개인정보 없음)
+    //   만들기·고치기·지우기: 양식 담당 국서(ownerDept)의 모든 국원 + 회장단(회장·부회장·회장단 국서·회장단 권한자)
+    function execMember() {
+      return admin() || isExecPos() || (approved() && hasProfile() && me().dept == execDeptName());
+    }
+    function formEditor(f) { return execMember() || (approved() && hasProfile() && me().dept == f.get('ownerDept', '')); }
+    // 명단 보기·입금·출석 체크: 위 사람들 + 그 사업 담당 국서(projectDept) 사람들
+    function formViewer(f) { return formEditor(f) || (approved() && hasProfile() && me().dept == f.get('projectDept', '')); }
+    match /forms/{fid} {
+      allow read: if true;
+      allow create: if formEditor(request.resource.data);
+      allow update: if formEditor(resource.data) && formEditor(request.resource.data);
+      allow delete: if formEditor(resource.data);
+
+      // 참여자 명단 (문서 번호 = 학번 → 같은 학번으로 두 번 신청 못 함)
+      //   신청: 로그인 없이 누구나, 단 신청을 받는 중일 때만 / 시각은 서버 시계 / 입금·출석은 '아니오'로만
+      //   보기·입금·출석 체크·지우기: formViewer (응답 내용 자체는 못 고침)
+      match /responses/{sid} {
+        function form() { return get(/databases/$(database)/documents/forms/$(fid)).data; }
+        allow create: if form().get('open', false) == true
+          && sid.matches('^[0-9]{10}$')
+          && request.resource.data.keys().hasOnly(['sid', 'name', 'depositName', 'answers', 'at', 'paid', 'attended'])
+          && request.resource.data.sid == sid
+          && request.resource.data.at == request.time
+          && request.resource.data.paid == false && request.resource.data.attended == false
+          && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 30
+          && request.resource.data.depositName is string && request.resource.data.depositName.size() <= 40
+          && request.resource.data.answers is map && request.resource.data.answers.size() <= 40;
+        allow read, delete: if formViewer(form());
+        allow update: if formViewer(form())
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paid', 'paidAt', 'attended', 'attendedAt']);
+      }
+    }
   }
 }
