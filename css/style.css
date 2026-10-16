@@ -673,3 +673,9 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
   .shell { display: block; }
   .shell > .tabs { display: none !important; }
 }
+.shell > .tabs a { display: flex; align-items: center; gap: 12px; }
+.shell > .tabs .nico { flex: none; }
+@media (max-width: 900px) {
+  .shell > .tabs a { display: block; }
+  .shell > .tabs .nico { display: none; }
+}
