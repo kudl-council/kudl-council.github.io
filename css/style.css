@@ -952,3 +952,49 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .pm-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 13.5px; }
 .pm-row:hover { background: var(--bg); }
 .pm-row input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+
+/* ===== 캘린더 v3: 칸을 띄운 카드형 + 얇은 색 띠 (홈 '이번 주 일정'도 같은 모양) ===== */
+.cal-weeks { border-top: 0; display: grid; gap: 6px; }
+.cal-dow { margin-bottom: 4px; }
+.cweek { column-gap: 6px; row-gap: 3px; min-height: 0; border-bottom: 0; padding-bottom: 6px; }
+.cday { border: 1px solid var(--line); border-radius: 9px; background: var(--surface); margin-bottom: -6px; }
+.cweek > .cday:last-of-type { border-right: 1px solid var(--line); }
+.cday.other { background: transparent; border-color: transparent; }
+.cday.today { border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 35%, var(--surface)); }
+.cday.past { opacity: .55; }
+.cnum { margin: 5px 0 0 7px; font-size: 12.5px; font-weight: 700; padding: 0 6px; line-height: 19px; }
+.cnum small { font-size: 10.5px; font-weight: 600; color: var(--muted); margin-right: 4px; }
+.cnum.sun small { color: #dc2626; } .cnum.sat small { color: #2563eb; }
+.cnum.today small { color: inherit; opacity: .85; }
+.cnum.past { opacity: .55; }
+.cbar { height: 16px; line-height: 16px; font-size: 10.5px; padding: 0 6px; margin: 0 3px; border-radius: 4px; }
+.cbar.sch { box-shadow: none; background: color-mix(in srgb, var(--c) 22%, var(--surface)); color: color-mix(in srgb, var(--c) 75%, var(--ink)); }
+.cbar.cl { margin-left: -4px; } .cbar.cr { margin-right: -4px; }
+.ctask { font-size: 11px; line-height: 1.4; }
+.cal-card { padding: 16px 18px; }
+.cal-nav h3 { font-size: 16px; }
+.week .cweek { padding-bottom: 4px; }
+.cal-legend .lg-sch { box-shadow: none; background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+@media (max-width: 760px) {
+  .cweek { column-gap: 3px; }
+  .cday { border-radius: 6px; }
+  .cnum { margin: 3px 0 0 3px; font-size: 11px; padding: 0 4px; }
+  .cnum small { margin-right: 2px; font-size: 9.5px; }
+  .ctasks { flex-direction: row; flex-wrap: wrap; gap: 3px; padding: 2px 4px 0; }
+  .ctask { font-size: 0; padding: 0; }
+  .ctask i { margin: 0; width: 7px; height: 7px; }
+  .cmore { font-size: 9.5px; }
+  .cday.past { opacity: .45; }
+  .cbar { height: 6px; line-height: 6px; font-size: 0; padding: 0; margin: 0 1px; }
+  .cbar.cl { margin-left: -2px; } .cbar.cr { margin-right: -2px; }
+}
+/* 캘린더 높이 줄이기 + 세부 일정에 어떤 사업인지 */
+.cal-weeks { gap: 4px; }
+.cweek { row-gap: 2px; padding-bottom: 4px; }
+.cday { margin-bottom: -4px; border-radius: 8px; }
+.cnum { margin-top: 3px; font-size: 12px; line-height: 18px; }
+.cbar small { font-weight: 500; opacity: .75; margin-left: 5px; font-size: 10px; }
+.cbar.ev small { opacity: .85; }
+.cal-dow span { padding: 2px 0; }
+.cal-nav { margin-bottom: 6px; }
+.ctasks { padding-top: 1px; }

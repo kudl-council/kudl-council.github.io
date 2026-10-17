@@ -911,27 +911,18 @@
   }
   // 홈 '이번 주 일정' — 일~토 7칸, 업무 마감 · 사업 · 세부 일정
   function weekHTML(tasks, projects) {
-    const t = today(), now = new Date(t + "T00:00:00");
-    const mon = new Date(now); mon.setDate(now.getDate() - now.getDay());   // 이번 주 일요일
+    const now = new Date(today() + "T00:00:00");
+    const sun = new Date(now); sun.setDate(now.getDate() - now.getDay());   // 이번 주 일요일
     const days = [];
-    for (let i = 0; i < 7; i++) { const d = new Date(mon); d.setDate(mon.getDate() + i); days.push(ymd(d)); }
-    const cur = projects.filter((p) => isCurrent(p) && p.status !== "취소");
-    const inRange = (d, a, b) => a && d >= a && d <= (b && b > a ? b : a);
-    let total = 0;
-    const cols = days.map(function (d, i) {
-      const items = [];
-      cur.forEach((p) => { if (inRange(d, p.startDate, p.endDate)) items.push('<li class="wk-ev" style="--c:' + deptColor(p.dept) + '" data-act="viewProject" data-id="' + esc(p.id) + '" title="사업 · ' + esc(p.name) + '"><b>' + esc(p.name) + "</b></li>"); });
-      cur.forEach((p) => schedOf(p).forEach((sc) => { if (inRange(d, sc.start, sc.end)) items.push('<li class="wk-sch" style="--c:' + deptColor(p.dept) + '" data-act="viewProject" data-id="' + esc(p.id) + '" title="' + esc(p.name) + " · " + esc(sc.title) + '">' + esc(sc.title) + "<small>" + esc(p.name) + "</small></li>"); }));
-      tasks.filter((x) => x.dueDate === d).forEach((x) => items.push('<li class="wk-task' + (x.done ? " done" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept) + " 마감 · " + esc(x.title) + '"><i></i>' + esc(x.title) + "</li>"));
-      total += items.length;
-      const dd = new Date(d + "T00:00:00");
-      return '<div class="wk-day' + (d === t ? " today" : "") + (d < t ? " past" : "") + '"><div class="wk-h"><span class="' + (i === 0 ? "sun" : i === 6 ? "sat" : "") + '">' + DOW[dd.getDay()] + "</span><b>" + dd.getDate() + "</b></div>" +
-        (items.length ? "<ul>" + items.join("") + "</ul>" : '<p class="wk-none">–</p>') + "</div>";
-    }).join("");
-    const range = (new Date(days[0] + "T00:00:00").getMonth() + 1) + "." + new Date(days[0] + "T00:00:00").getDate() + " – " + (new Date(days[6] + "T00:00:00").getMonth() + 1) + "." + new Date(days[6] + "T00:00:00").getDate();
-    return '<section class="card week"><div class="card-head"><h3>이번 주 일정 <small>' + range + (total ? " · " + total + "개" : "") + '</small></h3><a href="#calendar" class="more">캘린더 →</a></div>' +
-      '<div class="wk-grid">' + cols + "</div>" +
-      '<p class="wk-legend"><span class="lg-ev"></span>사업 <span class="lg-sch"></span>세부 일정 <span class="lg-task"></span>업무 마감</p></section>';
+    for (let i = 0; i < 7; i++) { const d = new Date(sun); d.setDate(sun.getDate() + i); days.push(ymd(d)); }
+    const byDay = {};
+    tasks.filter((x) => days.indexOf(x.dueDate) >= 0).forEach((x) => (byDay[x.dueDate] = byDay[x.dueDate] || []).push(x));
+    Object.values(byDay).forEach((a) => a.sort((p, q) => (p.done - q.done) || deptRank(p.dept) - deptRank(q.dept)));
+    const spans = calSpans(projects);
+    const n = spans.filter((x) => x.a <= days[6] && x.b >= days[0]).length + Object.values(byDay).reduce((k, a) => k + a.length, 0);
+    const md = (k) => { const d = new Date(k + "T00:00:00"); return (d.getMonth() + 1) + "." + d.getDate(); };
+    return '<section class="card week"><div class="card-head"><h3>이번 주 일정 <small>' + md(days[0]) + " – " + md(days[6]) + (n ? " · " + n + "개" : "") + '</small></h3><a href="#calendar" class="more">캘린더 →</a></div>' +
+      weekRowHTML(days, spans, byDay, null, false, 3) + "</section>";
   }
   PAGES.home = async function () {
     const [tasks, projects, minutes, msgs, notices, roomTasks] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => []), col("notices").catch(() => []), col("deptTasks").catch(() => [])]);
@@ -1004,6 +995,44 @@
   };
 
   /* ----- 업무 캘린더 ----- */
+  /* 달력 한 주 (업무 캘린더 · 홈 '이번 주 일정' 공용)
+     여러 날짜에 걸친 사업·세부 일정은 이어진 색 띠 하나로, 이름은 시작하는 칸에 한 번만 */
+  function calSpans(projects, filterDept, tasks) {
+    const evsAll = projects.filter((p) => p.status !== "취소" && (!filterDept || p.dept === filterDept ||
+      (tasks || []).some((x) => x.projectId === p.id && x.dept === filterDept)));
+    return evsAll.filter((p) => p.startDate).map((p) => ({ kind: "ev", p: p, a: p.startDate, b: p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate, label: p.name, tip: "사업 · " + p.name + " · " + eventDateText(p) }))
+      .concat([].concat.apply([], evsAll.map((p) => schedOf(p).filter((sc) => sc.start).map((sc) => ({ kind: "sch", p: p, a: sc.start, b: schedEnd(sc), label: sc.title, sub: p.name,
+        tip: "[" + p.name + "] " + sc.title + " · " + rangeText(sc.start, sc.end) })))));
+  }
+  function weekRowHTML(days, spans, byDay, month, clickAdd, maxT) {
+    maxT = maxT || 3;
+    const t = today(), ws = days[0], we = days[6];
+    const pn = {};
+    (S.cache.projects || []).forEach((p) => (pn[p.id] = p.name));
+    const segs = spans.filter((x) => x.a <= we && x.b >= ws)
+      .map((x) => ({ x: x, s: Math.max(0, days.indexOf(x.a < ws ? ws : x.a)), e: days.indexOf(x.b > we ? we : x.b) }))
+      .sort((p, q) => p.s - q.s || (q.e - q.s) - (p.e - p.s) || (p.x.kind === "ev" ? -1 : 1));
+    const lanes = [];
+    segs.forEach((g) => { let l = 0; while (lanes[l] && lanes[l].some((h) => !(g.e < h.s || g.s > h.e))) l++; (lanes[l] = lanes[l] || []).push(g); g.l = l; });
+    const L = lanes.length;
+    let row = "";
+    days.forEach((key, i) => {
+      const d = new Date(key + "T00:00:00"), other = month != null && d.getMonth() !== month;
+      const cls = (other ? " other" : "") + (key === t ? " today" : "") + (key < t && month == null ? " past" : "") + (d.getDay() === 0 ? " sun" : d.getDay() === 6 ? " sat" : "");
+      const items = (byDay[key] || []);
+      row += '<div class="cday' + cls + '" style="grid-column:' + (i + 1) + '"' + (clickAdd ? ' data-act="addTask" data-date="' + key + '"' : "") + "></div>" +
+        '<span class="cnum' + cls + '" style="grid-column:' + (i + 1) + '">' + (month == null ? '<small>' + DOW[d.getDay()] + "</small>" : "") + d.getDate() + "</span>" +
+        (items.length ? '<div class="ctasks" style="grid-column:' + (i + 1) + ";grid-row:" + (L + 2) + '">' +
+          items.slice(0, maxT).map((x) => '<span class="ctask' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + (pn[x.projectId] ? "[" + pn[x.projectId] + "] " : "") + x.title) + '"><i></i>' + esc(x.title) + "</span>").join("") +
+          (items.length > maxT ? '<span class="cmore">+' + (items.length - maxT) + "</span>" : "") + "</div>" : "");
+    });
+    segs.forEach((g) => {
+      const x = g.x, contL = x.a < days[g.s], contR = x.b > days[g.e];
+      row += '<span class="cbar ' + x.kind + (contL ? " cl" : "") + (contR ? " cr" : "") + '" style="--c:' + deptColor(x.p.dept) + ";grid-column:" + (g.s + 1) + " / " + (g.e + 2) + ";grid-row:" + (g.l + 2) +
+        '" data-act="viewProject" data-id="' + esc(x.p.id) + '" title="' + esc(x.tip) + '">' + (contL ? "" : esc(x.label) + (x.sub ? '<small>' + esc(x.sub) + "</small>" : "")) + "</span>";
+    });
+    return '<div class="cweek' + (month == null ? " wk" : "") + '" style="grid-template-rows:22px' + (L ? " repeat(" + L + ", 17px)" : "") + ' minmax(' + (month == null ? 18 : 20) + 'px, auto)">' + row + "</div>";
+  }
   PAGES.calendar = async function () {
     const tasks = await col("tasks");
     const projects = await col("projects");
@@ -1039,39 +1068,12 @@
         (schByDay[ymd(d)] = schByDay[ymd(d)] || []).push(item);
       if (sc.start.slice(0, 7) <= monthKey0 && schedEnd(sc).slice(0, 7) >= monthKey0) monthSch.push(item);
     }));
-    // 달력: 한 주씩 그리고, 여러 날짜에 걸친 사업·세부 일정은 하나의 긴 막대로 (매일 반복하지 않음)
-    const spans = evs.map((p) => ({ kind: "ev", p: p, a: p.startDate, b: p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate, label: p.name, tip: "사업 · " + p.name + " · " + eventDateText(p) }))
-      .concat([].concat.apply([], evsAll.map((p) => schedOf(p).filter((sc) => sc.start).map((sc) => ({ kind: "sch", p: p, a: sc.start, b: schedEnd(sc), label: sc.title,
-        tip: "[" + p.name + "] " + sc.title + " · " + rangeText(sc.start, sc.end) })))));
-    const MAXT = 3;
+    const spans = calSpans(projects, S.calFilter, tasks);
     let grid = "";
     for (let w = 0; w < cells / 7; w++) {
       const days = [];
       for (let i = 0; i < 7; i++) days.push(ymd(new Date(y, m, 1 - startDow + w * 7 + i)));
-      const ws = days[0], we = days[6];
-      // 이번 주에 걸친 막대들을 줄(lane)에 겹치지 않게 배치
-      const segs = spans.filter((x) => x.a <= we && x.b >= ws)
-        .map((x) => ({ x: x, s: Math.max(0, days.indexOf(x.a < ws ? ws : x.a)), e: days.indexOf(x.b > we ? we : x.b) }))
-        .sort((p, q) => p.s - q.s || (q.e - q.s) - (p.e - p.s) || (p.x.kind === "ev" ? -1 : 1));
-      const lanes = [];
-      segs.forEach((g) => { let l = 0; while (lanes[l] && lanes[l].some((h) => !(g.e < h.s || g.s > h.e))) l++; (lanes[l] = lanes[l] || []).push(g); g.l = l; });
-      const L = lanes.length;
-      let row = "";
-      days.forEach((key, i) => {
-        const d = new Date(key + "T00:00:00"), other = d.getMonth() !== m;
-        const items = byDay[key] || [];
-        row += '<div class="cday' + (other ? " other" : "") + (key === t ? " today" : "") + (d.getDay() === 0 ? " sun" : d.getDay() === 6 ? " sat" : "") + '" style="grid-column:' + (i + 1) + '" data-act="addTask" data-date="' + key + '"></div>' +
-          '<span class="cnum' + (other ? " other" : "") + (key === t ? " today" : "") + (d.getDay() === 0 ? " sun" : d.getDay() === 6 ? " sat" : "") + '" style="grid-column:' + (i + 1) + '">' + d.getDate() + "</span>" +
-          (items.length ? '<div class="ctasks" style="grid-column:' + (i + 1) + ";grid-row:" + (L + 2) + '">' +
-            items.slice(0, MAXT).map((x) => '<span class="ctask' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + (pname[x.projectId] ? "[" + pname[x.projectId] + "] " : "") + x.title) + '"><i></i>' + esc(x.title) + "</span>").join("") +
-            (items.length > MAXT ? '<span class="cmore">+' + (items.length - MAXT) + "개 더</span>" : "") + "</div>" : "");
-      });
-      segs.forEach((g) => {
-        const x = g.x, contL = x.a < days[g.s], contR = x.b > days[g.e];
-        row += '<span class="cbar ' + x.kind + (contL ? " cl" : "") + (contR ? " cr" : "") + '" style="--c:' + deptColor(x.p.dept) + ";grid-column:" + (g.s + 1) + " / " + (g.e + 2) + ";grid-row:" + (g.l + 2) +
-          '" data-act="viewProject" data-id="' + esc(x.p.id) + '" title="' + esc(x.tip) + '">' + esc(x.label) + "</span>";
-      });
-      grid += '<div class="cweek" style="grid-template-rows:26px' + (L ? " repeat(" + L + ", 21px)" : "") + ' minmax(48px, 1fr)">' + row + "</div>";
+      grid += weekRowHTML(days, spans, byDay, m, isHead());
     }
     const monthKey = y + "-" + z(m + 1);
     const monthList = filt.filter((x) => (x.dueDate || "").startsWith(monthKey)).sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.done - b.done);
