@@ -13,6 +13,7 @@
   const DEFAULTS = {
     generation: "제29대",
     councilName: "윤슬",
+    slogan: "여러분과 다 함께 더 밝게 반짝일 미래를 위해",   // 학생회 슬로건 (관리 → 사이트 설정에서 바꿈)
     depts: ["회장단", "내무국", "소통국", "홍보국", "재무국", "대외협력국"],
     execPositions: ["회장", "부회장"],   // 회장단(국 목록 맨 위) 직책
     positions: ["국장", "국원"],         // 그 밖의 국 직책
@@ -326,8 +327,8 @@
     if (isAdmin()) {
       try {
         const pub = await DB.get("settings", "public");
-        if (!pub || pub.generation !== S.settings.generation || (pub.councilName || "") !== (S.settings.councilName || ""))
-          await DB.set("settings", "public", { generation: S.settings.generation, councilName: S.settings.councilName || "" });
+        if (!pub || pub.generation !== S.settings.generation || (pub.councilName || "") !== (S.settings.councilName || "") || (pub.slogan || "") !== (S.settings.slogan || ""))
+          await DB.set("settings", "public", { generation: S.settings.generation, councilName: S.settings.councilName || "", slogan: S.settings.slogan || "" });
       } catch (e) { console.warn(e); }
     }
   }
@@ -572,13 +573,16 @@
     app.innerHTML = demoBar() + '<main class="split">' +
       '<section class="lg-brand"><div class="mark lg-mark">DLS</div>' +
       '<div class="lg-mid"><p class="eyebrow">고려대학교 · 생명과학부</p><h1 id="brandName">' + esc((cached && cached.councilName) || "학생회") + "</h1>" +
-      '<p class="lg-sub" id="brandSub">' + esc(cached && cached.generation ? cached.generation + " 생명과학부 학생회" : "생명과학부 학생회 업무 공간") + "</p></div>" +
+      '<p class="lg-sub" id="brandSub">' + esc(cached && cached.generation ? cached.generation + " 생명과학부 학생회" : "생명과학부 학생회 업무 공간") + "</p>" +
+      '<p class="lg-slogan" id="brandSlogan"' + (cached && cached.slogan ? "" : " hidden") + ">" + esc((cached && cached.slogan) || "") + "</p></div>" +
       '<p class="lg-foot">비상연락망 · 업무 캘린더 · 회의록 · 사업 기획안</p></section>' +
       '<section class="panel"><div class="card login2"><h2>학생회 로그인</h2>' +
       '<p class="muted small">학생회 구성원만 들어올 수 있는 공간이에요.</p>' + body + "</div></section></main>";
     DB.get("settings", "public").then((pub) => {
       if (!pub || !pub.generation) return;
-      try { localStorage.setItem("councilPublic", JSON.stringify({ generation: pub.generation, councilName: pub.councilName || "" })); } catch (e) { /* 무시 */ }
+      try { localStorage.setItem("councilPublic", JSON.stringify({ generation: pub.generation, councilName: pub.councilName || "", slogan: pub.slogan || "" })); } catch (e) { /* 무시 */ }
+      const sl = document.getElementById("brandSlogan");
+      if (sl) { sl.textContent = pub.slogan || ""; sl.hidden = !pub.slogan; }
       const n = document.getElementById("brandName"), sub = document.getElementById("brandSub");
       if (n) n.textContent = pub.councilName || "학생회";
       if (sub) sub.textContent = pub.generation + " 생명과학부 학생회";
@@ -718,6 +722,7 @@
       // 컴퓨터: 왼쪽 메뉴 (학생회 이름 · 메뉴 · 접기 · 내 정보) / 폰: 위쪽 가로 메뉴
       '<aside class="side">' +
       '<a class="side-brand" href="#home"><span class="mark">DLS</span><span class="side-txt"><b>' + esc(S.settings.councilName || "학생회") + "</b><small>" + esc(CFG.siteName || "") + "</small></span></a>" +
+      (S.settings.slogan ? '<p class="side-slogan side-txt">' + esc(S.settings.slogan) + "</p>" : "") +
       '<nav class="tabs">' + nav + "</nav>" +
       '<button class="side-fold" data-act="sideFold" title="메뉴 접기/펴기"><span class="fold-ico">«</span><span class="side-txt">접기</span></button>' +
       '<div class="side-me"><button class="side-who" data-act="' + (me ? "editMe" : "logout") + '" title="내 정보"><b>' + esc(me ? me.name : "학생회 공용계정") + "</b><small>" +
@@ -897,11 +902,11 @@
   ];
   function greeting() {
     const h = new Date().getHours();
-    if (h < 5) return "이 시간까지 고생 많아요";
+    if (h < 5) return "아직 안 잤어요? 무리하지 말아요";
     if (h < 11) return "좋은 아침이에요";
-    if (h < 17) return "오늘도 화이팅이에요";
+    if (h < 17) return "오늘도 반짝이는 하루 보내요";
     if (h < 22) return "오늘 하루도 수고했어요";
-    return "늦게까지 고생 많아요";
+    return "오늘도 고마워요, 푹 쉬어요";
   }
   PAGES.home = async function () {
     const [tasks, projects, minutes, msgs, notices, roomTasks] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => []), col("notices").catch(() => []), col("deptTasks").catch(() => [])]);
@@ -931,7 +936,8 @@
       (isAdmin() ? "바뀌었다면 내 정보에서 수정해 주세요." : "소속 국서나 직책이 바뀌었다면 회장단에게 말해 주세요. 회장단이 [관리]에서 바꿔 줘요.") +
       '<div class="actions" style="margin-top:8px">' + (isAdmin() ? '<button class="btn sm primary" data-act="editMe">내 정보 수정</button>' : "") + '<button class="btn sm" data-act="profileOk">확인했어요</button></div></div>' + pendingNote;
     return pendingNote +
-      '<div class="hello"><p class="muted">' + fmtDate(t, true) + "</p><h2>" + greeting() + (S.me ? ", " + esc(S.me.name) + "님" : "") + " 👋</h2></div>" +
+      '<div class="hello"><p class="muted">' + fmtDate(t, true) + "</p><h2>" + greeting() + (S.me ? ", " + esc(S.me.name) + "님" : "") + " 👋</h2>" +
+        (S.settings.slogan ? '<p class="hello-slogan">' + esc(councilLabel(S.settings.generation, S.settings.councilName)) + " · " + esc(S.settings.slogan) + "</p>" : "") + "</div>" +
       noticeBoardHTML(notices) +
       (myRoom.length ? '<a class="notice info link roomlink" href="#room"><b>📋 ' + esc(S.me.dept) + "방에 내가 할 일 " + myRoom.length + "개</b> — " +
         esc(myRoom.slice(0, 2).map((x) => x.title).join(", ")) + (myRoom.length > 2 ? " 외" : "") + " →</a>" : "") +
@@ -2225,6 +2231,7 @@
       const fields = [
         { name: "generation", label: "학생회 기수", required: true, half: true, placeholder: "예: 제29대" },
         { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 윤슬" },
+        { name: "slogan", label: "학생회 슬로건 (한 줄)", placeholder: "예: 여러분과 다 함께 더 밝게 반짝일 미래를 위해", help: "왼쪽 메뉴 위, 홈 화면, 로그인 화면에 보여요. 비워 두면 안 보여요." },
         { name: "fixExisting", label: "오타 수정이에요 — 지금 학생회의 기존 사업 기록에도 바뀐 기수·이름을 똑같이 적용", type: "checkbox",
           help: "새 학생회로 넘기는 거라면 체크하지 말고 [새 학생회로 넘기기] 버튼을 쓰세요." },
         { name: "depts", label: "국서 목록 (한 줄에 하나씩, 위에서부터 순서대로 — 맨 위는 회장단 자리)", type: "textarea", rows: 7, required: true },
@@ -2276,6 +2283,7 @@
         fields: [
           { name: "generation", label: "새 학생회 기수", required: true, half: true, placeholder: "예: 제30대" },
           { name: "councilName", label: "새 학생회 이름", required: true, half: true, placeholder: "새 학생회 이름" },
+          { name: "slogan", label: "새 학생회 슬로건 (나중에 [사이트 설정]에서 넣어도 돼요)", placeholder: "새 학생회의 한 줄 슬로건" },
         ],
         after: '<div class="keepbox"><div class="keephead"><b>새 학생회에서도 계속 활동하는 회원</b>' +
           '<span><button type="button" class="linkbtn small" id="keepAll">전체 선택</button> · <button type="button" class="linkbtn small" id="keepNone">전체 해제</button></span></div>' +

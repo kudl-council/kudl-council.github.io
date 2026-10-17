@@ -243,7 +243,7 @@
       messages: messages,
       councils: councils,
       users: users, tasks: tasks, minutes: minutes, projects: projects,
-      settings: { public: { generation: "제29대", councilName: "윤슬" }, site: { generation: "제29대", councilName: "윤슬", prevGeneration: "제28대", minutesFolderUrl: "https://drive.google.com/drive/folders/example" } },
+      settings: { public: { generation: "제29대", councilName: "윤슬", slogan: "여러분과 다 함께 더 밝게 반짝일 미래를 위해" }, site: { generation: "제29대", councilName: "윤슬", prevGeneration: "제28대", minutesFolderUrl: "https://drive.google.com/drive/folders/example" } },
     };
   }
 

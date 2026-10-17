@@ -842,3 +842,9 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
   .shell-main .page { padding-left: 56px; }
   .shell-main .foot { padding-left: 56px; }
 }
+
+/* ===== 학생회 슬로건 ===== */
+.side-slogan { margin: 0; padding: 10px 18px 12px; font-size: 12px; line-height: 1.5; color: var(--accent); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--accent-soft) 45%, transparent); word-break: keep-all; }
+.hello-slogan { margin: 6px 0 0 !important; font-size: 13px !important; color: var(--accent); font-weight: 600; }
+.lg-slogan { margin: 14px 0 0; font-size: 15px; font-weight: 600; opacity: .95; word-break: keep-all; }
+@media (max-width: 900px) { .lg-slogan { font-size: 13.5px; margin-top: 8px; } }
