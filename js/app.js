@@ -1454,12 +1454,17 @@
       if (fm.resp.length && f.keepUntil && today() > f.keepUntil) {
         let n = 0;
         for (const r of fm.resp) { try { await DB.remove(respPath(pid), r.id); n++; } catch (e) { console.warn(e); } }
+        await clearSlots(pid);
         fm.resp = ordered(f, await DB.list(respPath(pid)));
         if (n) setTimeout(() => toast("보관 기한이 지나서 명단 " + n + "명을 지웠어요."), 300);
       }
     }
   }
   const curForm = () => S.fm.draft || S.fm.form;
+  // 선착순 순서표 지우기
+  async function clearSlots(pid) {
+    try { for (const x of await DB.list("forms/" + pid + "/slots")) await DB.remove("forms/" + pid + "/slots", x.id); } catch (e) { console.warn(e); }
+  }
 
   PAGES.form = async function () {
     const pid = S.routeArg;
@@ -1744,6 +1749,7 @@
     async fmDelete() {
       if (!confirm("이 신청 양식과 참여자 명단(" + (S.fm.resp ? S.fm.resp.length : 0) + "명)을 모두 지울까요? 되돌릴 수 없어요.")) return;
       for (const r of (await DB.list(respPath(S.fm.pid)))) await DB.remove(respPath(S.fm.pid), r.id);
+      await clearSlots(S.fm.pid);
       await DB.remove("forms", S.fm.pid);
       dirty("forms"); S.fm = { pid: "" }; location.hash = "projects"; toast("삭제했어요.");
     },
@@ -1765,6 +1771,7 @@
       const r = S.fm.resp.find((x) => x.id === el.dataset.sid); if (!r) return;
       if (!confirm(r.name + " (" + r.sid + ") 응답을 지울까요? 같은 학번으로 다시 신청할 수 있게 돼요.")) return;
       await DB.remove(respPath(S.fm.pid), r.id);
+      if (r.slotId) { try { await DB.remove("forms/" + S.fm.pid + "/slots", r.slotId); } catch (e) { console.warn(e); } }
       S.fm.resp = ordered(S.fm.form, S.fm.resp.filter((x) => x !== r)); refreshRoster(); toast("지웠어요.");
     },
     fmBank() {

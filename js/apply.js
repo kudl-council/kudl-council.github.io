@@ -6,9 +6,9 @@
   function toast(m) { const t = document.getElementById("toast"); t.textContent = m; t.className = "show"; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = ""), 2400); }
   const fail = (t, m) => { box.innerHTML = '<div class="ap-brand"><span class="ap-mark">DLS</span>고려대학교 생명과학부 학생회</div><div class="ap-closed"><b>' + esc(t) + "</b><span>" + esc(m) + "</span></div>"; };
 
-  let F = null, id = "";
+  let F = null, id = "", count = null;
   function showForm() {
-    box.innerHTML = (DB.mode === "demo" ? '<div class="demobar" style="border-radius:10px">데모 모드 — 제출해도 실제로 저장되지 않아요.</div>' : "") + A.formHTML(F);
+    box.innerHTML = (DB.mode === "demo" ? '<div class="demobar" style="border-radius:10px">데모 모드 — 제출해도 실제로 저장되지 않아요.</div>' : "") + A.formHTML(F, { count: count });
     const form = box.querySelector("form");
     if (form) form.addEventListener("submit", submit);
   }
@@ -20,9 +20,13 @@
     if (r.err) return say(r.err);
     err.hidden = true; btn.disabled = true; btn.textContent = "제출하는 중…";
     const data = { sid: r.sid, name: r.name, depositName: A.depositName(r.sid, r.name), answers: r.answers, paid: false, attended: false };
+    const first = F.mode === "first" && A.isGoing(F, data);
     try {
-      await DB.submitResponse(id, r.sid, data);
-      box.innerHTML = A.doneHTML(F, Object.assign({ at: Date.now() }, data));
+      const slotId = await DB.submitResponse(id, r.sid, data, first);
+      let rank = 0;
+      // 선착순: 내가 몇 번째인지 서버에 물어봄 (안 되면 그냥 넘어감)
+      if (first && slotId) { try { rank = await DB.slotRank(id, slotId); } catch (e) { console.warn(e); } }
+      box.innerHTML = A.doneHTML(F, Object.assign({ at: Date.now(), rank: rank }, data));
       window.scrollTo(0, 0);
     } catch (er) {
       btn.disabled = false; btn.textContent = "제출하기";
@@ -46,6 +50,8 @@
     try { F = await DB.get("forms", id); } catch (e) { F = null; }
     if (!F) return fail("없는 신청 페이지예요", "학생회가 보낸 링크를 다시 확인해 주세요.");
     document.title = (F.title || "행사 신청") + " · 생명과학부 학생회";
+    // 선착순이면 지금까지 몇 명 신청했는지 보여 줌
+    if (F.mode === "first" && F.open) { try { count = await DB.countSlots(id); } catch (e) { count = null; } }
     showForm();
   })();
 })();

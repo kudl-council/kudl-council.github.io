@@ -890,3 +890,12 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .hm-hide:hover { color: var(--ink); background: var(--surface); }
 .hm-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .hm-row h3 { margin: 0; }
+
+/* 선착순 순번 (학생 화면) */
+.ap-rank { display: grid; gap: 4px; justify-items: center; padding: 14px 16px; border-radius: 12px; margin-top: 4px; width: 100%; }
+.ap-rank b { font-size: 26px; letter-spacing: -.02em; }
+.ap-rank span { font-size: 13.5px; color: var(--muted); }
+.ap-rank.ok { background: #dcfce7; } .ap-rank.ok b { color: #166534; }
+.ap-rank.wait { background: #fff4e5; } .ap-rank.wait b { color: #9a3412; }
+.ap-seat { font-size: 14px; background: var(--accent-soft); color: var(--ink); padding: 10px 12px; border-radius: 10px; }
+.ap-seat.full { background: #fff4e5; }

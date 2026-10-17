@@ -67,9 +67,28 @@
     },
     // 행사 신청서 제출 (로그인 없이). 시각은 서버 시계로 저장 → 선착순이 공정하게 정해짐
     // 같은 학번 문서가 이미 있으면 보안 규칙이 막음 (중복 신청 방지)
-    async submitResponse(formId, sid, data) {
-      await this.fs.collection("forms").doc(formId).collection("responses").doc(sid)
-        .set(Object.assign({}, data, { at: firebase.firestore.FieldValue.serverTimestamp() }));
+    // 선착순: 같은 순간에 '순서표'(slots, 시각만 있음 · 누구나 셀 수 있음)도 함께 저장 → 학생이 자기 순번을 볼 수 있음
+    async submitResponse(formId, sid, data, withSlot) {
+      const f = this.fs.collection("forms").doc(formId);
+      const ts = firebase.firestore.FieldValue.serverTimestamp();
+      const batch = this.fs.batch();
+      let slotId = "";
+      if (withSlot) { const sref = f.collection("slots").doc(); slotId = sref.id; batch.set(sref, { at: ts }); }
+      batch.set(f.collection("responses").doc(sid), Object.assign({}, data, withSlot ? { slotId: slotId } : {}, { at: ts }));
+      await batch.commit();
+      return slotId;
+    },
+    // 순서표 개수 세기 (서버에서 숫자만 세서 보내 줌 → 사람이 많아도 가벼움)
+    async countSlots(formId, beforeOrAt) {
+      let q = this.fs.collection("forms").doc(formId).collection("slots");
+      if (beforeOrAt) q = q.where("at", "<=", beforeOrAt);
+      if (typeof q.count === "function") { const snap = await q.count().get(); return snap.data().count; }
+      return (await q.get()).size;
+    },
+    async slotRank(formId, slotId) {
+      const d = await this.fs.collection("forms").doc(formId).collection("slots").doc(slotId).get();
+      if (!d.exists) return 0;
+      return this.countSlots(formId, d.data().at);
     },
     async queryEq(col, field, value) {
       const snap = await this.fs.collection(col).where(field, "==", value).get();
@@ -236,8 +255,18 @@
         answers: { qn: n, qs: sid, qp: "010-" + (3000 + i * 411) + "-" + (1000 + i * 733), qy: going ? "예" : "아니오", qc: going ? ["샌드위치", "김밥", "도넛"][i % 3] : "", qa: true },
         paid: going && i < 7, attended: false };
     });
+    // 선착순 예시 (생명과학부 학술제 · 정원 5명)
+    forms.p3 = { projectId: "p3", projectName: "생명과학부 학술제", projectDept: "홍보국", ownerDept: "소통국", title: "학술제 연구실 투어 신청 (선착순 5명)",
+      desc: "연구실 투어는 선착순 5명만 받아요. 넘으면 대기로 접수돼요.", mode: "first", cap: 5, fee: 0, due: "", account: "", open: true, keepUntil: day(44),
+      qs: [forms.p2.qs[0], forms.p2.qs[1], forms.p2.qs[2], forms.p2.qs[5]], updatedAt: now, updatedBy: "u6" };
+    const resp3 = {}, slots3 = {};
+    ["정하은", "강도윤", "조수아", "윤시우"].forEach(function (n, i) {
+      const sid = "2026250" + (300 + i), at = Date.now() - (10 - i) * 60000;
+      slots3["s" + i] = { at: at };
+      resp3[sid] = { sid: sid, name: n, depositName: sid.slice(2, 4) + sid.slice(-3) + n, at: at, slotId: "s" + i, answers: { qn: n, qs: sid, qp: "010-1234-00" + (10 + i), qa: true }, paid: false, attended: false };
+    });
     return {
-      forms: forms, "forms/p2/responses": resp,
+      forms: forms, "forms/p2/responses": resp, "forms/p3/responses": resp3, "forms/p3/slots": slots3,
       notices: notices, deptTasks: deptTasks,
       talk: talk, talkComments: talkComments, capsules: capsules,
       messages: messages,
@@ -279,11 +308,22 @@
       c[id] = Object.assign(c[id], clone(data));
     },
     async remove(col, id) { if (this.store[col]) delete this.store[col][id]; },
-    async submitResponse(formId, sid, data) {
+    async submitResponse(formId, sid, data, withSlot) {
       const f = (this.store.forms || {})[formId];
       const path = "forms/" + formId + "/responses";
       if (!f || !f.open || ((this.store[path] || {})[sid])) { const e = new Error("permission-denied"); e.code = "permission-denied"; throw e; }
-      await this.set(path, sid, Object.assign({}, data, { at: Date.now() }));
+      const at = Date.now();
+      let slotId = "";
+      if (withSlot) { slotId = await this.add("forms/" + formId + "/slots", { at: at }); }
+      await this.set(path, sid, Object.assign({}, data, withSlot ? { slotId: slotId } : {}, { at: at }));
+      return slotId;
+    },
+    async countSlots(formId, beforeOrAt) {
+      return (await this.list("forms/" + formId + "/slots")).filter((x) => !beforeOrAt || x.at <= beforeOrAt).length;
+    },
+    async slotRank(formId, slotId) {
+      const d = await this.get("forms/" + formId + "/slots", slotId);
+      return d ? this.countSlots(formId, d.at) : 0;
     },
   };
 

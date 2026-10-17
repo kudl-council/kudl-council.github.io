@@ -72,11 +72,18 @@
     if (f.mode === "first" && !(Number(f.cap) > 0)) return "선착순 정원을 넣어 주세요.";
     return "";
   }
-  // 제출 시각 (천분의 1초까지)
+  // 제출 시각 (초까지 · 순서는 서버에 더 정밀하게 저장돼 있음)
   function stampText(ms) {
     if (!ms) return "";
     const d = new Date(ms);
-    return (d.getMonth() + 1) + "/" + d.getDate() + " " + z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds()) + "." + z(d.getMilliseconds(), 3);
+    return (d.getMonth() + 1) + "/" + d.getDate() + " " + z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds());
+  }
+  // 선착순 순번 안내 (rank = 몇 번째로 접수됐는지)
+  function rankHTML(f, rank) {
+    if (!rank) return "";
+    const cap = Number(f.cap || 0);
+    if (rank <= cap) return '<div class="ap-rank ok"><div><b>' + rank + "번째</b>로 접수됐어요</div><span>정원 " + cap + "명 안에 들어요 🎉</span></div>";
+    return '<div class="ap-rank wait"><b>대기 ' + (rank - cap) + "번</b><span>" + rank + "번째로 접수됐어요 (정원 " + cap + "명). 취소가 생기면 순서대로 연락드려요.</span></div>";
   }
 
   /* ---------- 학생 화면 ---------- */
@@ -114,7 +121,8 @@
     if (!f.open && !opts.preview) return headHTML(f) + '<div class="ap-closed"><b>신청 마감</b><span>지금은 신청을 받지 않아요.</span></div>';
     if (!(f.qs || []).length) return headHTML(f) + '<div class="ap-closed"><span>아직 질문이 없어요.</span></div>';
     return headHTML(f) + infoHTML(f) +
-      (f.mode === "first" ? '<p class="ap-note">제출한 시각 순서대로 정원 ' + esc(f.cap) + "명까지 확정되고, 그 뒤는 대기로 접수돼요.</p>" : "") +
+      (f.mode === "first" ? '<p class="ap-note">제출한 시각 순서대로 정원 ' + esc(f.cap) + "명까지 확정되고, 그 뒤는 대기로 접수돼요.</p>" +
+        (opts.count != null ? '<div class="ap-seat ' + (opts.count >= Number(f.cap) ? "full" : "") + '">' + (opts.count >= Number(f.cap) ? "정원이 다 찼어요 · 지금 신청하면 <b>대기 " + (opts.count - Number(f.cap) + 1) + "번</b>쯤이에요" : "지금 <b>" + opts.count + "명</b> 신청 · 남은 자리 <b>" + (Number(f.cap) - opts.count) + "</b>") + "</div>" : "") : "") +
       '<form class="ap-form" novalidate>' + f.qs.map(qHTML).join("") +
       '<p class="ap-err" hidden></p>' +
       '<button type="submit" class="ap-submit">' + (opts.preview ? "제출하기 (미리보기라 저장 안 됨)" : "제출하기") + "</button></form>";
@@ -149,9 +157,9 @@
     return headHTML(f) + '<div class="ap-done"><span class="ap-pill ok">' + (going ? "신청 완료" : "응답 제출") + "</span>" +
       "<div>" + esc(r.name) + "님, " + (going ? "신청이 접수됐어요." : "응답해 주셔서 고마워요.") + "</div>" +
       (r.at ? '<div class="ap-time">접수 시각 ' + esc(stampText(r.at)) + "</div>" : "") +
-      (f.mode === "first" && going ? '<div class="ap-note">선착순은 접수 시각 순서로 정해져요. 정원 안인지는 학생회가 따로 알려 드려요.</div>' : "") + "</div>" +
+      (f.mode === "first" && going ? (r.rank ? rankHTML(f, r.rank) : '<div class="ap-note">선착순은 접수 시각 순서로 정해져요. 정원 안인지는 학생회가 따로 알려 드려요.</div>') : "") + "</div>" +
       (pay ? '<div class="ap-pay"><b>입금 안내</b><div>' + (f.due ? esc(f.due) + " " : "") + "<b>" + won(f.fee) + "</b>을 보내 주세요." +
-        (f.mode === "first" ? " (대기로 접수됐다면 연락받은 뒤에 보내 주세요)" : "") + "</div>" +
+        (f.mode === "first" ? (r.rank && r.rank > Number(f.cap || 0) ? " <b>지금은 대기라서, 연락받은 뒤에 보내 주세요.</b>" : r.rank ? "" : " (대기로 접수됐다면 연락받은 뒤에 보내 주세요)") : "") + "</div>" +
         (f.account ? '<div class="ap-copy"><span>' + esc(f.account) + '</span><button type="button" data-copy="' + esc(String(f.account).replace(/[^\d-]/g, "")) + '">복사</button></div>' : "") +
         '<div>입금자명은 꼭 이렇게 적어 주세요</div><div class="ap-copy"><b>' + esc(dn) + '</b><button type="button" data-copy="' + esc(dn) + '">복사</button></div>' +
         '<div class="ap-hint">입학연도 2자리 + 학번 뒤 3자리 + 이름</div></div>' : "") +
@@ -159,5 +167,5 @@
       (opts.preview ? '<button type="button" class="ap-link" data-ap-back>처음 화면으로</button>' : "");
   }
 
-  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc };
+  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML };
 })();
