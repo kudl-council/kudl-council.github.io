@@ -1046,3 +1046,23 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
   .cweek { height: 64px !important; }
   .cweek.wk { height: 56px !important; }
 }
+/* 업무 옆에 어떤 사업 업무인지 작게 */
+.ctask small { font-size: 10px; color: var(--muted); margin-left: 4px; font-weight: 500; }
+.ctask.late small { color: color-mix(in srgb, var(--late) 60%, var(--muted)); }
+
+/* ===== 신청 양식 만들기: 구글폼처럼 옵션 한 줄씩 ===== */
+.fm-opts { display: grid; gap: 6px; }
+.fm-opt { display: flex; align-items: center; gap: 10px; }
+.fm-oi { width: 16px; height: 16px; border: 2px solid var(--line); border-radius: 50%; flex: none; }
+.fm-oi.box { border-radius: 4px; }
+.fm-opt input { flex: 1; min-width: 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 6px 2px; font: inherit; font-size: 14px; color: var(--ink); border-radius: 0; }
+.fm-opt input:focus { outline: 0; border-bottom: 2px solid var(--accent); }
+.fm-ofix { flex: 1; padding: 6px 2px; font-size: 14px; border-bottom: 1px solid transparent; }
+.fm-odel { border: 0; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.fm-odel:hover { color: var(--ink); }
+.fm-opt.add .linkbtn { color: var(--muted); font-weight: 600; text-decoration: none; }
+.fm-opt.add .linkbtn:hover { color: var(--accent); }
+.fm-q .mwrap { display: flex; }
+.fm-dues { border: 1px solid var(--line); background: var(--surface); color: var(--ok); border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.fm-dues.un { color: #b45309; background: #fff4e5; border-color: #fcd9a8; }
+.ap-q textarea { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; resize: vertical; }

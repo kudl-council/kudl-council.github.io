@@ -262,8 +262,11 @@ service cloud.firestore {
           && request.resource.data.depositName is string && request.resource.data.depositName.size() <= 40
           && request.resource.data.answers is map && request.resource.data.answers.size() <= 40;
         allow read, delete: if formViewer(form());
-        allow update: if formViewer(form())
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paid', 'paidAt', 'attended', 'attendedAt']);
+        // 출석 체크는 명단을 보는 사람 누구나, 입금·회비 납부 여부는 재무국만
+        allow update: if formViewer(form()) && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended', 'attendedAt'])
+          || ((isOwner() || (approved() && hasProfile() && me().dept.matches('.*재무.*')))
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paid', 'paidAt', 'duesUnpaid', 'attended', 'attendedAt'])));
       }
     }
   }

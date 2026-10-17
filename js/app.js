@@ -1041,7 +1041,7 @@
       row += '<div class="cday' + cls + '" style="grid-column:' + (i + 1) + '"' + (clickAdd ? ' data-act="addTask" data-date="' + key + '"' : "") + "></div>" +
         '<span class="cnum' + cls + '" style="grid-column:' + (i + 1) + '">' + (month == null ? '<small>' + DOW[d.getDay()] + "</small>" : "") + d.getDate() + "</span>" +
         (items.length || more ? '<div class="ctasks" style="grid-column:' + (i + 1) + ";grid-row:" + (L + 2) + '">' +
-          items.slice(0, more && items.length > maxT ? maxT - 1 : maxT).map((x) => '<span class="ctask' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + (pn[x.projectId] ? "[" + pn[x.projectId] + "] " : "") + x.title) + '"><i></i>' + esc(x.title) + "</span>").join("") +
+          items.slice(0, more && items.length > maxT ? maxT - 1 : maxT).map((x) => '<span class="ctask' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + (pn[x.projectId] ? "[" + pn[x.projectId] + "] " : "") + x.title) + '"><i></i>' + esc(x.title) + (pn[x.projectId] ? "<small>" + esc(pn[x.projectId]) + "</small>" : "") + "</span>").join("") +
           (more ? '<span class="cmore">+' + (more + (items.length > maxT ? 1 : 0)) + "개 더</span>" : "") + "</div>" : "");
     });
     segs.filter((g) => g.l < MAXL).forEach((g) => {
@@ -1466,6 +1466,8 @@
   const isFinance = () => meOK() && /재무/.test(S.me.dept || "");
   const canEditForm = (f) => !!f && (isExecMember() || (meOK() && ((S.me.dept === f.ownerDept && (isMyHead() || S.me.grade === "2학년")) || (f.editorUids || []).indexOf(myUid()) >= 0)));
   const canSeeRoster = (f) => !!f && (canEditForm(f) || isFinance() || (meOK() && ((S.me.dept === f.projectDept && isMyHead()) || (f.viewerUids || []).indexOf(myUid()) >= 0)));
+  // 입금 확인 · 회비 납부/미납 · 받을 돈은 재무국만 (공용계정은 관리용으로 같이)
+  const canMoney = () => isFinance() || (isOwner() && !S.me);
   const canSetEditors = (f) => !!f && (isExecMember() || (meOK() && S.me.dept === f.ownerDept && isMyHead()));
   const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return ymd(d); };
   const keepDefault = (p) => addDays((p.endDate && p.endDate > (p.startDate || "") ? p.endDate : p.startDate) || today(), 14);
@@ -1554,7 +1556,7 @@
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") + "</div>";
     if (f) {
       head += '<div class="fm-link"><code>' + esc(applyUrl(pid)) + "</code>" +
-        '<button class="btn sm primary" data-act="fmCopyMsg" title="행사 이름·안내·링크를 한 번에 복사">공지 문구 복사</button><button class="btn sm" data-act="fmCopy">링크만 복사</button><a class="btn sm" href="' + esc(applyUrl(pid)) + '" target="_blank" rel="noopener">열어 보기 ↗</a>' +
+        '<button class="btn sm primary" data-act="fmCopy">링크 복사</button><a class="btn sm" href="' + esc(applyUrl(pid)) + '" target="_blank" rel="noopener">열어 보기 ↗</a>' +
         (editable ? '<button class="btn sm" data-act="fmOpen">' + (f.open ? "신청 닫기" : "신청 받기 시작") + "</button>" : "") + "</div>" +
         '<p class="muted small" style="margin:0">양식 고치기: 회장단 · <b>' + esc(f.ownerDept) + "</b> 국장·2학년" + ((f.editorUids || []).length ? " · 담당자 " + (f.editorUids || []).length + "명" : "") +
         " / 명단 보기: 위 사람들 + 재무국 · " + esc(f.projectDept) + " 국장" + ((f.viewerUids || []).length ? " · 추가 " + (f.viewerUids || []).length + "명" : "") +
@@ -1581,20 +1583,22 @@
 
   /* ---------- 참여자 명단 ---------- */
   function rosterStats(f, list) {
-    const going = list.filter((r) => AP.isGoing(f, r)), inn = going.filter((r) => !r.wait), fee = Number(f.fee) || 0;
+    const going = list.filter((r) => AP.isGoing(f, r)), inn = going.filter((r) => !r.wait), fee = AP.anyFee(f) && canMoney();
+    const sum = (arr) => arr.reduce((k, r) => k + AP.feeOf(f, r), 0);
     const stat = (k, v) => '<div class="fm-stat"><span>' + k + "</span><b>" + v + "</b></div>";
     return '<div class="fm-stats">' + stat("응답", list.length) +
       stat(f.mode === "first" ? "정원 안 / 대기" : "참여", f.mode === "first" ? inn.length + " / " + (going.length - inn.length) : going.length) +
       (AP.attendQ(f) ? stat("불참", list.length - going.length) : "") +
       (fee ? stat("입금", inn.filter((r) => r.paid).length + "/" + inn.length) : "") +
       stat("출석", inn.filter((r) => r.attended).length + "/" + inn.length) + "</div>" +
-      '<p class="muted small" style="margin:0">' + (fee ? "받을 돈 " + AP.won(inn.length * fee) + " · 입금 확인 " + AP.won(inn.filter((r) => r.paid).length * fee) : "참가비 없는 행사예요") + "</p>";
+      (fee ? '<p class="muted small" style="margin:0">받을 돈 <b>' + AP.won(sum(inn)) + "</b> · 입금 확인 " + AP.won(sum(inn.filter((r) => r.paid))) +
+        (AP.hasDues(f) ? " · 회비 미납부자 " + inn.filter((r) => r.duesUnpaid).length + "명 (참가비 " + AP.won(f.fee) + " / 미납부자 " + AP.won(f.feeUnpaid) + ")" : "") + "</p>" : "");
   }
   function rosterRows(f) {
     const fm = S.fm, q = (fm.q || "").replace(/\s/g, "");
     const list = fm.resp.filter((r) => !q || [r.name, r.sid, r.depositName].some((x) => String(x || "").indexOf(q) >= 0));
     const qs = f.qs || [];
-    const editable = canEditForm(f), fee = Number(f.fee) > 0;
+    const editable = canEditForm(f), fee = AP.anyFee(f) && canMoney(), dues = fee && AP.hasDues(f);
     const cell = (x, r) => {
       const v = (r.answers || {})[x.id];
       if (x.type === "name") return "<b>" + esc(r.name || v) + "</b>";
@@ -1604,8 +1608,8 @@
       return esc(Array.isArray(v) ? v.join(", ") : v);
     };
     const th = "<tr><th>번호</th><th>제출 시각</th>" + qs.map((x) => "<th>" + esc(x.label) + "</th>").join("") +
-      (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? "<th>입금자명</th><th>입금</th>" : "") + "<th>출석</th>" + (editable ? "<th></th>" : "") + "</tr>";
-    const n = 3 + qs.length + (fee ? 2 : 0) + (f.mode === "first" ? 1 : 0) + (editable ? 1 : 0);
+      (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? "<th>입금자명</th>" + (dues ? "<th>회비</th>" : "") + "<th>입금</th>" : "") + "<th>출석</th>" + (editable ? "<th></th>" : "") + "</tr>";
+    const n = 3 + qs.length + (fee ? 2 : 0) + (dues ? 1 : 0) + (f.mode === "first" ? 1 : 0) + (editable ? 1 : 0);
     const rows = list.map((r) => {
       const going = AP.isGoing(f, r), active = going && !r.wait, sid = esc(r.id);
       return '<tr class="' + (active ? "" : "off") + '">' +
@@ -1613,6 +1617,7 @@
         qs.map((x) => '<td class="' + (x.type === "phone" || x.type === "sid" || x.type === "name" ? "num" : "ans") + '">' + cell(x, r) + "</td>").join("") +
         (f.mode === "first" ? "<td>" + (!going ? "" : r.wait ? '<span class="fm-pill warn">대기 ' + r.waitNo + "</span>" : '<span class="fm-pill ok">정원 안</span>') + "</td>" : "") +
         (fee ? '<td class="num"><b>' + (active ? esc(r.depositName || AP.depositName(r.sid, r.name)) : "–") + "</b></td>" +
+          (dues ? "<td>" + (active ? '<button class="fm-dues' + (r.duesUnpaid ? " un" : "") + '" data-act="fmDues" data-sid="' + sid + '" title="눌러서 납부/미납 바꾸기">' + (r.duesUnpaid ? "미납" : "납부") + "</button><small class=\"muted\"> " + AP.won(AP.feeOf(f, r)) + "</small>" : "") + "</td>" : "") +
           "<td>" + (active ? '<label class="fm-paid"><input type="checkbox" data-act="fmPaid" data-sid="' + sid + '"' + (r.paid ? " checked" : "") + "> " + (r.paid ? "확인" : "입금 전") + "</label>" : "") + "</td>" : "") +
         "<td>" + (active ? '<button class="fm-att' + (r.attended ? " on" : "") + '" data-act="fmAtt" data-sid="' + sid + '">' + (r.attended ? "✓ " + esc(r.attendedAt || "") : "확인") + "</button>" : "") + "</td>" +
         (editable ? '<td><button class="x" data-act="fmDelResp" data-sid="' + sid + '" aria-label="이 응답 지우기" title="이 응답 지우기">×</button></td>' : "") + "</tr>";
@@ -1620,13 +1625,14 @@
     return "<thead>" + th + "</thead><tbody>" + rows + "</tbody>";
   }
   function rosterHTML(f) {
-    const fee = Number(f.fee) > 0;
+    const fee = AP.anyFee(f) && canMoney();
     return '<div id="fmStats">' + rosterStats(f, S.fm.resp) + "</div>" +
       '<div class="fm-tools"><input type="search" data-fm-search placeholder="이름 · 학번 · 입금자명 찾기" value="' + esc(S.fm.q || "") + '">' +
       (fee ? '<button class="btn sm" data-act="fmBank">통장 내역으로 입금 확인</button>' : "") +
       '<button class="btn sm" data-act="fmCsv">엑셀(CSV) 받기</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
       '<div class="fm-tablewrap"><table class="fm-table" id="fmTable">' + rosterRows(f) + "</table></div>" +
-      '<p class="muted small">입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 24123이다홍). 행사 당일엔 이 화면에서 [확인]을 눌러 출석을 체크해요.</p>';
+      '<p class="muted small">' + (fee ? "입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 24123이다홍). " + (AP.hasDues(f) ? "회비 미납부자는 [납부]를 눌러 [미납]으로 바꾸면 그 사람 참가비가 " + AP.won(f.feeUnpaid) + "으로 계산돼요. " : "") : "") +
+        "행사 당일엔 이 화면에서 [확인]을 눌러 출석을 체크해요." + (AP.anyFee(f) && !canMoney() ? " 입금·회비 확인은 재무국이 해요." : "") + "</p>";
   }
   function refreshRoster() {
     const f = S.fm.form, t = document.getElementById("fmTable"), s = document.getElementById("fmStats");
@@ -1644,14 +1650,18 @@
       return '<div class="field' + (o.half ? " half" : "") + '"' + (o.id ? ' id="' + o.id + '"' : "") + (o.hidden ? " hidden" : "") + '><label>' + label + "</label>" +
         (o.area ? '<textarea data-fm="' + k + '" rows="' + (o.rows || 3) + '">' + esc(f[k]) + "</textarea>" : '<input data-fm="' + k + '" value="' + esc(f[k] == null ? "" : f[k]) + '"' + (o.num ? ' inputmode="numeric"' : "") + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : "") + ">") +
         (o.help ? '<small class="help">' + o.help + "</small>" : "") + "</div>"; };
+    const money = (k, label, help) => '<div class="field half"><label>' + label + '</label><span class="mwrap"><input data-fm="' + k + '" data-money inputmode="numeric" autocomplete="off" value="' +
+      (Number(f[k]) > 0 ? commas(String(f[k])) : "") + '" placeholder="숫자만"><span class="unit">원</span></span><small class="help">' + help + "</small></div>";
     const sel = (k, label, opts, o) => '<div class="field' + (o && o.half ? " half" : "") + '"><label>' + label + '</label><select data-fm="' + k + '"' + (o && o.disabled ? " disabled" : "") + ">" +
       opts.map((x) => '<option value="' + esc(x[0]) + '"' + (String(f[k]) === String(x[0]) ? " selected" : "") + ">" + esc(x[1]) + "</option>").join("") + "</select>" + (o && o.help ? '<small class="help">' + o.help + "</small>" : "") + "</div>";
     const basics = '<div class="card"><h3>기본 정보</h3><div class="fields">' +
       inp("title", "신청서 제목") + inp("desc", "안내문 (일시·장소 등)", { area: true }) +
       sel("mode", "모집 방식", [["normal", "일반 (기간 안에 누구나)"], ["first", "선착순 (정원 넘으면 대기)"]], { half: true }) +
       inp("cap", "정원", { half: true, num: true, id: "fmCapWrap", hidden: f.mode !== "first" }) +
-      inp("fee", "참가비 (0이면 입금 안내 없음)", { half: true, num: true }) +
-      inp("due", "입금 기한", { half: true, ph: "예: 10월 23일 (금)까지" }) +
+      money("fee", "참가비 (회비 납부자)", "0이면 입금 안내 없음") +
+      money("feeUnpaid", "참가비 (회비 미납부자)", "같으면 비워 두세요") +
+      '<div class="field half"><label>입금 기한</label>' + dateInputHTML('data-fm-date="dueDate"', f.dueDate || "") +
+        '<small class="help" id="fmDueText">' + (AP.dueText(f) ? "학생 화면: " + esc(AP.dueText(f)) : "날짜를 고르면 ‘10월 23일(금)까지’로 보여요") + "</small></div>" +
       inp("account", "입금 계좌", { ph: "예: 국민 123456-01-234567 (생명과학부 학생회)" }) +
       sel("ownerDept", "양식 담당 국서", (S.settings.depts || []).map((d) => [d, d]), { half: true, disabled: !isExecMember(), help: isExecMember() ? "이 국서 사람 모두가 양식을 고칠 수 있어요" : "회장단만 바꿀 수 있어요" }) +
       '<div class="field half"><label>명단 보관 기한</label>' + dateInputHTML('data-fm-date="keepUntil"', f.keepUntil || keepDefault(p)) + '<small class="help">이 날이 지나면 명단이 자동으로 지워져요</small></div>' +
@@ -1670,12 +1680,18 @@
     if (!qs.length) return '<p class="muted small">질문이 없어요. 아래에서 추가해 주세요.</p>';
     return qs.map(function (q, i) {
       const t = AP.TYPES[q.type] || { label: q.type };
-      return '<div class="fm-q" data-q="' + esc(q.id) + '"><div class="fm-qhead"><span class="ord">질문 ' + (i + 1) + " · " + t.label + (t.hint ? " · " + t.hint : "") + "</span>" +
+      const opts = q.type === "yesno" ? ["예", "아니오"] : (q.options || []);
+      const ico = q.type === "multi" ? "fm-oi box" : "fm-oi";
+      const optEditor = (q.type === "choice" || q.type === "multi" || q.type === "yesno") ? '<div class="fm-opts">' +
+        opts.map((o, j) => '<div class="fm-opt"><span class="' + ico + '"></span>' + (q.type === "yesno" ? '<span class="fm-ofix">' + o + "</span>" :
+          '<input data-fo="' + esc(q.id) + '" data-i="' + j + '" value="' + esc(o) + '" placeholder="옵션 ' + (j + 1) + '"><button class="fm-odel" data-act="fmDelOpt" data-q="' + esc(q.id) + '" data-i="' + j + '" aria-label="옵션 지우기">×</button>') + "</div>").join("") +
+        (q.type === "yesno" ? "" : '<div class="fm-opt add"><span class="' + ico + '"></span><button class="linkbtn small" data-act="fmAddOpt" data-q="' + esc(q.id) + '">옵션 추가</button></div>') + "</div>" : "";
+      return '<div class="fm-q" data-q="' + esc(q.id) + '"><div class="fm-qhead"><span class="ord">질문 ' + (i + 1) + " · " + t.label + (t.hint ? " " + t.hint : "") + "</span>" +
         '<div class="fm-qtools"><button data-act="fmMoveQ" data-dir="-1" data-q="' + esc(q.id) + '" aria-label="위로"' + (i ? "" : " disabled") + ">↑</button>" +
         '<button data-act="fmMoveQ" data-dir="1" data-q="' + esc(q.id) + '" aria-label="아래로"' + (i < qs.length - 1 ? "" : " disabled") + ">↓</button>" +
-        '<button data-act="fmDelQ" data-q="' + esc(q.id) + '" aria-label="삭제">×</button></div></div>' +
+        (t.fixed ? "" : '<button data-act="fmDelQ" data-q="' + esc(q.id) + '" aria-label="삭제">×</button>') + "</div></div>" +
         '<div class="fields"><div class="field"><label>질문</label><input data-fq="label" data-q="' + esc(q.id) + '" value="' + esc(q.label) + '"></div>' +
-        (q.type === "choice" || q.type === "multi" ? '<div class="field"><label>보기 (한 줄에 하나씩)</label><textarea rows="3" data-fq="options" data-q="' + esc(q.id) + '">' + esc((q.options || []).join("\n")) + "</textarea></div>" : "") +
+        (optEditor ? '<div class="field">' + optEditor + "</div>" : "") +
         (q.type === "agree" ? '<div class="field"><label>동의 안내문</label><textarea rows="4" data-fq="text" data-q="' + esc(q.id) + '">' + esc(q.text || "") + "</textarea></div>" : "") + "</div>" +
         "<div>" + (t.fixed ? '<span class="muted small">항상 필수</span>' : '<label class="fm-chk"><input type="checkbox" data-fq="required" data-q="' + esc(q.id) + '"' + (q.required ? " checked" : "") + "> 필수</label>") +
         (q.type === "yesno" ? '<label class="fm-chk"><input type="checkbox" data-fq="attend" data-q="' + esc(q.id) + '"' + (q.attend ? " checked" : "") + "> 참여 여부 질문 (‘아니오’면 입금 안내·명단 번호에서 빠짐)</label>" : "") + "</div></div>";
@@ -1702,6 +1718,7 @@
       }));
     }, now ? 0 : 120);
   }
+  function dueHint() { const h = document.getElementById("fmDueText"); if (h && S.fm.draft) h.textContent = AP.dueText(S.fm.draft) ? "학생 화면: " + AP.dueText(S.fm.draft) : "날짜를 고르면 ‘10월 23일(금)까지’로 보여요"; }
   function markDirty() { S.fm.dirty = true; const d = document.getElementById("fmDirty"); if (d) { d.hidden = false; d.textContent = "저장 안 한 변경이 있어요"; } }
   function redrawQs() { const b = document.getElementById("fmQs"); if (b) b.innerHTML = qsHTML(); markDirty(); refreshPreview(true); }
   const findQ = (id) => S.fm.draft.qs.find((q) => q.id === id);
@@ -1717,12 +1734,16 @@
     if (!f) return;
     if (el.dataset.fm) {
       const k = el.dataset.fm;
-      if (k === "cap" || k === "fee") { const d = el.value.replace(/\D/g, "").slice(0, 7); el.value = d; f[k] = Number(d) || 0; }
+      if (k === "cap") { const d = el.value.replace(/\D/g, "").slice(0, 5); el.value = d; f[k] = Number(d) || 0; }
+      else if (k === "fee" || k === "feeUnpaid") f[k] = Number(el.value.replace(/\D/g, "").slice(0, 9)) || 0;
       else f[k] = el.value;
       if (k === "mode") { const w = document.getElementById("fmCapWrap"); if (w) w.hidden = f.mode !== "first"; }
       markDirty(); refreshPreview();
     } else if (el.dataset.fmDate) {
-      const iso = isoDate(fmtDots(el.value.replace(/\D/g, "").slice(0, 8))); if (iso) { f[el.dataset.fmDate] = iso; markDirty(); }
+      const iso = isoDate(fmtDots(el.value.replace(/\D/g, "").slice(0, 8))); if (iso) { f[el.dataset.fmDate] = iso; markDirty(); dueHint(); refreshPreview(); }
+    } else if (el.dataset.fo) {
+      const q = findQ(el.dataset.fo); if (!q) return;
+      q.options[Number(el.dataset.i)] = el.value; markDirty(); refreshPreview();
     } else if (el.dataset.fq) {
       const q = findQ(el.dataset.q); if (!q) return;
       const k = el.dataset.fq;
@@ -1738,7 +1759,7 @@
     if (el.dataset.fm === "mode" || el.dataset.fm === "ownerDept") el.dispatchEvent(new Event("input", { bubbles: true }));
     else if (el.dataset.fq === "required" || el.dataset.fq === "attend") el.dispatchEvent(new Event("input", { bubbles: true }));
     else if (el.classList.contains("dnative") && el.closest(".dwrap") && el.closest(".dwrap").querySelector("[data-fm-date]")) {
-      S.fm.draft[el.closest(".dwrap").querySelector("[data-fm-date]").dataset.fmDate] = el.value; markDirty();
+      S.fm.draft[el.closest(".dwrap").querySelector("[data-fm-date]").dataset.fmDate] = el.value; markDirty(); dueHint(); refreshPreview();
     }
   });
   // 미리보기에서 제출 눌러 보기 (저장은 안 됨)
@@ -1767,15 +1788,15 @@
     },
     fmAddQ(el) {
       const t = el.dataset.type, multi = t === "choice" || t === "multi";
-      if ((t === "name" || t === "sid") && AP.qOf(S.fm.draft, t)) return toast("‘" + AP.TYPES[t].label + "’ 질문은 하나만 있으면 돼요.", true);
-      S.fm.draft.qs.push(AP.Q(t, multi || t === "text" ? "새 질문" : t === "agree" ? "안내 내용에 동의합니다" : AP.TYPES[t].label, multi ? { options: ["보기 1", "보기 2"] } : {}));
+      if (AP.TYPES[t].fixed && AP.qOf(S.fm.draft, t)) return toast("‘" + AP.TYPES[t].label + "’ 질문은 이미 있어요.", true);
+      S.fm.draft.qs.push(AP.Q(t, multi || t === "text" || t === "long" || t === "yesno" ? "제목 없는 질문" : t === "agree" ? "안내 내용에 동의합니다" : AP.TYPES[t].label, multi ? { options: ["옵션 1"] } : {}));
       redrawQs();
       const last = document.getElementById("fmQs").lastElementChild;
       if (last) { last.scrollIntoView({ block: "center", behavior: "smooth" }); const i = last.querySelector("input"); if (i) i.select(); }
     },
     fmDelQ(el) {
       const q = findQ(el.dataset.q);
-      if (q && AP.TYPES[q.type] && AP.TYPES[q.type].fixed) return toast("이름·학번 질문은 지울 수 없어요. (입금자명·중복 확인에 써요)", true);
+      if (q && AP.TYPES[q.type] && AP.TYPES[q.type].fixed) return toast("이름·학번·전화번호 질문은 지울 수 없어요.", true);
       S.fm.draft.qs = S.fm.draft.qs.filter((x) => x.id !== el.dataset.q); redrawQs();
     },
     fmMoveQ(el) {
@@ -1791,6 +1812,8 @@
         ownerDept: f.ownerDept || formDeptFor(p), keepUntil: f.keepUntil || keepDefault(p), cap: Number(f.cap) || 0, fee: Number(f.fee) || 0,
         open: !!f.open, updatedAt: new Date().toISOString(), updatedBy: S.authUser.uid });
       delete doc.id;
+      doc.qs = (doc.qs || []).map((q) => Object.assign({}, q, { options: (q.options || []).map((o) => String(o).trim()).filter(Boolean) }));
+      doc.feeUnpaid = Number(doc.feeUnpaid) || 0;
       // 권한 명단은 [권한 설정]에서만 바뀜 (양식을 고치는 동안 바뀌었을 수도 있으니 최신 값 유지)
       doc.editorUids = (fm.form && fm.form.editorUids) || [];
       doc.viewerUids = (fm.form && fm.form.viewerUids) || [];
@@ -1873,6 +1896,23 @@
       Object.assign(r, patch); refreshRoster();
       if (v) toast(r.name + " 출석 확인 (" + patch.attendedAt + ")");
     },
+    fmAddOpt(el) {
+      const q = findQ(el.dataset.q); if (!q) return;
+      q.options = (q.options || []).concat(["옵션 " + ((q.options || []).length + 1)]);
+      redrawQs();
+      const ins = document.querySelectorAll('[data-fo="' + q.id + '"]'); if (ins.length) { ins[ins.length - 1].focus(); ins[ins.length - 1].select(); }
+    },
+    fmDelOpt(el) {
+      const q = findQ(el.dataset.q); if (!q) return;
+      if ((q.options || []).length <= 1) return toast("옵션은 하나 이상 있어야 해요.", true);
+      q.options.splice(Number(el.dataset.i), 1); redrawQs();
+    },
+    async fmDues(el) {
+      const r = S.fm.resp.find((x) => x.id === el.dataset.sid); if (!r) return;
+      const patch = { duesUnpaid: !r.duesUnpaid };
+      await DB.update(respPath(S.fm.pid), r.id, patch);
+      Object.assign(r, patch); refreshRoster();
+    },
     async fmPaid(el) {
       const r = S.fm.resp.find((x) => x.id === el.dataset.sid); if (!r) return;
       const patch = { paid: el.checked, paidAt: el.checked ? new Date().toISOString() : "" };
@@ -1908,9 +1948,10 @@
     },
     fmCsv() {
       const f = S.fm.form, extra = (f.qs || []).filter((x) => x.type !== "name" && x.type !== "sid");
-      const head = ["번호", "이름", "학번", "입금자명", f.mode === "first" ? "선착순" : "", "입금", "출석", "제출 시각"].filter(Boolean).concat(extra.map((x) => x.label));
-      const rows = S.fm.resp.map((r) => [r.no || "", r.name, r.sid, r.depositName, f.mode === "first" ? (!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안") : null,
-        r.paid ? "O" : "", r.attended ? "O " + (r.attendedAt || "") : "", AP.stampText(r.at)].filter((x) => x !== null)
+      const money = canMoney() && AP.anyFee(f), dues = money && AP.hasDues(f);
+      const head = ["번호", "이름", "학번", money ? "입금자명" : "", f.mode === "first" ? "선착순" : "", dues ? "회비" : "", money ? "참가비" : "", money ? "입금" : "", "출석", "제출 시각"].filter(Boolean).concat(extra.map((x) => x.label));
+      const rows = S.fm.resp.map((r) => [r.no || "", r.name, r.sid, money ? r.depositName : null, f.mode === "first" ? (!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안") : null,
+        dues ? (r.duesUnpaid ? "미납" : "납부") : null, money ? AP.feeOf(f, r) : null, money ? (r.paid ? "O" : "") : null, r.attended ? "O " + (r.attendedAt || "") : "", AP.stampText(r.at)].filter((x) => x !== null)
         .concat(extra.map((x) => { const v = (r.answers || {})[x.id]; return x.type === "agree" ? (v ? "동의" : "") : Array.isArray(v) ? v.join(", ") : (v == null ? "" : v); })));
       const csv = "﻿" + [head].concat(rows).map((row) => row.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
       const a = document.createElement("a");
@@ -2104,10 +2145,10 @@
       renderPage();
     },
     async addTask(el) {
-      if (!isHead()) { if (!el.classList.contains("cell")) toast("업무 추가·분배는 국장과 회장단만 할 수 있어요.", true); return; }
+      if (!isHead()) { if (!el.classList.contains("cday")) toast("업무 추가·분배는 국장과 회장단만 할 수 있어요.", true); return; }
       await col("users");
       openForm({ title: "업무 추가", fields: taskFields(await linkableProjects()),
-        values: { dueDate: el.dataset.date || today(), dept: (canManage(S.calFilter) && S.calFilter) || (canManage(S.me && S.me.dept) ? S.me.dept : manageableDepts()[0] || "") },
+        values: { dueDate: el.dataset.date || today(), dept: (canManage(S.calFilter) && S.calFilter) || (S.me && S.me.dept && canManage(S.me.dept) ? S.me.dept : manageableDepts()[0] || "") },
         submitLabel: "추가", onSubmit: async (v) => {
           assigneeFrom(v);
           await DB.add("tasks", Object.assign(v, { done: false }, stamp()));

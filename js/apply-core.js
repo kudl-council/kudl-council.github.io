@@ -8,15 +8,17 @@
   const z = (n, k) => String(n).padStart(k || 2, "0");
 
   /* ---------- 질문 종류 ---------- */
+  // 이름·학번·전화번호는 꼭 있어야 하는 질문 (지울 수 없고 항상 필수)
   const TYPES = {
-    name:   { label: "이름", hint: "입금자명에 쓰여요 · 꼭 있어야 해요", fixed: true },
-    sid:    { label: "학번", hint: "10자리 · 중복 신청을 막고 입금자명에 쓰여요 · 꼭 있어야 해요", fixed: true },
-    phone:  { label: "전화번호", hint: "010-0000-0000" },
-    text:   { label: "짧은 답" },
-    choice: { label: "하나 고르기" },
-    multi:  { label: "여러 개 고르기" },
+    name:   { label: "이름", fixed: true },
+    sid:    { label: "학번", hint: "10자리", fixed: true },
+    phone:  { label: "전화번호", fixed: true },
     yesno:  { label: "예 / 아니오" },
     agree:  { label: "동의 (체크)" },
+    text:   { label: "단답형" },
+    long:   { label: "장문형" },
+    choice: { label: "객관식" },
+    multi:  { label: "체크박스" },
   };
   const rid = () => "q" + Math.random().toString(36).slice(2, 8);
   const Q = (type, label, extra) => Object.assign({ id: rid(), type: type, label: label, required: true, options: [], attend: false, text: "" }, extra || {});
@@ -65,9 +67,24 @@
     });
     return list;
   }
-  const needPay = (f, r) => isGoing(f, r) && !r.wait && Number(f.fee) > 0;
+  // 참가비: 회비 납부자(fee) / 미납부자(feeUnpaid, 다를 때만)
+  const hasDues = (f) => Number(f.feeUnpaid) > 0 && Number(f.feeUnpaid) !== Number(f.fee);
+  const feeOf = (f, r) => (hasDues(f) && r && r.duesUnpaid ? Number(f.feeUnpaid) : Number(f.fee) || 0);
+  const anyFee = (f) => Number(f.fee) > 0 || Number(f.feeUnpaid) > 0;
+  const needPay = (f, r) => isGoing(f, r) && !r.wait && anyFee(f);
+  // 입금 기한: 날짜로 넣으면 '10월 23일(금)까지'
+  const DOWK = ["일", "월", "화", "수", "목", "금", "토"];
+  function dueText(f) {
+    if (f.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(f.dueDate)) { const d = new Date(f.dueDate + "T00:00:00"); return (d.getMonth() + 1) + "월 " + d.getDate() + "일(" + DOWK[d.getDay()] + ")까지"; }
+    return f.due || "";
+  }
+  function feeText(f) {
+    if (!anyFee(f)) return "";
+    return hasDues(f) ? "회비 납부자 " + won(f.fee) + " · 미납부자 " + won(f.feeUnpaid) : won(f.fee);
+  }
   function checkForm(f) {
-    if (!qOf(f, "name") || !qOf(f, "sid")) return "‘이름’과 ‘학번’ 질문은 꼭 있어야 해요. (입금자명과 중복 신청 확인에 써요)";
+    if (!qOf(f, "name") || !qOf(f, "sid") || !qOf(f, "phone")) return "‘이름’·‘학번’·‘전화번호’ 질문은 꼭 있어야 해요. (입금자명·중복 신청 확인·연락에 써요)";
+    if ((f.qs || []).some((q) => (q.type === "choice" || q.type === "multi") && !(q.options || []).filter((o) => String(o).trim()).length)) return "객관식·체크박스 질문에 옵션을 하나 이상 넣어 주세요.";
     if (!String(f.title || "").trim()) return "행사 이름(신청서 제목)을 넣어 주세요.";
     if (f.mode === "first" && !(Number(f.cap) > 0)) return "선착순 정원을 넣어 주세요.";
     return "";
@@ -90,6 +107,10 @@
   function qHTML(q) {
     const req = q.required ? ' <span class="req">*</span>' : "";
     const nm = 'name="a_' + q.id + '"';
+    if (q.type === "long") {
+      return '<div class="ap-q"><label class="ap-ql" for="a_' + q.id + '">' + esc(q.label) + req + "</label>" +
+        '<textarea id="a_' + q.id + '" ' + nm + ' rows="4" maxlength="1000"></textarea></div>';
+    }
     if (q.type === "name" || q.type === "sid" || q.type === "phone" || q.type === "text") {
       const ph = q.type === "sid" ? "2026250123" : q.type === "phone" ? "010-1234-5678" : q.type === "name" ? "홍길동" : "";
       return '<div class="ap-q"><label class="ap-ql" for="a_' + q.id + '">' + esc(q.label) + req + "</label>" +
@@ -97,7 +118,7 @@
         (q.type === "sid" || q.type === "phone" ? ' inputmode="numeric"' : "") + ' placeholder="' + ph + '" autocomplete="off" maxlength="' + (q.type === "text" ? 200 : 30) + '"></div>';
     }
     if (q.type === "choice" || q.type === "multi" || q.type === "yesno") {
-      const opts = q.type === "yesno" ? ["예", "아니오"] : (q.options && q.options.length ? q.options : ["보기 1"]);
+      const opts = q.type === "yesno" ? ["예", "아니오"] : ((q.options || []).filter((o) => String(o).trim()).length ? (q.options || []).filter((o) => String(o).trim()) : ["옵션 1"]);
       const it = q.type === "multi" ? "checkbox" : "radio";
       return '<div class="ap-q" role="group" aria-label="' + esc(q.label) + '"><div class="ap-ql">' + esc(q.label) + req + (q.type === "multi" ? ' <span class="ap-pill">여러 개</span>' : "") + "</div>" +
         opts.map((o) => '<label class="ap-opt"><input type="' + it + '" ' + nm + ' value="' + esc(o) + '"> ' + esc(o) + "</label>").join("") + "</div>";
@@ -113,7 +134,8 @@
   function infoHTML(f) {
     const bits = [];
     if (f.mode === "first") bits.push('<span class="ap-pill acc">선착순 ' + esc(f.cap) + "명</span>");
-    if (Number(f.fee) > 0) bits.push('<span class="ap-pill">참가비 ' + won(f.fee) + "</span>");
+    if (anyFee(f)) bits.push('<span class="ap-pill">참가비 ' + feeText(f) + "</span>");
+    if (anyFee(f) && dueText(f)) bits.push('<span class="ap-pill">입금 ' + esc(dueText(f)) + "</span>");
     return bits.length ? '<div class="ap-bits">' + bits.join("") + "</div>" : "";
   }
   function formHTML(f, opts) {
@@ -141,7 +163,7 @@
       if (q.type === "name") v = v.replace(/\s+/g, "");
       if (q.type === "phone") { const d = v.replace(/\D/g, ""); v = d.length === 11 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7) : v; }
       const empty = v === "" || v === false || (Array.isArray(v) && !v.length);
-      if (!err && (q.required || q.type === "name" || q.type === "sid") && empty) err = q.type === "agree" ? "‘" + q.label + "’에 체크해야 제출할 수 있어요." : "‘" + q.label + "’을(를) 입력해 주세요.";
+      if (!err && (q.required || (TYPES[q.type] && TYPES[q.type].fixed)) && empty) err = q.type === "agree" ? "‘" + q.label + "’에 체크해야 제출할 수 있어요." : "‘" + q.label + "’을(를) 입력해 주세요.";
       if (!err && q.type === "sid" && v && v.length !== 10) err = "학번 10자리를 넣어 주세요.";
       if (!err && q.type === "phone" && v && v.replace(/\D/g, "").length < 10) err = "전화번호를 확인해 주세요.";
       out[q.id] = v;
@@ -153,12 +175,13 @@
   function doneHTML(f, r, opts) {
     opts = opts || {};
     const going = isGoing(f, r), dn = depositName(r.sid, r.name);
-    const pay = going && Number(f.fee) > 0;
+    const pay = going && anyFee(f);
     return headHTML(f) + '<div class="ap-done"><span class="ap-pill ok">' + (going ? "신청 완료" : "응답 제출") + "</span>" +
       "<div>" + esc(r.name) + "님, " + (going ? "신청이 접수됐어요." : "응답해 주셔서 고마워요.") + "</div>" +
       (r.at ? '<div class="ap-time">접수 시각 ' + esc(stampText(r.at)) + "</div>" : "") +
       (f.mode === "first" && going ? (r.rank ? rankHTML(f, r.rank) : '<div class="ap-note">선착순은 접수 시각 순서로 정해져요. 정원 안인지는 학생회가 따로 알려 드려요.</div>') : "") + "</div>" +
-      (pay ? '<div class="ap-pay"><b>입금 안내</b><div>' + (f.due ? esc(f.due) + " " : "") + "<b>" + won(f.fee) + "</b>을 보내 주세요." +
+      (pay ? '<div class="ap-pay"><b>입금 안내</b><div>' + (dueText(f) ? esc(dueText(f)) + " " : "") + "<b>" + won(f.fee) + "</b>을 보내 주세요." +
+        (hasDues(f) ? " <b>학생회비 미납부자는 " + won(f.feeUnpaid) + "</b>이에요." : "") +
         (f.mode === "first" ? (r.rank && r.rank > Number(f.cap || 0) ? " <b>지금은 대기라서, 연락받은 뒤에 보내 주세요.</b>" : r.rank ? "" : " (대기로 접수됐다면 연락받은 뒤에 보내 주세요)") : "") + "</div>" +
         (f.account ? '<div class="ap-copy"><span>' + esc(f.account) + '</span><button type="button" data-copy="' + esc(String(f.account).replace(/[^\d-]/g, "")) + '">복사</button></div>' : "") +
         '<div>입금자명은 꼭 이렇게 적어 주세요</div><div class="ap-copy"><b>' + esc(dn) + '</b><button type="button" data-copy="' + esc(dn) + '">복사</button></div>' +
@@ -167,5 +190,5 @@
       (opts.preview ? '<button type="button" class="ap-link" data-ap-back>처음 화면으로</button>' : "");
   }
 
-  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML };
+  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, hasDues, feeOf, anyFee, dueText, feeText };
 })();

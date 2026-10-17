@@ -240,8 +240,7 @@
     // 행사 신청 양식 예시 (중간고사 간식 행사, 양식은 소통국 담당)
     const forms = {
       p2: { projectId: "p2", projectName: "중간고사 간식 행사", projectDept: "내무국", ownerDept: "소통국", title: "중간고사 간식행사 신청",
-        desc: "시험 기간 응원 간식을 나눠 드려요!\n배부: " + day(6).slice(5).replace("-", "월 ") + "일 12:00, 과방", mode: "normal", cap: 30, fee: 3000,
-        due: day(4).slice(5).replace("-", "월 ") + "일까지", account: "국민 123456-01-234567 (생명과학부 학생회)", open: true, keepUntil: day(21),
+        desc: "시험 기간 응원 간식을 나눠 드려요!\n배부: " + day(6).slice(5).replace("-", "월 ") + "일 12:00, 과방", mode: "normal", cap: 30, fee: 3000, feeUnpaid: 5000, dueDate: day(4), account: "국민 123456-01-234567 (생명과학부 학생회)", open: true, keepUntil: day(21),
         qs: [
           { id: "qn", type: "name", label: "이름", required: true, options: [], attend: false, text: "" },
           { id: "qs", type: "sid", label: "학번", required: true, options: [], attend: false, text: "" },
