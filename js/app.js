@@ -13,6 +13,7 @@
   const DEFAULTS = {
     generation: "제29대",
     councilName: "윤슬",
+    homeMsg: true,   // 홈에 '선배의 한마디' (사람마다 [숨기기] 가능)
     slogan: "여러분과 다 함께 더 밝게 반짝일 미래를 위해",   // 학생회 슬로건 (관리 → 사이트 설정에서 바꿈)
     depts: ["회장단", "내무국", "소통국", "홍보국", "재무국", "대외협력국"],
     execPositions: ["회장", "부회장"],   // 회장단(국 목록 맨 위) 직책
@@ -722,7 +723,6 @@
       // 컴퓨터: 왼쪽 메뉴 (학생회 이름 · 메뉴 · 접기 · 내 정보) / 폰: 위쪽 가로 메뉴
       '<aside class="side">' +
       '<a class="side-brand" href="#home"><span class="mark">DLS</span><span class="side-txt"><b>' + esc(S.settings.councilName || "학생회") + "</b><small>" + esc(CFG.siteName || "") + "</small></span></a>" +
-      (S.settings.slogan ? '<p class="side-slogan side-txt">' + esc(S.settings.slogan) + "</p>" : "") +
       '<nav class="tabs">' + nav + "</nav>" +
       '<button class="side-fold" data-act="sideFold" title="메뉴 접기/펴기"><span class="fold-ico">«</span><span class="side-txt">접기</span></button>' +
       '<div class="side-me"><button class="side-who" data-act="' + (me ? "editMe" : "logout") + '" title="내 정보"><b>' + esc(me ? me.name : "학생회 공용계정") + "</b><small>" +
@@ -831,9 +831,10 @@
         (caps.length ? '<div class="msg-grid">' + caps.map((m) => msgCard(Object.assign({ sealed: true }, m), canEditMsg(m))).join("") + "</div>"
           : '<p class="empty-s">아직 봉인된 한마디가 없어요.</p>') + "</section>"
       : '<section class="card sealed center"><h3>🔒 2학년 선배들이 한마디를 준비하고 있어요</h3><p class="muted small">학생회를 다음 기수로 넘기는 날 열려요. 조금만 기다려 주세요!</p></section>';
+    const showBack = S.me && S.me.hideHomeMsg && S.settings.homeMsg;
     return '<div class="page-head"><div><h2>소통방</h2><p class="muted">학생회끼리 자유롭게 떠드는 곳 + 선배들이 후배에게 남기는 한마디</p></div></div>' +
       talkTabs("messages") + sealed +
-      '<h3 class="sec-h">선배들이 우리에게 남긴 한마디</h3>' +
+      '<div class="sec-h hm-row"><h3>선배들이 우리에게 남긴 한마디</h3>' + (showBack ? '<button class="btn sm" data-act="showHomeMsg">홈에 다시 보이기</button>' : "") + "</div>" +
       '<div class="filters">' + chips + "</div>" +
       (body || '<div class="card empty">아직 열린 한마디가 없어요.<br>선배들의 한마디는 학생회를 넘기는 날, 함께 활동했던 후배들에게 열려요.</div>');
   };
@@ -908,6 +909,30 @@
     if (h < 22) return "오늘 하루도 수고했어요";
     return "오늘도 고마워요, 푹 쉬어요";
   }
+  // 홈 '이번 주 일정' — 일~토 7칸, 업무 마감 · 사업 · 세부 일정
+  function weekHTML(tasks, projects) {
+    const t = today(), now = new Date(t + "T00:00:00");
+    const mon = new Date(now); mon.setDate(now.getDate() - now.getDay());   // 이번 주 일요일
+    const days = [];
+    for (let i = 0; i < 7; i++) { const d = new Date(mon); d.setDate(mon.getDate() + i); days.push(ymd(d)); }
+    const cur = projects.filter((p) => isCurrent(p) && p.status !== "취소");
+    const inRange = (d, a, b) => a && d >= a && d <= (b && b > a ? b : a);
+    let total = 0;
+    const cols = days.map(function (d, i) {
+      const items = [];
+      cur.forEach((p) => { if (inRange(d, p.startDate, p.endDate)) items.push('<li class="wk-ev" style="--c:' + deptColor(p.dept) + '" data-act="viewProject" data-id="' + esc(p.id) + '" title="사업 · ' + esc(p.name) + '"><b>' + esc(p.name) + "</b></li>"); });
+      cur.forEach((p) => schedOf(p).forEach((sc) => { if (inRange(d, sc.start, sc.end)) items.push('<li class="wk-sch" style="--c:' + deptColor(p.dept) + '" data-act="viewProject" data-id="' + esc(p.id) + '" title="' + esc(p.name) + " · " + esc(sc.title) + '">' + esc(sc.title) + "<small>" + esc(p.name) + "</small></li>"); }));
+      tasks.filter((x) => x.dueDate === d).forEach((x) => items.push('<li class="wk-task' + (x.done ? " done" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept) + " 마감 · " + esc(x.title) + '"><i></i>' + esc(x.title) + "</li>"));
+      total += items.length;
+      const dd = new Date(d + "T00:00:00");
+      return '<div class="wk-day' + (d === t ? " today" : "") + (d < t ? " past" : "") + '"><div class="wk-h"><span class="' + (i === 0 ? "sun" : i === 6 ? "sat" : "") + '">' + DOW[dd.getDay()] + "</span><b>" + dd.getDate() + "</b></div>" +
+        (items.length ? "<ul>" + items.join("") + "</ul>" : '<p class="wk-none">–</p>') + "</div>";
+    }).join("");
+    const range = (new Date(days[0] + "T00:00:00").getMonth() + 1) + "." + new Date(days[0] + "T00:00:00").getDate() + " – " + (new Date(days[6] + "T00:00:00").getMonth() + 1) + "." + new Date(days[6] + "T00:00:00").getDate();
+    return '<section class="card week"><div class="card-head"><h3>이번 주 일정 <small>' + range + (total ? " · " + total + "개" : "") + '</small></h3><a href="#calendar" class="more">캘린더 →</a></div>' +
+      '<div class="wk-grid">' + cols + "</div>" +
+      '<p class="wk-legend"><span class="lg-ev"></span>사업 <span class="lg-sch"></span>세부 일정 <span class="lg-task"></span>업무 마감</p></section>';
+  }
   PAGES.home = async function () {
     const [tasks, projects, minutes, msgs, notices, roomTasks] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => []), col("notices").catch(() => []), col("deptTasks").catch(() => [])]);
     const myUid = S.authUser && S.authUser.uid;
@@ -937,11 +962,12 @@
       '<div class="actions" style="margin-top:8px">' + (isAdmin() ? '<button class="btn sm primary" data-act="editMe">내 정보 수정</button>' : "") + '<button class="btn sm" data-act="profileOk">확인했어요</button></div></div>' + pendingNote;
     return pendingNote +
       '<div class="hello"><p class="muted">' + fmtDate(t, true) + "</p><h2>" + greeting() + (S.me ? ", " + esc(S.me.name) + "님" : "") + " 👋</h2>" +
-        (S.settings.slogan ? '<p class="hello-slogan">' + esc(councilLabel(S.settings.generation, S.settings.councilName)) + " · " + esc(S.settings.slogan) + "</p>" : "") + "</div>" +
+        (S.settings.slogan ? '<p class="hello-slogan"><span>' + esc(councilLabel(S.settings.generation, S.settings.councilName)) + "</span>" + esc(S.settings.slogan) + "</p>" : "") + "</div>" +
       noticeBoardHTML(notices) +
       (myRoom.length ? '<a class="notice info link roomlink" href="#room"><b>📋 ' + esc(S.me.dept) + "방에 내가 할 일 " + myRoom.length + "개</b> — " +
         esc(myRoom.slice(0, 2).map((x) => x.title).join(", ")) + (myRoom.length > 2 ? " 외" : "") + " →</a>" : "") +
-      (pick ? '<a class="home-msg" href="#messages"><span class="lbl">선배의 한마디</span><span class="mtext">' + esc(pick.text) + '</span><span class="by">' + esc(msgByline(pick)) + "</span></a>" : "") +
+      weekHTML(tasks, projects) +
+      (pick && S.settings.homeMsg && !(S.me && S.me.hideHomeMsg) ? '<a class="home-msg" href="#messages"><button class="hm-hide" data-act="hideHomeMsg" title="내 홈에서 숨기기">숨기기 ×</button><span class="lbl">선배의 한마디</span><span class="mtext">' + esc(pick.text) + '</span><span class="by">' + esc(msgByline(pick)) + "</span></a>" : "") +
       '<div class="grid2">' +
       '<section class="card"><div class="card-head"><h3>다가오는 마감 <small>2주 이내</small></h3><a href="#calendar" class="more">캘린더 →</a></div>' +
       (soon.length ? '<ul class="tlist">' + soon.map(taskRow).join("") + "</ul>" : '<p class="empty-s">2주 안에 마감되는 업무가 없어요.</p>') +
@@ -1240,6 +1266,11 @@
     const links = [["기획안", p.planUrl], ["기타 자료", p.extraUrl]]
       .filter((l) => safeUrl(l[1])).map((l) => '<a class="btn sm" href="' + esc(safeUrl(l[1])) + '" target="_blank" rel="noopener">' + l[0] + " ↗</a>").join("");
     const formBtn = opts.forms ? projectFormBtn(p, f, opts) : "";
+    // 세부 일정·업무 분배가 비어 있으면 '+ 추가' 버튼만 나오는데, 이걸 신청 양식 버튼과 한 줄에 같은 크기로
+    const sch = projectSchedHTML(p, opts), tsk = projectTasksHTML(p, opts);
+    const isBtn = (h) => /^<button/.test(h);
+    const addBtns = [sch, tsk].filter(isBtn).map((h) => h.replace("btn sm ptask-add", "btn sm")).join("");
+    const blocks = [sch, tsk].filter((h) => h && !isBtn(h)).join("");
     const open = !!S.openProj[p.id];
     return '<div class="prow' + (open ? " open" : "") + '" style="--c:' + deptColor(p.dept) + '">' +
       '<button class="pr-head" data-act="toggleProj" data-id="' + esc(p.id) + '" aria-expanded="' + open + '">' +
@@ -1253,8 +1284,8 @@
       '<dl class="meta">' + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
-      (links || formBtn ? '<div class="plinks">' + links + formBtn + "</div>" : "") +
-      '<div class="pr-cols">' + projectSchedHTML(p, opts) + projectTasksHTML(p, opts) + "</div>" +
+      (links || formBtn || addBtns ? '<div class="plinks">' + links + formBtn + addBtns + "</div>" : "") +
+      (blocks ? '<div class="pr-cols">' + blocks + "</div>" : "") +
       (isHead() ? '<div class="pfoot"><button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button></div>' : "") +
       "</div></div>";
   }
@@ -1887,6 +1918,18 @@
       row.classList.toggle("open", S.openProj[id]);
       el.setAttribute("aria-expanded", S.openProj[id]);
     },
+    async hideHomeMsg() {
+      if (!S.me) return;
+      await DB.update("users", S.authUser.uid, { hideHomeMsg: true });
+      S.me.hideHomeMsg = true; dirty("users"); await renderPage();
+      toast("내 홈에서 숨겼어요. 소통방 → 선배들의 한마디에서 다시 켤 수 있어요.");
+    },
+    async showHomeMsg() {
+      if (!S.me) return;
+      await DB.update("users", S.authUser.uid, { hideHomeMsg: false });
+      S.me.hideHomeMsg = false; dirty("users"); await renderPage();
+      toast("홈에 다시 보여요.");
+    },
     sideFold() {
       const sh = document.querySelector(".shell"); if (!sh) return;
       sh.classList.toggle("folded");
@@ -2232,6 +2275,7 @@
         { name: "generation", label: "학생회 기수", required: true, half: true, placeholder: "예: 제29대" },
         { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 윤슬" },
         { name: "slogan", label: "학생회 슬로건 (한 줄)", placeholder: "예: 여러분과 다 함께 더 밝게 반짝일 미래를 위해", help: "왼쪽 메뉴 위, 홈 화면, 로그인 화면에 보여요. 비워 두면 안 보여요." },
+        { name: "homeMsg", label: "홈 화면에 '선배의 한마디' 보여주기 (끄면 모두의 홈에서 사라지고 소통방에서만 보여요. 켜 두면 각자 [숨기기]로 끌 수 있어요)", type: "checkbox" },
         { name: "fixExisting", label: "오타 수정이에요 — 지금 학생회의 기존 사업 기록에도 바뀐 기수·이름을 똑같이 적용", type: "checkbox",
           help: "새 학생회로 넘기는 거라면 체크하지 말고 [새 학생회로 넘기기] 버튼을 쓰세요." },
         { name: "depts", label: "국서 목록 (한 줄에 하나씩, 위에서부터 순서대로 — 맨 위는 회장단 자리)", type: "textarea", rows: 7, required: true },

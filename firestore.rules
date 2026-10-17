@@ -58,10 +58,10 @@ service cloud.firestore {
         && (
           // 승인 대기 중: 가입 정보 수정
           (resource.data.status == 'pending' && unchanged('status') && unchanged('inactiveReason'))
-          // 활동 중·OB: 이름·학번·전화번호만
+          // 활동 중·OB: 이름·학번·전화번호 (+ 홈 '선배의 한마디' 숨기기 설정)만
           || (unchanged('status') && unchanged('inactiveReason')
               && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(['name', 'studentId', 'phone', 'obPhone', 'profileCheck', 'updatedAt']))
+                   .hasOnly(['name', 'studentId', 'phone', 'obPhone', 'profileCheck', 'hideHomeMsg', 'updatedAt']))
           // 학년이 비어 있던 예전 회원: 학년 한 번 입력
           || (resource.data.status == 'approved' && unchanged('status') && unchanged('inactiveReason')
               && resource.data.get('grade', '') == ''
