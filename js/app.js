@@ -1024,24 +1024,32 @@
       .sort((p, q) => p.s - q.s || (q.e - q.s) - (p.e - p.s) || (p.x.kind === "ev" ? -1 : 1));
     const lanes = [];
     segs.forEach((g) => { let l = 0; while (lanes[l] && lanes[l].some((h) => !(g.e < h.s || g.s > h.e))) l++; (lanes[l] = lanes[l] || []).push(g); g.l = l; });
-    const L = lanes.length;
+    // 모든 칸 높이를 똑같이: 띠는 최대 3줄, 업무는 남는 자리만큼 (넘치면 +n)
+    const MAXL = 3, H = month == null ? 84 : 96;
+    const hidden = segs.filter((g) => g.l >= MAXL);
+    const L = Math.min(lanes.length, MAXL);
+    const hiddenOn = {};
+    hidden.forEach((g) => { for (let i = g.s; i <= g.e; i++) hiddenOn[i] = (hiddenOn[i] || 0) + 1; });
+    const fit = Math.max(1, Math.floor((H - 24 - L * 19 - 8) / 16));
+    maxT = Math.min(maxT, fit);
     let row = "";
     days.forEach((key, i) => {
       const d = new Date(key + "T00:00:00"), other = month != null && d.getMonth() !== month;
       const cls = (other ? " other" : "") + (key === t ? " today" : "") + (key < t && month == null ? " past" : "") + (d.getDay() === 0 ? " sun" : d.getDay() === 6 ? " sat" : "");
       const items = (byDay[key] || []);
+      const more = Math.max(0, items.length - maxT) + (hiddenOn[i] || 0);
       row += '<div class="cday' + cls + '" style="grid-column:' + (i + 1) + '"' + (clickAdd ? ' data-act="addTask" data-date="' + key + '"' : "") + "></div>" +
         '<span class="cnum' + cls + '" style="grid-column:' + (i + 1) + '">' + (month == null ? '<small>' + DOW[d.getDay()] + "</small>" : "") + d.getDate() + "</span>" +
-        (items.length ? '<div class="ctasks" style="grid-column:' + (i + 1) + ";grid-row:" + (L + 2) + '">' +
-          items.slice(0, maxT).map((x) => '<span class="ctask' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + (pn[x.projectId] ? "[" + pn[x.projectId] + "] " : "") + x.title) + '"><i></i>' + esc(x.title) + "</span>").join("") +
-          (items.length > maxT ? '<span class="cmore">+' + (items.length - maxT) + "</span>" : "") + "</div>" : "");
+        (items.length || more ? '<div class="ctasks" style="grid-column:' + (i + 1) + ";grid-row:" + (L + 2) + '">' +
+          items.slice(0, more && items.length > maxT ? maxT - 1 : maxT).map((x) => '<span class="ctask' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + (pn[x.projectId] ? "[" + pn[x.projectId] + "] " : "") + x.title) + '"><i></i>' + esc(x.title) + "</span>").join("") +
+          (more ? '<span class="cmore">+' + (more + (items.length > maxT ? 1 : 0)) + "개 더</span>" : "") + "</div>" : "");
     });
-    segs.forEach((g) => {
+    segs.filter((g) => g.l < MAXL).forEach((g) => {
       const x = g.x, contL = x.a < days[g.s], contR = x.b > days[g.e];
       row += '<span class="cbar ' + x.kind + (contL ? " cl" : "") + (contR ? " cr" : "") + '" style="--c:' + deptColor(x.p.dept) + ";grid-column:" + (g.s + 1) + " / " + (g.e + 2) + ";grid-row:" + (g.l + 2) +
         '" data-act="viewProject" data-id="' + esc(x.p.id) + '" title="' + esc(x.tip) + '">' + (contL ? "" : esc(x.label) + (x.sub ? '<small>' + esc(x.sub) + "</small>" : "")) + "</span>";
     });
-    return '<div class="cweek' + (month == null ? " wk" : "") + '" style="grid-template-rows:22px' + (L ? " repeat(" + L + ", 17px)" : "") + ' minmax(' + (month == null ? 18 : 20) + 'px, auto)">' + row + "</div>";
+    return '<div class="cweek' + (month == null ? " wk" : "") + '" style="height:' + H + 'px;grid-template-rows:22px' + (L ? " repeat(" + L + ", 17px)" : "") + ' 1fr">' + row + "</div>";
   }
   PAGES.calendar = async function () {
     const tasks = await col("tasks");

@@ -1028,3 +1028,21 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .cl-chip small { color: var(--muted); font-size: 11px; }
 .cl-chip .muted { font-size: 11px; }
 .cl-chip:hover { border-color: var(--muted); }
+
+/* ===== 캘린더: 테두리 없이 연한 색만, 칸 높이 통일 ===== */
+.cweek { overflow: hidden; padding-bottom: 0; }
+.cday, .cweek > .cday:last-of-type { border: 0; background: var(--bg); margin-bottom: 0; border-radius: 8px; }
+.cday.other { background: transparent; }
+.cday.today { background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface)); border: 0; }
+.cday:hover { background: color-mix(in srgb, var(--accent) 6%, var(--bg)); }
+.cbar.ev, .cbar.ev.cl { background: color-mix(in srgb, var(--c) 20%, var(--surface)); color: color-mix(in srgb, var(--c) 80%, #111); box-shadow: none; font-weight: 700; }
+.cbar.sch, .cbar.sch.cl { background: color-mix(in srgb, var(--c) 10%, var(--surface)); color: color-mix(in srgb, var(--c) 60%, var(--ink)); box-shadow: none; font-weight: 600; }
+.ctasks { overflow: hidden; }
+.cmore { font-weight: 600; }
+.cs-ev i { box-shadow: none; background: color-mix(in srgb, var(--accent) 20%, var(--surface)); }
+.cs-sch i { box-shadow: none; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.cl-chip { border: 0; background: var(--bg); }
+@media (max-width: 760px) {
+  .cweek { height: 64px !important; }
+  .cweek.wk { height: 56px !important; }
+}
