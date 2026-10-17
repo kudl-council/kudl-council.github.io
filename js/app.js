@@ -1039,26 +1039,39 @@
         (schByDay[ymd(d)] = schByDay[ymd(d)] || []).push(item);
       if (sc.start.slice(0, 7) <= monthKey0 && schedEnd(sc).slice(0, 7) >= monthKey0) monthSch.push(item);
     }));
-    const schChip = (it) => '<span class="chip sch" style="--c:' + deptColor(it.p.dept) + '" data-act="viewProject" data-id="' + esc(it.p.id) + '" title="' +
-      esc("[" + it.p.name + "] " + it.s.title + " · " + rangeText(it.s.start, it.s.end)) + '"><small class="cp">' + esc(it.p.name) + "</small>" + esc(it.s.title) + "</span>";
+    // 달력: 한 주씩 그리고, 여러 날짜에 걸친 사업·세부 일정은 하나의 긴 막대로 (매일 반복하지 않음)
+    const spans = evs.map((p) => ({ kind: "ev", p: p, a: p.startDate, b: p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate, label: p.name, tip: "사업 · " + p.name + " · " + eventDateText(p) }))
+      .concat([].concat.apply([], evsAll.map((p) => schedOf(p).filter((sc) => sc.start).map((sc) => ({ kind: "sch", p: p, a: sc.start, b: schedEnd(sc), label: sc.title,
+        tip: "[" + p.name + "] " + sc.title + " · " + rangeText(sc.start, sc.end) })))));
+    const MAXT = 3;
     let grid = "";
-    for (let i = 0; i < cells; i++) {
-      const d = new Date(y, m, 1 - startDow + i);
-      const key = ymd(d);
-      const items = byDay[key] || [];
-      const dayEvs = evByDay[key] || [];
-      const daySch = schByDay[key] || [];
-      const room = Math.max(1, 4 - dayEvs.length - daySch.length);
-      const other = d.getMonth() !== m;
-      grid += '<div class="cell' + (other ? " other" : "") + (key === t ? " today" : "") + (d.getDay() === 0 ? " sun" : d.getDay() === 6 ? " sat" : "") + '" data-act="addTask" data-date="' + key + '">' +
-        '<span class="num">' + d.getDate() + "</span>" +
-        dayEvs.map((p) => '<span class="chip ev" style="--c:' + deptColor(p.dept) + '" data-act="viewProject" data-id="' + esc(p.id) + '" title="사업 · ' + esc(p.name) + '">' + esc(p.name) + "</span>").join("") +
-        daySch.map(schChip).join("") +
-        items.slice(0, room).map((x) => '<span class="chip' + (x.done ? " done" : !x.done && x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + (pname[x.projectId] ? "[" + pname[x.projectId] + "] " : "") + x.title) + '">' +
-          (pname[x.projectId] ? '<small class="cp">' + esc(pname[x.projectId]) + "</small>" : "") + esc(x.title) + "</span>").join("") +
-        (items.length > room ? '<span class="more-n">+' + (items.length - room) + "</span>" : "") +
-        (items.length || dayEvs.length || daySch.length ? '<span class="dots">' + dayEvs.map((p) => '<i class="e" style="--c:' + deptColor(p.dept) + '"></i>').join("") + daySch.map((it) => '<i class="s" style="--c:' + deptColor(it.p.dept) + '"></i>').join("") + items.map((x) => '<i style="--c:' + deptColor(x.dept) + '"></i>').join("") + "</span>" : "") +
-        "</div>";
+    for (let w = 0; w < cells / 7; w++) {
+      const days = [];
+      for (let i = 0; i < 7; i++) days.push(ymd(new Date(y, m, 1 - startDow + w * 7 + i)));
+      const ws = days[0], we = days[6];
+      // 이번 주에 걸친 막대들을 줄(lane)에 겹치지 않게 배치
+      const segs = spans.filter((x) => x.a <= we && x.b >= ws)
+        .map((x) => ({ x: x, s: Math.max(0, days.indexOf(x.a < ws ? ws : x.a)), e: days.indexOf(x.b > we ? we : x.b) }))
+        .sort((p, q) => p.s - q.s || (q.e - q.s) - (p.e - p.s) || (p.x.kind === "ev" ? -1 : 1));
+      const lanes = [];
+      segs.forEach((g) => { let l = 0; while (lanes[l] && lanes[l].some((h) => !(g.e < h.s || g.s > h.e))) l++; (lanes[l] = lanes[l] || []).push(g); g.l = l; });
+      const L = lanes.length;
+      let row = "";
+      days.forEach((key, i) => {
+        const d = new Date(key + "T00:00:00"), other = d.getMonth() !== m;
+        const items = byDay[key] || [];
+        row += '<div class="cday' + (other ? " other" : "") + (key === t ? " today" : "") + (d.getDay() === 0 ? " sun" : d.getDay() === 6 ? " sat" : "") + '" style="grid-column:' + (i + 1) + '" data-act="addTask" data-date="' + key + '"></div>' +
+          '<span class="cnum' + (other ? " other" : "") + (key === t ? " today" : "") + (d.getDay() === 0 ? " sun" : d.getDay() === 6 ? " sat" : "") + '" style="grid-column:' + (i + 1) + '">' + d.getDate() + "</span>" +
+          (items.length ? '<div class="ctasks" style="grid-column:' + (i + 1) + ";grid-row:" + (L + 2) + '">' +
+            items.slice(0, MAXT).map((x) => '<span class="ctask' + (x.done ? " done" : x.dueDate < t ? " late" : "") + '" style="--c:' + deptColor(x.dept) + '" data-act="editTask" data-id="' + esc(x.id) + '" title="' + esc(x.dept + " · " + (pname[x.projectId] ? "[" + pname[x.projectId] + "] " : "") + x.title) + '"><i></i>' + esc(x.title) + "</span>").join("") +
+            (items.length > MAXT ? '<span class="cmore">+' + (items.length - MAXT) + "개 더</span>" : "") + "</div>" : "");
+      });
+      segs.forEach((g) => {
+        const x = g.x, contL = x.a < days[g.s], contR = x.b > days[g.e];
+        row += '<span class="cbar ' + x.kind + (contL ? " cl" : "") + (contR ? " cr" : "") + '" style="--c:' + deptColor(x.p.dept) + ";grid-column:" + (g.s + 1) + " / " + (g.e + 2) + ";grid-row:" + (g.l + 2) +
+          '" data-act="viewProject" data-id="' + esc(x.p.id) + '" title="' + esc(x.tip) + '">' + esc(x.label) + "</span>";
+      });
+      grid += '<div class="cweek" style="grid-template-rows:26px' + (L ? " repeat(" + L + ", 21px)" : "") + ' minmax(48px, 1fr)">' + row + "</div>";
     }
     const monthKey = y + "-" + z(m + 1);
     const monthList = filt.filter((x) => (x.dueDate || "").startsWith(monthKey)).sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.done - b.done);
@@ -1075,13 +1088,14 @@
         '<span class="dd">' + schedState(r.s) + "</span></li>" : evRow(r.p)).join("") + "</ul></section>" : "";
     const chips = '<button class="fchip' + (!S.calFilter ? " on" : "") + '" data-act="calFilter" data-dept="">전체</button>' +
       S.settings.depts.map((d) => '<button class="fchip' + (S.calFilter === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="calFilter" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "</button>").join("");
-    return '<div class="page-head"><div><h2>업무 캘린더</h2><p class="muted">색이 꽉 찬 칸은 <b>사업 날짜</b>, 테두리 칸은 <b>사업 세부 일정</b>(조사 기간 등), 연한 칸은 국서별 <b>업무 마감</b>' + (isHead() ? " · 날짜를 누르면 업무 추가" : "") + "</p></div>" +
+    return '<div class="page-head"><div><h2>업무 캘린더</h2><p class="muted">사업·세부 일정은 기간만큼 막대로, 업무는 마감일에 표시돼요' + (isHead() ? " · 빈 날짜를 누르면 업무 추가" : "") + "</p></div>" +
       (isHead() ? '<div class="actions"><button class="btn primary" data-act="addTask" data-date="">+ 업무 추가</button></div>' : "") + "</div>" +
       '<div class="filters">' + chips + "</div>" +
       '<div class="card cal-card"><div class="cal-nav"><button class="btn sm ghost" data-act="calMove" data-d="-1" aria-label="이전 달">‹</button>' +
       "<h3>" + y + "년 " + (m + 1) + '월</h3><button class="btn sm ghost" data-act="calMove" data-d="1" aria-label="다음 달">›</button>' +
       '<button class="btn sm" data-act="calMove" data-d="0">오늘</button></div>' +
-      '<div class="cal-dow">' + DOW.map((d) => "<span>" + d + "</span>").join("") + '</div><div class="cal-grid">' + grid + "</div></div>" +
+      '<div class="cal-dow">' + DOW.map((d) => "<span>" + d + "</span>").join("") + '</div><div class="cal-weeks">' + grid + "</div>" +
+      '<p class="cal-legend"><span class="lg-ev"></span>사업 <span class="lg-sch"></span>세부 일정 <span class="lg-task"></span>업무 마감 (국서 색)</p></div>' +
       evSection +
       '<section class="card"><h3>' + (m + 1) + "월 업무 목록 <small>" + monthList.length + "개</small></h3>" +
       (monthList.length ? '<ul class="tlist big">' + monthList.map((x) =>
@@ -1416,8 +1430,16 @@
     if (/대외|대협/.test(p.dept || "")) return p.dept;
     return (S.settings.depts || []).find((d) => /소통/.test(d)) || p.dept;
   };
-  const canEditForm = (f) => !!f && (isExecMember() || !!(S.me && S.me.status === "approved" && S.me.dept === f.ownerDept));
-  const canSeeRoster = (f) => !!f && (canEditForm(f) || !!(S.me && S.me.status === "approved" && S.me.dept === f.projectDept));
+  // 권한 (보안 규칙 forms 부분과 같은 기준)
+  //  양식 고치기: 회장단 · 양식 담당 국서(대협국 사업은 대협국, 그 외는 소통국)의 국장과 2학년 · 따로 지정한 담당자(1학년 등)
+  //  명단 보기·입금·출석: 위 사람들 · 재무국 전원 · 그 사업 국서의 국장 · 회장단이 사업별로 추가한 사람
+  const meOK = () => !!(S.me && S.me.status === "approved");
+  const myUid = () => (S.authUser && S.authUser.uid) || "";
+  const isMyHead = () => meOK() && (S.me.position === "국장" || S.me.position === deptPositions()[0]);
+  const isFinance = () => meOK() && /재무/.test(S.me.dept || "");
+  const canEditForm = (f) => !!f && (isExecMember() || (meOK() && ((S.me.dept === f.ownerDept && (isMyHead() || S.me.grade === "2학년")) || (f.editorUids || []).indexOf(myUid()) >= 0)));
+  const canSeeRoster = (f) => !!f && (canEditForm(f) || isFinance() || (meOK() && ((S.me.dept === f.projectDept && isMyHead()) || (f.viewerUids || []).indexOf(myUid()) >= 0)));
+  const canSetEditors = (f) => !!f && (isExecMember() || (meOK() && S.me.dept === f.ownerDept && isMyHead()));
   const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return ymd(d); };
   const keepDefault = (p) => addDays((p.endDate && p.endDate > (p.startDate || "") ? p.endDate : p.startDate) || today(), 14);
   S.fm = { pid: "" };
@@ -1443,6 +1465,7 @@
   async function loadFm(pid, force) {
     const fm = S.fm;
     if (fm.pid !== pid || force) {
+      stopWatch();
       Object.assign(fm, { pid: pid, form: null, draft: null, dirty: false, resp: null, q: "", pv: null });
       fm.form = await DB.get("forms", pid);
       if (!fm.tab || !force) fm.tab = "";
@@ -1459,6 +1482,27 @@
         if (n) setTimeout(() => toast("보관 기한이 지나서 명단 " + n + "명을 지웠어요."), 300);
       }
     }
+    if (f && canSeeRoster(f) && fm.watching !== pid) startWatch(pid);
+  }
+  // 명단을 보고 있는 동안 새 응답·입금·출석 체크가 바로바로 반영되게 (새로고침 필요 없음)
+  function startWatch(pid) {
+    stopWatch();
+    S.fm.watching = pid;
+    S.fm.unsub = DB.watch(respPath(pid), function (list) {
+      const fm = S.fm;
+      if (fm.pid !== pid || !fm.form) return;
+      const before = fm.resp ? fm.resp.length : 0;
+      fm.resp = ordered(fm.form, list);
+      refreshRoster();
+      const tab = document.getElementById("fmRespTab");
+      if (tab) tab.textContent = "참여자 명단 (" + fm.resp.length + ")";
+      if (fm.resp.length > before && before >= 0 && fm.seen) toast("새 응답 " + (fm.resp.length - before) + "명이 들어왔어요");
+      fm.seen = true;
+    });
+  }
+  function stopWatch() {
+    if (S.fm && S.fm.unsub) { try { S.fm.unsub(); } catch (e) { /* 무시 */ } }
+    if (S.fm) { S.fm.unsub = null; S.fm.watching = ""; S.fm.seen = false; }
   }
   const curForm = () => S.fm.draft || S.fm.form;
   // 선착순 순서표 지우기
@@ -1483,22 +1527,24 @@
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") + "</div>";
     if (f) {
       head += '<div class="fm-link"><code>' + esc(applyUrl(pid)) + "</code>" +
-        '<button class="btn sm primary" data-act="fmCopy">링크 복사</button><a class="btn sm" href="' + esc(applyUrl(pid)) + '" target="_blank" rel="noopener">열어 보기 ↗</a>' +
+        '<button class="btn sm primary" data-act="fmCopyMsg" title="행사 이름·안내·링크를 한 번에 복사">공지 문구 복사</button><button class="btn sm" data-act="fmCopy">링크만 복사</button><a class="btn sm" href="' + esc(applyUrl(pid)) + '" target="_blank" rel="noopener">열어 보기 ↗</a>' +
         (editable ? '<button class="btn sm" data-act="fmOpen">' + (f.open ? "신청 닫기" : "신청 받기 시작") + "</button>" : "") + "</div>" +
-        '<p class="muted small" style="margin:0">양식 담당: <b>' + esc(f.ownerDept) + "</b> 국서 모두 + 회장단 · 명단 보기: 여기에 " + esc(f.projectDept) + " 국서 추가" +
+        '<p class="muted small" style="margin:0">양식 고치기: 회장단 · <b>' + esc(f.ownerDept) + "</b> 국장·2학년" + ((f.editorUids || []).length ? " · 담당자 " + (f.editorUids || []).length + "명" : "") +
+        " / 명단 보기: 위 사람들 + 재무국 · " + esc(f.projectDept) + " 국장" + ((f.viewerUids || []).length ? " · 추가 " + (f.viewerUids || []).length + "명" : "") +
+        (canSetEditors(f) ? ' <button class="linkbtn small" data-act="fmPerm">권한 설정</button>' : "") +
         (f.keepUntil ? " · 명단 보관 기한 <b>" + esc(dotDate(f.keepUntil)) + "</b> (지나면 자동 삭제)" : "") + "</p>";
     }
     head += "</div>";
 
     if (!f && !fm.draft) {
-      if (!editable) return head + '<div class="card empty">아직 신청 양식이 없어요.<br><span class="small">양식은 ' + esc(formDeptFor(p)) + " 국서나 회장단이 만들어요.</span></div>";
+      if (!editable) return head + '<div class="card empty">아직 신청 양식이 없어요.<br><span class="small">양식은 ' + esc(formDeptFor(p)) + " 국장·2학년이나 회장단이 만들어요.</span></div>";
       return head + '<div class="card" style="max-width:560px"><h3>신청 양식 만들기</h3><p class="muted small">틀을 하나 고르면 질문이 미리 들어가요. 만든 뒤에 질문을 마음대로 고칠 수 있어요.</p>' +
         '<div class="fm-tpl">' + Object.keys(AP.TEMPLATES).map((k, i) => '<label><input type="radio" name="fmTpl" value="' + k + '"' + (i === 0 ? " checked" : "") + "> " + esc(AP.TEMPLATES[k].label) + "</label>").join("") + "</div>" +
         '<div style="margin-top:12px"><button class="btn primary" data-act="fmStart">이 틀로 시작하기</button></div></div>';
     }
 
     const tabs = [["resp", "참여자 명단" + (fm.resp ? " (" + fm.resp.length + ")" : ""), viewer && f], ["build", "양식 만들기", editable], ["preview", "학생 화면 미리보기", !editable]]
-      .filter((t) => t[2]).map((t) => '<a href="#" class="' + (fm.tab === t[0] ? "on" : "") + '" data-act="fmTab" data-tab="' + t[0] + '">' + t[1] + "</a>").join("");
+      .filter((t) => t[2]).map((t) => '<a href="#" class="' + (fm.tab === t[0] ? "on" : "") + '" data-act="fmTab" data-tab="' + t[0] + '"' + (t[0] === "resp" ? ' id="fmRespTab"' : "") + ">" + t[1] + "</a>").join("");
     let body = "";
     if (fm.tab === "resp") body = rosterHTML(f);
     else if (fm.tab === "build") body = buildHTML(p);
@@ -1551,7 +1597,7 @@
     return '<div id="fmStats">' + rosterStats(f, S.fm.resp) + "</div>" +
       '<div class="fm-tools"><input type="search" data-fm-search placeholder="이름 · 학번 · 입금자명 찾기" value="' + esc(S.fm.q || "") + '">' +
       (fee ? '<button class="btn sm" data-act="fmBank">통장 내역으로 입금 확인</button>' : "") +
-      '<button class="btn sm" data-act="fmCsv">엑셀(CSV) 받기</button><button class="btn sm ghost" data-act="fmReload">새로고침</button></div>' +
+      '<button class="btn sm" data-act="fmCsv">엑셀(CSV) 받기</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
       '<div class="fm-tablewrap"><table class="fm-table" id="fmTable">' + rosterRows(f) + "</table></div>" +
       '<p class="muted small">입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 24123이다홍). 행사 당일엔 이 화면에서 [확인]을 눌러 출석을 체크해요.</p>';
   }
@@ -1718,6 +1764,9 @@
         ownerDept: f.ownerDept || formDeptFor(p), keepUntil: f.keepUntil || keepDefault(p), cap: Number(f.cap) || 0, fee: Number(f.fee) || 0,
         open: !!f.open, updatedAt: new Date().toISOString(), updatedBy: S.authUser.uid });
       delete doc.id;
+      // 권한 명단은 [권한 설정]에서만 바뀜 (양식을 고치는 동안 바뀌었을 수도 있으니 최신 값 유지)
+      doc.editorUids = (fm.form && fm.form.editorUids) || [];
+      doc.viewerUids = (fm.form && fm.form.viewerUids) || [];
       if (!canEditForm(doc)) return toast("양식 담당 국서를 우리 국서가 아닌 곳으로 바꾸면 저장할 수 없어요.", true);
       el.disabled = true;
       try { await DB.set("forms", fm.pid, doc); } catch (e) { el.disabled = false; throw e; }
@@ -1741,6 +1790,42 @@
       await DB.update("forms", S.fm.pid, { open: !f.open });
       dirty("forms"); await loadFm(S.fm.pid, true); await renderPage();
       toast(S.fm.form.open ? "신청을 받기 시작했어요. 링크를 복사해서 공유하세요." : "신청을 닫았어요.");
+    },
+    fmCopyMsg() {
+      const f = S.fm.form;
+      const bits = [];
+      if (f.mode === "first") bits.push("선착순 " + f.cap + "명");
+      if (Number(f.fee) > 0) bits.push("참가비 " + AP.won(f.fee));
+      const msg = "📢 " + (f.title || "행사 신청") + "\n" + (f.desc ? "\n" + f.desc + "\n" : "") + (bits.length ? "\n" + bits.join(" · ") + "\n" : "") +
+        (f.due && Number(f.fee) > 0 ? "입금 기한: " + f.due + "\n" : "") + "\n👉 신청하기\n" + applyUrl(S.fm.pid);
+      Promise.resolve(navigator.clipboard && navigator.clipboard.writeText(msg)).then(() => toast("공지 문구를 복사했어요. 단톡방에 붙여넣으면 돼요.")).catch(() => infoModal("공지 문구", '<textarea rows="9" style="width:100%">' + esc(msg) + "</textarea>"));
+    },
+    async fmPerm() {
+      const f = S.fm.form; if (!f) return;
+      const users = (await col("users")).filter((u) => u.status === "approved");
+      const isHeadU = (u) => u.position === "국장" || u.position === deptPositions()[0];
+      const autoEdit = (u) => execPositions().indexOf(u.position) >= 0 || u.dept === execDept() || u.isAdmin || (u.dept === f.ownerDept && (isHeadU(u) || u.grade === "2학년"));
+      const autoView = (u) => autoEdit(u) || /재무/.test(u.dept || "") || (u.dept === f.projectDept && isHeadU(u));
+      const ed = f.editorUids || [], vw = f.viewerUids || [];
+      const box = (cls, u, on, dis) => '<label class="pm-row"><input type="checkbox" class="' + cls + '" value="' + esc(u.id) + '"' + (on ? " checked" : "") + (dis ? " disabled" : "") + "> <b>" + esc(u.name) + "</b> " + deptTag(u.dept) + '<span class="muted small">' + esc([u.position, u.grade].filter(Boolean).join(" · ")) + "</span></label>";
+      const editCands = users.filter((u) => !autoEdit(u)).sort((a, b) => (a.dept === f.ownerDept ? 0 : 1) - (b.dept === f.ownerDept ? 0 : 1) || deptRank(a.dept) - deptRank(b.dept) || a.name.localeCompare(b.name));
+      const viewCands = users.filter((u) => !autoView(u)).sort((a, b) => deptRank(a.dept) - deptRank(b.dept) || a.name.localeCompare(b.name));
+      const exec = isExecMember();
+      openForm({ title: "신청 양식 권한", submitLabel: "저장",
+        intro: '<p class="small" style="margin:0 0 6px"><b>양식 고치기</b> — 자동: 회장단, ' + esc(f.ownerDept) + ' 국장·2학년</p>' +
+          '<p class="muted small" style="margin:0 0 6px">이 양식을 맡은 사람(예: 만드는 1학년)을 체크하면 그 사람도 고칠 수 있어요. ' + esc(f.ownerDept) + " 국장과 회장단이 정해요.</p>" +
+          '<div class="pm-list">' + (editCands.map((u) => box("pm-ed", u, ed.indexOf(u.id) >= 0, false)).join("") || '<p class="muted small">추가할 사람이 없어요.</p>') + "</div>" +
+          '<p class="small" style="margin:14px 0 6px"><b>참여자 명단 보기</b> (입금·출석 체크 포함) — 자동: 위 사람들, 재무국 전원, ' + esc(f.projectDept) + " 국장</p>" +
+          '<p class="muted small" style="margin:0 0 6px">' + (exec ? "이 사업만 명단을 따로 볼 사람을 체크하세요. (회장단만 정할 수 있어요)" : "명단을 볼 사람 추가는 회장단만 할 수 있어요.") + "</p>" +
+          '<div class="pm-list">' + (viewCands.map((u) => box("pm-vw", u, vw.indexOf(u.id) >= 0, !exec)).join("") || '<p class="muted small">추가할 사람이 없어요.</p>') + "</div>",
+        fields: [],
+        onSubmit: async () => {
+          const pick = (c) => Array.from(modalRoot.querySelectorAll("." + c + ":checked")).map((x) => x.value);
+          const patch = { editorUids: pick("pm-ed") };
+          if (exec) patch.viewerUids = pick("pm-vw");
+          await DB.update("forms", S.fm.pid, patch);
+          dirty("forms"); await loadFm(S.fm.pid, true); await renderPage(); toast("권한을 저장했어요.");
+        } });
     },
     fmCopy() {
       const u = applyUrl(S.fm.pid);
@@ -1942,7 +2027,7 @@
       sh.classList.toggle("folded");
       try { localStorage.setItem("sideFolded", sh.classList.contains("folded") ? "1" : "0"); } catch (e) { /* 무시 */ }
     },
-    async logout() { S.cache = {}; S.route = "home"; try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* 무시 */ } await DB.signOut(); },
+    async logout() { stopWatch(); S.cache = {}; S.route = "home"; try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* 무시 */ } await DB.signOut(); },
     openExternal() { location.href = "kakaotalk://web/openExternal?url=" + encodeURIComponent(location.href); },
     reload() { S.cache = {}; renderPage(); },
     async recheck() { await loadMe(); render(); if (S.me && S.me.status === "pending") toast("아직 승인 전이에요."); },
@@ -2468,6 +2553,7 @@
     if (!PAGES[S.route]) S.route = "home";
   }
   window.addEventListener("hashchange", function () {
+    if (!/^#form\//.test(location.hash)) stopWatch();   // 신청 명단 화면을 떠나면 실시간 연결 끊기
     parseRoute();
     if (S.authUser && isApproved()) {
       document.querySelectorAll(".tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + navKey(S.route)));

@@ -211,13 +211,30 @@ service cloud.firestore {
     function execMember() {
       return admin() || isExecPos() || (approved() && hasProfile() && me().dept == execDeptName());
     }
-    function formEditor(f) { return execMember() || (approved() && hasProfile() && me().dept == f.get('ownerDept', '')); }
-    // 명단 보기·입금·출석 체크: 위 사람들 + 그 사업 담당 국서(projectDept) 사람들
-    function formViewer(f) { return formEditor(f) || (approved() && hasProfile() && me().dept == f.get('projectDept', '')); }
+    //   양식 고치기: 회장단 + 양식 담당 국서(대협국 사업은 대협국, 그 외는 소통국)의 국장·2학년 + 따로 지정한 담당자(editorUids)
+    function formEditor(f) {
+      return execMember() || (approved() && hasProfile() && (
+        (me().dept == f.get('ownerDept', '') && (isDeptHeadPos() || me().get('grade', '') == '2학년'))
+        || request.auth.uid in f.get('editorUids', [])));
+    }
+    // 담당자 지정: 회장단 + 양식 담당 국서의 국장
+    function formHead(f) { return execMember() || (approved() && hasProfile() && me().dept == f.get('ownerDept', '') && isDeptHeadPos()); }
+    // 명단 보기·입금·출석 체크: 위 사람들 + 재무국 전원 + 그 사업 국서의 국장 + 회장단이 사업별로 추가한 사람(viewerUids)
+    function formViewer(f) {
+      return formEditor(f) || (approved() && hasProfile() && (
+        me().dept.matches('.*재무.*')
+        || (me().dept == f.get('projectDept', '') && isDeptHeadPos())
+        || request.auth.uid in f.get('viewerUids', [])));
+    }
+    function formChanged(k) { return request.resource.data.get(k, null) != resource.data.get(k, null); }
     match /forms/{fid} {
       allow read: if true;
-      allow create: if formEditor(request.resource.data);
-      allow update: if formEditor(resource.data) && formEditor(request.resource.data);
+      allow create: if formEditor(request.resource.data)
+        && (execMember() || (request.resource.data.get('editorUids', []).size() == 0 && request.resource.data.get('viewerUids', []).size() == 0));
+      allow update: if formEditor(resource.data) && formEditor(request.resource.data)
+        && (!formChanged('editorUids') || formHead(resource.data))
+        && (!formChanged('viewerUids') || execMember())
+        && (!formChanged('ownerDept') || execMember());
       allow delete: if formEditor(resource.data);
 
       function form() { return get(/databases/$(database)/documents/forms/$(fid)).data; }

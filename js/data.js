@@ -104,6 +104,10 @@
       }
       return out;
     },
+    // 실시간으로 지켜보기 (바뀔 때마다 cb 호출) → 끝낼 때는 돌려준 함수를 부르면 됨
+    watch(col, cb, onErr) {
+      return this.fs.collection(col).onSnapshot((snap) => cb(snap.docs.map((d) => plain(Object.assign({ id: d.id }, d.data({ serverTimestamps: "estimate" }))))), onErr || ((e) => console.warn(e)));
+    },
     async set(col, id, data) { await this.fs.collection(col).doc(id).set(data); },
     async add(col, data) { const r = await this.fs.collection(col).add(data); return r.id; },
     async update(col, id, data) { await this.fs.collection(col).doc(id).update(data); },
@@ -301,6 +305,7 @@
     async queryIn(col, field, values) { return (await this.list(col)).filter((x) => values.indexOf(x[field]) >= 0); },
     async queryEq(col, field, value) { return (await this.list(col)).filter((x) => x[field] === value); },
     async set(col, id, data) { (this.store[col] = this.store[col] || {})[id] = clone(data); },
+    watch(col, cb) { const f = () => this.list(col).then(cb); f(); const t = setInterval(f, 2000); return () => clearInterval(t); },
     async add(col, data) { const id = "x" + Date.now() + (this.n++); await this.set(col, id, data); return id; },
     async update(col, id, data) {
       const c = this.store[col] || {};
