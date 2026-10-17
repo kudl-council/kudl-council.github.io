@@ -998,3 +998,33 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .cal-dow span { padding: 2px 0; }
 .cal-nav { margin-bottom: 6px; }
 .ctasks { padding-top: 1px; }
+
+/* ===== 캘린더 차분하게: 진한 색 대신 옅은 색 띠 + 왼쪽 색 선 ===== */
+.cbar.ev { background: color-mix(in srgb, var(--c) 16%, var(--surface)); color: color-mix(in srgb, var(--c) 78%, #111); font-weight: 700; box-shadow: inset 3px 0 0 var(--c); }
+.cbar.sch { background: color-mix(in srgb, var(--c) 7%, var(--surface)); color: color-mix(in srgb, var(--c) 45%, var(--muted)); font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 22%, transparent); }
+.cbar.cl { box-shadow: none; }
+.cbar.sch.cl { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 22%, transparent); }
+.cbar small { color: var(--muted); opacity: 1; }
+.ctask { color: color-mix(in srgb, var(--ink) 75%, var(--muted)); }
+.ctask i { width: 5px; height: 5px; }
+.cnum.today { background: var(--accent); }
+.cal-show { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.cs-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.cs-chip i { width: 12px; height: 8px; border-radius: 2px; }
+.cs-ev i { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); box-shadow: inset 2px 0 0 var(--accent); }
+.cs-sch i { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent); }
+.cs-task i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.cs-chip.on { color: var(--ink); border-color: var(--ink); }
+.cs-chip:not(.on) { text-decoration: line-through; opacity: .7; }
+@media (max-width: 760px) {
+  .cbar.ev, .cbar.sch, .cbar.sch.cl { box-shadow: none; }
+  .cbar.ev { background: color-mix(in srgb, var(--c) 55%, var(--surface)); }
+  .cbar.sch { background: color-mix(in srgb, var(--c) 22%, var(--surface)); }
+}
+.cal-long { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.cl-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 12px; color: var(--ink); cursor: pointer; max-width: 100%; }
+.cl-chip i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); flex: none; }
+.cl-chip.sch i { background: color-mix(in srgb, var(--c) 35%, var(--surface)); }
+.cl-chip small { color: var(--muted); font-size: 11px; }
+.cl-chip .muted { font-size: 11px; }
+.cl-chip:hover { border-color: var(--muted); }

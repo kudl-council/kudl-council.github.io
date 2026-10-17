@@ -918,11 +918,12 @@
     const byDay = {};
     tasks.filter((x) => days.indexOf(x.dueDate) >= 0).forEach((x) => (byDay[x.dueDate] = byDay[x.dueDate] || []).push(x));
     Object.values(byDay).forEach((a) => a.sort((p, q) => (p.done - q.done) || deptRank(p.dept) - deptRank(q.dept)));
-    const spans = calSpans(projects);
-    const n = spans.filter((x) => x.a <= days[6] && x.b >= days[0]).length + Object.values(byDay).reduce((k, a) => k + a.length, 0);
+    const all = calSpans(projects).filter((x) => x.a <= days[6] && x.b >= days[0]);
+    const spans = all.filter((x) => spanDays(x) <= LONG_DAYS), longs = all.filter((x) => spanDays(x) > LONG_DAYS);
+    const n = all.filter((x) => x.a <= days[6] && x.b >= days[0]).length + Object.values(byDay).reduce((k, a) => k + a.length, 0);
     const md = (k) => { const d = new Date(k + "T00:00:00"); return (d.getMonth() + 1) + "." + d.getDate(); };
     return '<section class="card week"><div class="card-head"><h3>이번 주 일정 <small>' + md(days[0]) + " – " + md(days[6]) + (n ? " · " + n + "개" : "") + '</small></h3><a href="#calendar" class="more">캘린더 →</a></div>' +
-      weekRowHTML(days, spans, byDay, null, false, 3) + "</section>";
+      longSpansHTML(longs, "진행 중") + weekRowHTML(days, spans, byDay, null, false, 3) + "</section>";
   }
   PAGES.home = async function () {
     const [tasks, projects, minutes, msgs, notices, roomTasks] = await Promise.all([col("tasks"), col("projects"), col("minutes"), col("messages").catch(() => []), col("notices").catch(() => []), col("deptTasks").catch(() => [])]);
@@ -1004,6 +1005,15 @@
       .concat([].concat.apply([], evsAll.map((p) => schedOf(p).filter((sc) => sc.start).map((sc) => ({ kind: "sch", p: p, a: sc.start, b: schedEnd(sc), label: sc.title, sub: p.name,
         tip: "[" + p.name + "] " + sc.title + " · " + rangeText(sc.start, sc.end) })))));
   }
+  // 2주보다 긴 사업·일정(예: 9월~11월 내내 하는 사업)은 매주 띠로 그리면 달력이 꽉 차 보여서 달력 위에 따로 한 줄로
+  const LONG_DAYS = 14;
+  const spanDays = (x) => Math.round((new Date(x.b + "T00:00:00") - new Date(x.a + "T00:00:00")) / 86400000) + 1;
+  function longSpansHTML(list, label) {
+    if (!list.length) return "";
+    const md = (k) => { const d = new Date(k + "T00:00:00"); return (d.getMonth() + 1) + "." + d.getDate(); };
+    return '<div class="cal-long"><span class="muted small">' + label + "</span>" + list.map((x) => '<button class="cl-chip ' + x.kind + '" style="--c:' + deptColor(x.p.dept) + '" data-act="viewProject" data-id="' + esc(x.p.id) + '" title="' + esc(x.tip) + '"><i></i><b>' + esc(x.label) + "</b>" +
+      (x.sub ? '<small>' + esc(x.sub) + "</small>" : "") + '<span class="muted">' + md(x.a) + "–" + md(x.b) + "</span></button>").join("") + "</div>";
+  }
   function weekRowHTML(days, spans, byDay, month, clickAdd, maxT) {
     maxT = maxT || 3;
     const t = today(), ws = days[0], we = days[6];
@@ -1068,12 +1078,17 @@
         (schByDay[ymd(d)] = schByDay[ymd(d)] || []).push(item);
       if (sc.start.slice(0, 7) <= monthKey0 && schedEnd(sc).slice(0, 7) >= monthKey0) monthSch.push(item);
     }));
-    const spans = calSpans(projects, S.calFilter, tasks);
+    // 보기 고르기 (사업 · 세부 일정 · 업무) — 한 번 고르면 이 기기에서 기억
+    if (!S.calShow) { S.calShow = { ev: true, sch: true, task: true }; try { Object.assign(S.calShow, JSON.parse(localStorage.getItem("calShow") || "{}")); } catch (e) { /* 무시 */ } }
+    const allSpans = calSpans(projects, S.calFilter, tasks).filter((x) => S.calShow[x.kind]);
+    const monFirst = ymd(new Date(y, m, 1)), monLast = ymd(new Date(y, m + 1, 0));
+    const longs = allSpans.filter((x) => spanDays(x) > LONG_DAYS && x.a <= monLast && x.b >= monFirst);
+    const spans = allSpans.filter((x) => spanDays(x) <= LONG_DAYS);
     let grid = "";
     for (let w = 0; w < cells / 7; w++) {
       const days = [];
       for (let i = 0; i < 7; i++) days.push(ymd(new Date(y, m, 1 - startDow + w * 7 + i)));
-      grid += weekRowHTML(days, spans, byDay, m, isHead());
+      grid += weekRowHTML(days, spans, S.calShow.task ? byDay : {}, m, isHead());
     }
     const monthKey = y + "-" + z(m + 1);
     const monthList = filt.filter((x) => (x.dueDate || "").startsWith(monthKey)).sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.done - b.done);
@@ -1096,8 +1111,10 @@
       '<div class="card cal-card"><div class="cal-nav"><button class="btn sm ghost" data-act="calMove" data-d="-1" aria-label="이전 달">‹</button>' +
       "<h3>" + y + "년 " + (m + 1) + '월</h3><button class="btn sm ghost" data-act="calMove" data-d="1" aria-label="다음 달">›</button>' +
       '<button class="btn sm" data-act="calMove" data-d="0">오늘</button></div>' +
+      longSpansHTML(longs, "이번 달 내내") +
       '<div class="cal-dow">' + DOW.map((d) => "<span>" + d + "</span>").join("") + '</div><div class="cal-weeks">' + grid + "</div>" +
-      '<p class="cal-legend"><span class="lg-ev"></span>사업 <span class="lg-sch"></span>세부 일정 <span class="lg-task"></span>업무 마감 (국서 색)</p></div>' +
+      '<div class="cal-show"><span class="muted small">보기</span>' + [["ev", "사업"], ["sch", "세부 일정"], ["task", "업무 마감"]].map((k) =>
+        '<button class="cs-chip cs-' + k[0] + (S.calShow[k[0]] ? " on" : "") + '" data-act="calShow" data-k="' + k[0] + '"><i></i>' + k[1] + "</button>").join("") + "</div></div>" +
       evSection +
       '<section class="card"><h3>' + (m + 1) + "월 업무 목록 <small>" + monthList.length + "개</small></h3>" +
       (monthList.length ? '<ul class="tlist big">' + monthList.map((x) =>
@@ -2073,6 +2090,11 @@
       renderPage();
     },
     calFilter(el) { S.calFilter = el.dataset.dept; renderPage(); },
+    calShow(el) {
+      S.calShow[el.dataset.k] = !S.calShow[el.dataset.k];
+      try { localStorage.setItem("calShow", JSON.stringify(S.calShow)); } catch (e) { /* 무시 */ }
+      renderPage();
+    },
     async addTask(el) {
       if (!isHead()) { if (!el.classList.contains("cell")) toast("업무 추가·분배는 국장과 회장단만 할 수 있어요.", true); return; }
       await col("users");
