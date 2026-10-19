@@ -518,6 +518,9 @@
   function semesterOf(p) {
     return p && p.semester && p.semester !== "학기 구분 없음" ? p.semester : "";
   }
+  // 구분: 학교 행사(대학·단과대 전체 행사, 학생대표자회의 등 우리가 주관하지 않고 참여하는 행사)
+  const isSchool = (p) => !!(p && p.kind === "학교 행사");
+  const kindTag = (p) => (isSchool(p) ? '<span class="kindtag">학교 행사</span>' : "");
   const semTag = (p) => { const s = semesterOf(p); return s ? '<span class="semtag">' + esc(s) + "</span>" : ""; };
   const projectFields = (o) => [
     { name: "name", label: "사업 이름", required: true, placeholder: "예: 개강파티" },
@@ -527,6 +530,8 @@
   ] : []).concat([
     { name: "year", label: "연도", type: "number", required: true, half: true },
     { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
+    { name: "kind", label: "구분", type: "select", options: ["학생회 사업", "학교 행사"], required: true, half: true, value: "학생회 사업",
+      help: "학교 행사 = 응원OT·합동응원전·생학대회처럼 대학·단과대 전체 행사나 대표자회의로, 우리가 주관하지 않고 참여하는 행사" },
     { name: "semester", label: "학기", type: "select", options: ["1학기", "2학기", "여름방학", "겨울방학"], half: true, help: "고르면 사업 이름 앞에 [1학기]처럼 붙어요. 학기와 상관없으면 '선택 안 함'" },
     { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true, help: "사업 날짜가 되면 자동으로 '진행중', 끝나면 '완료'가 돼요." },
     o && o.past ? { name: "owner", label: "담당자", half: true } : { name: "ownerSel", label: "담당자", type: "member", deptField: "dept", half: true, help: "담당 국서를 고르면 그 국서 사람이 나와요." },
@@ -973,7 +978,7 @@
       (late.length ? '<h4 class="late-h">마감 지난 업무 ' + late.length + "개</h4><ul class=\"tlist\">" + late.map(taskRow).join("") + "</ul>" : "") +
       "</section>" +
       '<section class="card"><div class="card-head"><h3>다가오는 사업</h3><a href="#projects" class="more">전체 →</a></div>' +
-      (live.length ? '<ul class="plist">' + live.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span>" + deptTag(p.dept) + "<b>" + semTag(p) + esc(p.name) + '</b><span class="dt">' + (p.startDate ? fmtDate(p.startDate) + (p.startDate >= t ? " · " + dday(p.startDate) : "") : "") + "</span></li>").join("") + "</ul>" : '<p class="empty-s">예정된 사업이 없어요.</p>') +
+      (live.length ? '<ul class="plist">' + live.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span>" + deptTag(p.dept) + "<b>" + kindTag(p) + semTag(p) + esc(p.name) + '</b><span class="dt">' + (p.startDate ? fmtDate(p.startDate) + (p.startDate >= t ? " · " + dday(p.startDate) : "") : "") + "</span></li>").join("") + "</ul>" : '<p class="empty-s">예정된 사업이 없어요.</p>') +
       '<div class="card-head" style="margin-top:18px"><h3>최근 회의록</h3><a href="#minutes" class="more">전체 →</a></div>' +
       (recent.length ? '<ul class="mlist">' + recent.map((m) => '<li><a href="' + esc(safeUrl(m.url)) + '" target="_blank" rel="noopener"><span class="dt">' + fmtDate(m.date) + "</span> " + esc(m.title) + "</a></li>").join("") + "</ul>" : '<p class="empty-s">아직 등록된 회의록이 없어요.</p>') +
       "</section></div>";
@@ -1259,7 +1264,7 @@
     const period = eventDateText(p);
     return '<article class="card pcard" style="--c:' + deptColor(p.dept) + '">' +
       '<div class="ptop">' + deptTag(p.dept) + '<span class="st st-' + esc(p.status) + '">' + esc(p.status || "") + "</span>" + (opts.showYear ? '<span class="yr">' + esc(p.year) + "</span>" : "") + "</div>" +
-      "<h4>" + semTag(p) + esc(p.name) + "</h4>" +
+      "<h4>" + kindTag(p) + semTag(p) + esc(p.name) + "</h4>" +
       '<dl class="meta">' + (period ? "<dt>사업일</dt><dd>" + period + "</dd>" : "") + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
@@ -1325,7 +1330,7 @@
     return '<div class="prow' + (open ? " open" : "") + '" style="--c:' + deptColor(p.dept) + '">' +
       '<button class="pr-head" data-act="toggleProj" data-id="' + esc(p.id) + '" aria-expanded="' + open + '">' +
       '<span class="pr-chev" aria-hidden="true">›</span>' + deptTag(p.dept) +
-      '<span class="pr-name">' + semTag(p) + esc(p.name) + (p.owner ? '<small>' + esc(p.owner) + "</small>" : "") + "</span>" +
+      '<span class="pr-name">' + kindTag(p) + semTag(p) + esc(p.name) + (p.owner ? '<small>' + esc(p.owner) + "</small>" : "") + "</span>" +
       '<span class="pr-meta">' +
       (ts.length ? '<span class="pr-prog" title="업무 분배 ' + done + "/" + ts.length + ' 완료"><i style="width:' + Math.round((done / ts.length) * 100) + '%"></i></span><span class="pr-cnt">업무 ' + done + "/" + ts.length + "</span>" : "") +
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") +
@@ -1344,7 +1349,7 @@
   PAGES.projects = async function () {
     const tmap = await tasksByProject();
     const forms = await formsMap();
-    const list = (await col("projects")).filter((p) => isActive(p) && (!S.projDept || p.dept === S.projDept ||
+    const list = (await col("projects")).filter((p) => isActive(p) && (!S.projSchool || isSchool(p)) && (!S.projDept || p.dept === S.projDept ||
       (tmap[p.id] || []).some((t) => t.dept === S.projDept)));
     // 진행중 → 예정 → 기획중 → 완료 → 취소 순서로, 사업마다 한 줄씩
     const cols = ["진행중", "예정", "기획중", "완료", "취소"].map((st) => {
@@ -1355,7 +1360,8 @@
     }).join("");
     return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌고 · 끝난 사업은 '완료'에 남아 있다가, 다음 학생회로 넘길 때 [사업 아카이브]로 옮겨져요</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
-      '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
+      '<div class="filters">' + deptFilterChips("projDept", "projDept") +
+        '<span class="fsep"></span><button class="fchip' + (S.projSchool ? " on" : "") + '" data-act="projSchool">학교 행사만</button></div>' +
       '<div class="plist2">' + cols + "</div>";
   };
 
@@ -2249,6 +2255,7 @@
 
     /* 사업 */
     projDept(el) { S.projDept = el.dataset.dept; renderPage(); },
+    projSchool() { S.projSchool = !S.projSchool; renderPage(); },
     archiveDept(el) { S.archiveDept = el.dataset.dept; renderPage(); },
     async addProject() {
       await col("users");
