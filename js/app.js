@@ -1567,9 +1567,9 @@
 
     if (!f && !fm.draft) {
       if (!editable) return head + '<div class="card empty">아직 신청 양식이 없어요.<br><span class="small">양식은 ' + esc(formDeptFor(p)) + " 국장·2학년이나 회장단이 만들어요.</span></div>";
-      return head + '<div class="card" style="max-width:560px"><h3>신청 양식 만들기</h3><p class="muted small">틀을 하나 고르면 질문이 미리 들어가요. 만든 뒤에 질문을 마음대로 고칠 수 있어요.</p>' +
-        '<div class="fm-tpl">' + Object.keys(AP.TEMPLATES).map((k, i) => '<label><input type="radio" name="fmTpl" value="' + k + '"' + (i === 0 ? " checked" : "") + "> " + esc(AP.TEMPLATES[k].label) + "</label>").join("") + "</div>" +
-        '<div style="margin-top:12px"><button class="btn primary" data-act="fmStart">이 틀로 시작하기</button></div></div>';
+      // 틀 고르기 없이 바로 질문 만들기 화면으로 (이름·학번·전화번호·참여 여부·개인정보 동의가 미리 들어감)
+      fm.draft = Object.assign(AP.newForm("basic", p.name), { ownerDept: formDeptFor(p), projectDept: p.dept, keepUntil: keepDefault(p) });
+      fm.tab = "build"; fm.dirty = true;
     }
 
     const tabs = [["resp", "참여자 명단" + (fm.resp ? " (" + fm.resp.length + ")" : ""), viewer && f], ["build", "양식 만들기", editable], ["preview", "학생 화면 미리보기", !editable]]
