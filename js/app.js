@@ -1304,13 +1304,15 @@
     const f = opts.forms && opts.forms[p.id];
     const when = p.startDate ? fmtDate(p.startDate) + (p.endDate && p.endDate > p.startDate ? " ~ " + fmtDate(p.endDate) : "") : "날짜 미정";
     const dd = p.startDate && p.startDate >= t && (p.status === "예정" || p.status === "기획중") ? '<span class="pr-dd">' + dday(p.startDate) + "</span>" : "";
-    const links = [["기획안", p.planUrl], ["기타 자료", p.extraUrl]]
+    const links = [["기타 자료", p.extraUrl]]
       .filter((l) => safeUrl(l[1])).map((l) => '<a class="btn sm" href="' + esc(safeUrl(l[1])) + '" target="_blank" rel="noopener">' + l[0] + " ↗</a>").join("");
     const formBtn = opts.forms ? projectFormBtn(p, f, opts) : "";
     // 세부 일정·업무 분배가 비어 있으면 '+ 추가' 버튼만 나오는데, 이걸 신청 양식 버튼과 한 줄에 같은 크기로
     const sch = projectSchedHTML(p, opts), tsk = projectTasksHTML(p, opts);
     const isBtn = (h) => /^<button/.test(h);
-    const addBtns = [sch, tsk].filter(isBtn).map((h) => h.replace("btn sm ptask-add", "btn sm")).join("");
+    // 세부 일정·업무가 이미 있어도 '+ 세부 일정', '+ 업무 분배' 버튼은 항상 같은 줄에
+    const addBtns = isHead() && !opts.readonly && !opts.archive ? '<button class="btn sm" data-act="editSchedule" data-id="' + esc(p.id) + '">+ 세부 일정 (조사 기간 등)</button>' +
+      '<button class="btn sm" data-act="distribute" data-id="' + esc(p.id) + '">+ 국서별 업무 분배</button>' : "";
     const blocks = [sch, tsk].filter((h) => h && !isBtn(h)).join("");
     const open = !!S.openProj[p.id];
     return '<div class="prow' + (open ? " open" : "") + '" style="--c:' + deptColor(p.dept) + '">' +
@@ -1644,7 +1646,7 @@
   /* ---------- 양식 만들기 ---------- */
   function buildHTML(p) {
     const fm = S.fm;
-    if (!fm.draft) fm.draft = JSON.parse(JSON.stringify(fm.form));
+    if (!fm.draft) { fm.draft = JSON.parse(JSON.stringify(fm.form)); fm.draft.feeSplit = Number(fm.draft.feeUnpaid) > 0; }
     const f = fm.draft;
     const inp = (k, label, o) => { o = o || {};
       return '<div class="field' + (o.half ? " half" : "") + '"' + (o.id ? ' id="' + o.id + '"' : "") + (o.hidden ? " hidden" : "") + '><label>' + label + "</label>" +
@@ -1658,12 +1660,13 @@
       inp("title", "신청서 제목") + inp("desc", "안내문 (일시·장소 등)", { area: true }) +
       sel("mode", "모집 방식", [["normal", "일반 (기간 안에 누구나)"], ["first", "선착순 (정원 넘으면 대기)"]], { half: true }) +
       inp("cap", "정원", { half: true, num: true, id: "fmCapWrap", hidden: f.mode !== "first" }) +
-      money("fee", "참가비 (회비 납부자)", "0이면 입금 안내 없음") +
-      money("feeUnpaid", "참가비 (회비 미납부자)", "같으면 비워 두세요") +
+      '<div class="field"><label class="fm-chk" style="margin:4px 0 0"><input type="checkbox" data-act="fmSplit"' + (f.feeSplit ? " checked" : "") + "> 회비 납부자와 미납부자의 참가비가 달라요</label></div>" +
+      money("fee", f.feeSplit ? "참가비 (회비 납부자)" : "참가비", "0이면 입금 안내 없음") +
+      (f.feeSplit ? money("feeUnpaid", "참가비 (회비 미납부자)", "미납부자가 낼 금액") : "") +
       '<div class="field half"><label>입금 기한</label>' + dateInputHTML('data-fm-date="dueDate"', f.dueDate || "") +
         '<small class="help" id="fmDueText">' + (AP.dueText(f) ? "학생 화면: " + esc(AP.dueText(f)) : "날짜를 고르면 ‘10월 23일(금)까지’로 보여요") + "</small></div>" +
-      inp("account", "입금 계좌", { ph: "예: 국민 123456-01-234567 (생명과학부 학생회)" }) +
-      sel("ownerDept", "양식 담당 국서", (S.settings.depts || []).map((d) => [d, d]), { half: true, disabled: !isExecMember(), help: isExecMember() ? "이 국서 사람 모두가 양식을 고칠 수 있어요" : "회장단만 바꿀 수 있어요" }) +
+      inp("account", "입금 계좌", { half: !!f.feeSplit, ph: "예: 국민 123456-01-234567 (생명과학부 학생회)" }) +
+      sel("ownerDept", "양식 담당 국서", (S.settings.depts || []).map((d) => [d, d]), { half: true, disabled: !isExecMember(), help: isExecMember() ? "이 국서의 국장·2학년이 양식을 고칠 수 있어요" : "회장단만 바꿀 수 있어요" }) +
       '<div class="field half"><label>명단 보관 기한</label>' + dateInputHTML('data-fm-date="keepUntil"', f.keepUntil || keepDefault(p)) + '<small class="help">이 날이 지나면 명단이 자동으로 지워져요</small></div>' +
       "</div></div>";
     return '<div class="fm-build"><div class="fm-edit">' + basics +
@@ -1813,7 +1816,8 @@
         open: !!f.open, updatedAt: new Date().toISOString(), updatedBy: S.authUser.uid });
       delete doc.id;
       doc.qs = (doc.qs || []).map((q) => Object.assign({}, q, { options: (q.options || []).map((o) => String(o).trim()).filter(Boolean) }));
-      doc.feeUnpaid = Number(doc.feeUnpaid) || 0;
+      doc.feeUnpaid = doc.feeSplit ? Number(doc.feeUnpaid) || 0 : 0;
+      delete doc.feeSplit;
       // 권한 명단은 [권한 설정]에서만 바뀜 (양식을 고치는 동안 바뀌었을 수도 있으니 최신 값 유지)
       doc.editorUids = (fm.form && fm.form.editorUids) || [];
       doc.viewerUids = (fm.form && fm.form.viewerUids) || [];
@@ -1895,6 +1899,12 @@
       await DB.update(respPath(S.fm.pid), r.id, patch);
       Object.assign(r, patch); refreshRoster();
       if (v) toast(r.name + " 출석 확인 (" + patch.attendedAt + ")");
+    },
+    fmSplit(el) {
+      const f = S.fm.draft; if (!f) return;
+      f.feeSplit = el.checked;
+      if (!f.feeSplit) f.feeUnpaid = 0;
+      markDirty(); renderPage();
     },
     fmAddOpt(el) {
       const q = findQ(el.dataset.q); if (!q) return;
