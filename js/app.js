@@ -1027,9 +1027,10 @@
   /* ----- 업무 캘린더 ----- */
   /* 달력 한 주 (업무 캘린더 · 홈 '이번 주 일정' 공용)
      여러 날짜에 걸친 사업·세부 일정은 이어진 색 띠 하나로, 이름은 시작하는 칸에 한 번만 */
+  const SCHOOL_F = "__school";
   function calSpans(projects, filterDept, tasks) {
-    const evsAll = projects.filter((p) => p.status !== "취소" && (!filterDept || p.dept === filterDept ||
-      (tasks || []).some((x) => x.projectId === p.id && x.dept === filterDept)));
+    const evsAll = projects.filter((p) => p.status !== "취소" && (!filterDept || (filterDept === SCHOOL_F ? isSchool(p) : p.dept === filterDept ||
+      (tasks || []).some((x) => x.projectId === p.id && x.dept === filterDept))));
     return evsAll.filter((p) => p.startDate).map((p) => ({ kind: "ev", p: p, a: p.startDate, b: p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate, label: p.name, tip: "사업 · " + p.name + " · " + eventDateText(p) }))
       .concat([].concat.apply([], evsAll.map((p) => schedOf(p).filter((sc) => sc.start).map((sc) => ({ kind: "sch", p: p, a: sc.start, b: schedEnd(sc), label: sc.title, sub: p.name,
         tip: "[" + p.name + "] " + sc.title + " · " + rangeText(sc.start, sc.end) })))));
@@ -1091,13 +1092,17 @@
     const startDow = first.getDay();
     const cells = Math.ceil((startDow + dim) / 7) * 7;
     const t = today();
-    const filt = tasks.filter((x) => !S.calFilter || x.dept === S.calFilter);
+    // 필터: 국서 하나, 또는 "학교 행사만"(SCHOOL_F) — 학교 행사와 거기 딸린 업무만
+    const pById = {};
+    projects.forEach((p) => (pById[p.id] = p));
+    const schoolF = S.calFilter === SCHOOL_F;
+    const filt = tasks.filter((x) => !S.calFilter || (schoolF ? isSchool(pById[x.projectId]) : x.dept === S.calFilter));
     const byDay = {};
     filt.forEach((x) => (byDay[x.dueDate] = byDay[x.dueDate] || []).push(x));
     Object.values(byDay).forEach((a) => a.sort((p, q) => (p.done - q.done) || deptRank(p.dept) - deptRank(q.dept)));
     // 사업 날짜(시행일): 여러 날이면 그 기간 매일 표시. 국서 필터는 주관 국서 또는 업무를 맡은 국서 기준
-    const evsAll = projects.filter((p) => p.status !== "취소" && (!S.calFilter || p.dept === S.calFilter ||
-      tasks.some((x) => x.projectId === p.id && x.dept === S.calFilter)));
+    const evsAll = projects.filter((p) => p.status !== "취소" && (!S.calFilter || (schoolF ? isSchool(p) : p.dept === S.calFilter ||
+      tasks.some((x) => x.projectId === p.id && x.dept === S.calFilter))));
     const evs = evsAll.filter((p) => p.startDate);
     const evByDay = {};
     evs.forEach((p) => {
@@ -1141,7 +1146,8 @@
         '<span class="dt">' + rangeText(r.s.start, r.s.end) + "</span>" + deptTag(r.p.dept) + '<span class="tt">' + esc(r.s.title) + ' <span class="ptag">' + esc(r.p.name) + "</span></span>" +
         '<span class="dd">' + schedState(r.s) + "</span></li>" : evRow(r.p)).join("") + "</ul></section>" : "";
     const chips = '<button class="fchip' + (!S.calFilter ? " on" : "") + '" data-act="calFilter" data-dept="">전체</button>' +
-      S.settings.depts.map((d) => '<button class="fchip' + (S.calFilter === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="calFilter" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "</button>").join("");
+      S.settings.depts.map((d) => '<button class="fchip' + (S.calFilter === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="calFilter" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "</button>").join("") +
+      '<span class="fsep"></span><button class="fchip school' + (S.calFilter === SCHOOL_F ? " on" : "") + '" style="--c:#0e7490" data-act="calFilter" data-dept="' + SCHOOL_F + '"><i></i>학교 행사만</button>';
     return '<div class="page-head"><div><h2>업무 캘린더</h2><p class="muted">사업·세부 일정은 기간만큼 막대로, 업무는 마감일에 표시돼요' + (isHead() ? " · 빈 날짜를 누르면 업무 추가" : "") + "</p></div>" +
       (isHead() ? '<div class="actions"><button class="btn primary" data-act="addTask" data-date="">+ 업무 추가</button></div>' : "") + "</div>" +
       '<div class="filters">' + chips + "</div>" +
@@ -2199,7 +2205,7 @@
       if (!isHead()) { if (!el.classList.contains("cday")) toast("업무 추가·분배는 국장과 회장단만 할 수 있어요.", true); return; }
       await col("users");
       openForm({ title: "업무 추가", fields: taskFields(await linkableProjects()),
-        values: { dueDate: el.dataset.date || today(), dept: (canManage(S.calFilter) && S.calFilter) || (S.me && S.me.dept && canManage(S.me.dept) ? S.me.dept : manageableDepts()[0] || "") },
+        values: { dueDate: el.dataset.date || today(), dept: (S.calFilter !== SCHOOL_F && canManage(S.calFilter) && S.calFilter) || (S.me && S.me.dept && canManage(S.me.dept) ? S.me.dept : manageableDepts()[0] || "") },
         submitLabel: "추가", onSubmit: async (v) => {
           assigneeFrom(v);
           await DB.add("tasks", Object.assign(v, { done: false }, stamp()));

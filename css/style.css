@@ -1083,3 +1083,5 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .kindseg button small { font-size: 11px; opacity: .7; margin-left: 2px; }
 .kindseg button.on { background: var(--ink); color: var(--surface); }
 .kindseg button:not(.on):hover { color: var(--ink); }
+/* 캘린더: 학교 행사만 보기 칩 앞 구분선 */
+.filters .fsep { width: 1px; align-self: stretch; background: var(--line, #e5e7eb); margin: 2px 4px; }
