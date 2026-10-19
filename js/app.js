@@ -118,6 +118,7 @@
     return String(p || "").trim();
   }
   function deptColor(dept) {
+    if (!dept) return "#0e7490";   // 국서 없는 학교 행사
     const i = (S.settings.depts || []).indexOf(dept);
     return i < 0 ? "#64748b" : PALETTE[i % PALETTE.length];
   }
@@ -136,7 +137,7 @@
   const canManage = (d) => isAdmin() || isExecPos() || (isDeptHead() && S.me.dept === d);
   const manageableDepts = () => (S.settings.depts || []).filter(canManage);
   const canTickTask = (t) => canManage(t && t.dept) || !!(S.me && S.me.status === "approved" && t && S.me.dept === t.dept);
-  const membersOf = (d) => (S.cache.users || []).filter((u) => u.status === "approved" && u.dept === d)
+  const membersOf = (d) => (S.cache.users || []).filter((u) => u.status === "approved" && (d === "*" || u.dept === d))
     .sort((a, b) => posRank(a.position) - posRank(b.position) || (a.name || "").localeCompare(b.name || ""));
   // 담당자 칸: 국서를 고르면 그 국서 사람만 나옴. 예전에 글자로 적어 둔 담당자는 "txt:이름"으로 유지
   const memberValue = (dept, uid, name) => {
@@ -154,7 +155,7 @@
   function memberOptions(dept, cur) {
     const ms = membersOf(dept);
     let html = '<option value="">' + (dept ? "정하지 않음" : "국서를 먼저 고르세요") + "</option>" +
-      ms.map((u) => '<option value="' + esc(u.id) + '"' + (u.id === cur ? " selected" : "") + ">" + esc(u.name + " · " + u.position) + "</option>").join("");
+      ms.map((u) => '<option value="' + esc(u.id) + '"' + (u.id === cur ? " selected" : "") + ">" + esc(u.name + " · " + (dept === "*" ? u.dept + " " : "") + u.position) + "</option>").join("");
     if (cur && cur.indexOf("txt:") === 0) html += '<option value="' + esc(cur) + '" selected>' + esc(cur.slice(4)) + " (직접 적은 이름)</option>";
     else if (cur && !ms.some((u) => u.id === cur)) { const u = memberOf(cur); if (u.name) html += '<option value="' + esc(cur) + '" selected>' + esc(u.name) + "</option>"; }
     return html;
@@ -404,6 +405,9 @@
       if (f.type === "members") { out[f.name] = Array.from(root.querySelectorAll('input[name="' + f.name + '"]:checked')).map((x) => x.value); continue; }
       const el = root.querySelector('[name="' + f.name + '"]');
       if (!el) continue;
+      // 숨겨진 칸(예: 학교 행사의 담당 국서)은 비워서 저장
+      const wrap = el.closest(".field");
+      if (wrap && wrap.hidden) { out[f.name] = ""; continue; }
       let v = f.type === "checkbox" ? el.checked : el.value.trim();
       if (f.type === "number") v = v === "" ? "" : Number(v);
       if (f.type === "tel") v = normPhone(v);
@@ -419,6 +423,19 @@
       out[f.name] = v;
     }
     return out;
+  }
+  // 사업 구분이 '학교 행사'면 담당 국서 칸을 숨기고(업무 분배 때만 국서를 고름), 담당자는 학생회 전체에서 고름
+  function bindKind(form) {
+    const k = form.querySelector('input[name="isSchool"]'), d = form.querySelector('select[name="dept"]');
+    if (!k || !d) return;
+    const dw = d.closest(".field"), own = form.querySelector('select[name="ownerSel"]');
+    const apply = function () {
+      const school = k.checked;
+      dw.hidden = school;
+      if (own) { const cur = own.value; own.innerHTML = memberOptions(school ? "*" : d.value, cur); }
+    };
+    k.addEventListener("change", apply);
+    apply();
   }
   function closeModal() { modalRoot.innerHTML = ""; document.body.classList.remove("noscroll"); }
   function openForm(o) {
@@ -454,6 +471,7 @@
     });
     bindDeptPosition(form);
     bindDeptMember(form);
+    bindKind(form);
     const first = form.querySelector("input:not([type=checkbox]),select,textarea");
     if (first && window.innerWidth > 700) first.focus();
   }
@@ -519,19 +537,18 @@
     return p && p.semester && p.semester !== "학기 구분 없음" ? p.semester : "";
   }
   // 구분: 학교 행사(대학·단과대 전체 행사, 학생대표자회의 등 우리가 주관하지 않고 참여하는 행사)
-  const isSchool = (p) => !!(p && p.kind === "학교 행사");
+  const isSchool = (p) => !!(p && (p.isSchool !== undefined ? p.isSchool : p.kind === "학교 행사"));
   const kindTag = (p) => (isSchool(p) ? '<span class="kindtag">학교 행사</span>' : "");
   const semTag = (p) => { const s = semesterOf(p); return s ? '<span class="semtag">' + esc(s) + "</span>" : ""; };
   const projectFields = (o) => [
     { name: "name", label: "사업 이름", required: true, placeholder: "예: 개강파티" },
+    { name: "isSchool", label: "학교 행사", type: "checkbox" },
   ].concat(o && o.council ? [
     { name: "generation", label: "진행한 학생회 기수", required: !!o.past, half: true, placeholder: "예: 제28대", help: "아카이브에서 학생회별로 묶이는 기준이에요." },
     { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 하루" },
   ] : []).concat([
     { name: "year", label: "연도", type: "number", required: true, half: true },
     { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
-    { name: "kind", label: "구분", type: "select", options: ["학생회 사업", "학교 행사"], required: true, half: true, value: "학생회 사업",
-      help: "학교 행사 = 응원OT·합동응원전·생학대회처럼 대학·단과대 전체 행사나 대표자회의로, 우리가 주관하지 않고 참여하는 행사" },
     { name: "semester", label: "학기", type: "select", options: ["1학기", "2학기", "여름방학", "겨울방학"], half: true, help: "고르면 사업 이름 앞에 [1학기]처럼 붙어요. 학기와 상관없으면 '선택 안 함'" },
     { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true, help: "사업 날짜가 되면 자동으로 '진행중', 끝나면 '완료'가 돼요." },
     o && o.past ? { name: "owner", label: "담당자", half: true } : { name: "ownerSel", label: "담당자", type: "member", deptField: "dept", half: true, help: "담당 국서를 고르면 그 국서 사람이 나와요." },
@@ -1349,19 +1366,22 @@
   PAGES.projects = async function () {
     const tmap = await tasksByProject();
     const forms = await formsMap();
-    const list = (await col("projects")).filter((p) => isActive(p) && (!S.projSchool || isSchool(p)) && (!S.projDept || p.dept === S.projDept ||
+    const allCur = (await col("projects")).filter((p) => isActive(p));
+    const list = allCur.filter((p) => (!S.projKind || (S.projKind === "school") === isSchool(p)) && (!S.projDept || p.dept === S.projDept ||
       (tmap[p.id] || []).some((t) => t.dept === S.projDept)));
     // 진행중 → 예정 → 기획중 → 완료 → 취소 순서로, 사업마다 한 줄씩
     const cols = ["진행중", "예정", "기획중", "완료", "취소"].map((st) => {
       const items = list.filter((p) => p.status === st).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
-      if ((st === "취소" || st === "진행중") && !items.length) return "";
+      if (st === "취소" && !items.length) return "";
       return '<section class="pgroup"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small></h3>" +
         (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
     }).join("");
     return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌고 · 끝난 사업은 '완료'에 남아 있다가, 다음 학생회로 넘길 때 [사업 아카이브]로 옮겨져요</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
-      '<div class="filters">' + deptFilterChips("projDept", "projDept") +
-        '<span class="fsep"></span><button class="fchip' + (S.projSchool ? " on" : "") + '" data-act="projSchool">학교 행사만</button></div>' +
+      '<div class="kindseg" role="tablist">' + [["", "전체"], ["council", "학생회 사업"], ["school", "학교 행사"]].map((k) =>
+        '<button role="tab" class="' + ((S.projKind || "") === k[0] ? "on" : "") + '" data-act="projKind" data-k="' + k[0] + '">' + k[1] +
+        ' <small>' + allCur.filter((p) => !k[0] || (k[0] === "school") === isSchool(p)).length + "</small></button>").join("") + "</div>" +
+      '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
       '<div class="plist2">' + cols + "</div>";
   };
 
@@ -2255,7 +2275,7 @@
 
     /* 사업 */
     projDept(el) { S.projDept = el.dataset.dept; renderPage(); },
-    projSchool() { S.projSchool = !S.projSchool; renderPage(); },
+    projKind(el) { S.projKind = el.dataset.k; renderPage(); },
     archiveDept(el) { S.archiveDept = el.dataset.dept; renderPage(); },
     async addProject() {
       await col("users");
@@ -2287,7 +2307,7 @@
       const p = await findIn("projects", el.dataset.id);
       if (!p) return;
       await col("users");
-      openForm({ title: "사업 수정", fields: projectFields({ council: true }), values: Object.assign({}, p, { ownerSel: memberValue(p.dept, p.ownerUid, p.owner) }),
+      openForm({ title: "사업 수정", fields: projectFields({ council: true }), values: Object.assign({}, p, { ownerSel: memberValue(p.dept, p.ownerUid, p.owner), isSchool: isSchool(p) }),
         extraButtons: isHead() ? [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)")) return;
           await DB.remove("projects", p.id);
