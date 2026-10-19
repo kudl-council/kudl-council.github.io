@@ -522,7 +522,7 @@
     { name: "name", label: "사업 이름", required: true, placeholder: "예: 개강파티" },
   ].concat(o && o.council ? [
     { name: "generation", label: "진행한 학생회 기수", required: !!o.past, half: true, placeholder: "예: 제28대", help: "아카이브에서 학생회별로 묶이는 기준이에요." },
-    { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 윤슬" },
+    { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 하루" },
   ] : []).concat([
     { name: "year", label: "연도", type: "number", required: true, half: true },
     { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
@@ -2262,8 +2262,9 @@
     },
     addPastProject() {
       openForm({ title: "지난 사업 기록하기", fields: projectFields({ council: true, past: true }), submitLabel: "기록",
-        intro: '<p class="muted small">이전 학생회의 기획안 링크와 남길 말을 기록해 두면, 다음 학생회가 같은 사업을 할 때 큰 도움이 돼요.</p>',
-        values: { year: S.settings.currentYear - 1, status: "완료" },
+        intro: '<p class="muted small">이전 학생회의 기획안 링크와 남길 말을 기록해 두면, 다음 학생회가 같은 사업을 할 때 큰 도움이 돼요.</p>' +
+          '<div class="notice info small" style="margin:6px 0 0"><b>' + esc(curCouncil()) + '</b>이 이미 끝낸 사업은 여기가 아니라 <b>[사업 기획안] → [+ 사업 추가]</b>에서 진행 상태를 <b>완료</b>로 넣어 주세요. 끝난 지 2주가 지난 사업은 바로 이 아카이브로 들어와요.</div>',
+        values: { year: S.settings.currentYear - 1, status: "완료", generation: S.settings.prevGeneration || "" },
         onSubmit: async (v) => {
           if (v.generation && v.generation === S.settings.generation) throw new Error("지금 학생회(" + S.settings.generation + ") 사업은 [사업 기획안] 메뉴에서 추가해 주세요.");
           await DB.add("projects", Object.assign(v, stamp())); await after("projects"); toast("아카이브에 기록했어요.");
