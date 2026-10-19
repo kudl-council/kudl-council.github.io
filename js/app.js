@@ -232,14 +232,15 @@
   const curCouncil = () => councilLabel(S.settings.generation, S.settings.councilName);
   // 지금 학생회의 사업인지: 기수로 판단 (기수 기록이 없는 옛 자료는 올해 것만)
   const isCurrent = (p) => (p.generation ? p.generation === S.settings.generation : Number(p.year) === S.settings.currentYear);
-  // 완료·취소된 사업은 사업 날짜(끝나는 날)로부터 2주가 지나면 [사업 기획안]에서 빠지고 [사업 아카이브]로 감
+  // (예전 기능: 끝난 지 2주 뒤 아카이브로 자동 이동 — 지금은 쓰지 않음)
   const ARCHIVE_AFTER_DAYS = 14;
   const isAutoArchived = (p) => {
     if (!p || (p.status !== "완료" && p.status !== "취소") || !p.startDate) return false;
     const end = p.endDate && p.endDate > p.startDate ? p.endDate : p.startDate;
     return ymd(new Date(new Date(end + "T00:00:00").getTime() + ARCHIVE_AFTER_DAYS * 86400000)) < today();
   };
-  const isActive = (p) => isCurrent(p) && !isAutoArchived(p);
+  // 지금 학생회 사업은 끝나도 [사업 기획안]에 그대로 (완료 칸) → 다음 학생회로 넘길 때 아카이브로 이동
+  const isActive = (p) => isCurrent(p);
   const genNum = (g) => { const m = String(g || "").match(/\d+/); return m ? Number(m[0]) : 0; };
   // 활동 이력: 지금 학생회에서의 국서·직책을 회원 기록에 남김 (같은 기수는 덮어씀)
   function withHistory(u) {
@@ -1352,7 +1353,7 @@
       return '<section class="pgroup"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small></h3>" +
         (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
     }).join("");
-    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌고, 끝난 지 2주가 지나면 [사업 아카이브]로 옮겨져요</p></div>" +
+    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌고 · 끝난 사업은 '완료'에 남아 있다가, 다음 학생회로 넘길 때 [사업 아카이브]로 옮겨져요</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
       '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
       '<div class="plist2">' + cols + "</div>";
@@ -1393,7 +1394,7 @@
         return keys.map((k) => (keys.length > 1 || k ? '<h4 class="sem-h">' + (k || "학기 미지정") + " <small>" + bySem[k].length + "개</small></h4>" : "") +
           '<div class="pgrid">' + bySem[k].sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9")).map((p) => projectCard(p, { archive: true, tasks: tmap[p.id] })).join("") + "</div>").join("");
       })() + "</details>").join("");
-    return '<div class="page-head"><div><h2>사업 아카이브</h2><p class="muted">역대 학생회 사업과, 지금 학생회에서 끝난 지 2주가 지난 사업이 학생회별로 쌓여요 · 지금까지 ' + past.length + "개</p></div>" +
+    return '<div class="page-head"><div><h2>사업 아카이브</h2><p class="muted">역대 학생회 사업이 학생회별로 쌓여요 · 지금까지 ' + past.length + "개</p></div>" +
       (isHead() ? '<div class="actions"><button class="btn primary" data-act="addPastProject">+ 지난 사업 기록하기</button></div>' : "") + "</div>" +
       '<div class="notice info small">학생회가 바뀔 때 관리 → 사이트 설정에서 <b>기수와 학생회 이름</b>을 바꾸면, ' + esc(curCouncil()) + '의 사업이 자동으로 이곳에 쌓여요.</div>' +
       '<input class="search" data-search="archive" placeholder="사업 이름 · 학생회 이름으로 검색 (예: 개강파티, 윤슬)" value="' + esc(S.q.archive || "") + '">' +
@@ -2263,10 +2264,15 @@
     addPastProject() {
       openForm({ title: "지난 사업 기록하기", fields: projectFields({ council: true, past: true }), submitLabel: "기록",
         intro: '<p class="muted small">이전 학생회의 기획안 링크와 남길 말을 기록해 두면, 다음 학생회가 같은 사업을 할 때 큰 도움이 돼요.</p>' +
-          '<div class="notice info small" style="margin:6px 0 0"><b>' + esc(curCouncil()) + '</b>이 이미 끝낸 사업은 여기가 아니라 <b>[사업 기획안] → [+ 사업 추가]</b>에서 진행 상태를 <b>완료</b>로 넣어 주세요. 끝난 지 2주가 지난 사업은 바로 이 아카이브로 들어와요.</div>',
+          '<div class="notice info small" style="margin:6px 0 0"><b>' + esc(curCouncil()) + '</b>이 이미 끝낸 사업은 여기가 아니라 <b>[사업 기획안] → [+ 사업 추가]</b>에서 진행 상태를 <b>완료</b>로 넣어 주세요. 사업 기획안의 ‘완료’ 칸에 모여 있다가, 다음 학생회로 넘길 때 이 아카이브로 옮겨져요.</div>',
         values: { year: S.settings.currentYear - 1, status: "완료", generation: S.settings.prevGeneration || "" },
         onSubmit: async (v) => {
-          if (v.generation && v.generation === S.settings.generation) throw new Error("지금 학생회(" + S.settings.generation + ") 사업은 [사업 기획안] 메뉴에서 추가해 주세요.");
+          // '제 29대', '29대', '29' 처럼 써도 같은 기수로 알아봄
+          v.generation = String(v.generation || "").replace(/\s+/g, "");
+          if (/^\d+$/.test(v.generation)) v.generation = "제" + v.generation + "대";
+          else if (/^\d+대$/.test(v.generation)) v.generation = "제" + v.generation;
+          if (v.generation && genNum(v.generation) === genNum(S.settings.generation))
+            throw new Error(S.settings.generation + "(" + (S.settings.councilName || "지금 학생회") + ")은 지금 학생회예요. 끝난 사업은 [사업 기획안] → [+ 사업 추가]에서 진행 상태를 '완료'로 넣어 주세요.");
           await DB.add("projects", Object.assign(v, stamp())); await after("projects"); toast("아카이브에 기록했어요.");
         } });
     },
@@ -2356,7 +2362,7 @@
       const list = schedOf(p);
       const rows = (list.length ? list : [{}, {}]).map(schedRowHTML).join("");
       openForm({ title: "'" + p.name + "' 세부 일정", submitLabel: "저장",
-        intro: '<p class="muted small">가수요조사 기간, 실수요조사 기간, 공지 올리는 날처럼 <b>사업의 날짜·기간</b>을 적어 두면 업무 캘린더에 테두리 칸으로 표시돼요. 하루짜리는 끝나는 날을 비워 두세요. 누가 언제까지 할 <b>일</b>(공지글 작성 등)은 [국서별 업무 분배]에 넣어 주세요.</p>' +
+        intro: '<p class="muted small">가수요조사 기간, 실수요조사 기간, 공지 올리는 날처럼 <b>사업의 날짜·기간</b>을 적어 두면 업무 캘린더에 연한 색 띠로 표시돼요. 하루짜리는 끝나는 날을 비워 두세요. 누가 언제까지 할 <b>일</b>(공지글 작성 등)은 [국서별 업무 분배]에 넣어 주세요.</p>' +
           (p.startDate ? '<p class="small"><b>사업 날짜: ' + eventDateText(p) + "</b></p>" : ""),
         fields: [],
         after: '<div class="shead"><span>일정 이름</span><span>시작일</span><span>끝나는 날 (선택)</span><span></span></div><div class="slist">' + rows + '</div><button type="button" class="btn sm" data-sch-add>+ 줄 추가</button>',
