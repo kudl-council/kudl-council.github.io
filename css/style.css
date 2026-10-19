@@ -1066,3 +1066,9 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .fm-dues { border: 1px solid var(--line); background: var(--surface); color: var(--ok); border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .fm-dues.un { color: #b45309; background: #fff4e5; border-color: #fcd9a8; }
 .ap-q textarea { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; resize: vertical; }
+
+/* 학기 표시 */
+.semtag { display: inline-block; font-size: 11px; font-weight: 700; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; margin-right: 6px; vertical-align: 2px; line-height: 17px; white-space: nowrap; }
+.pr-name .semtag { margin-right: 2px; }
+.sem-h { margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+.sem-h small { font-weight: 500; }
