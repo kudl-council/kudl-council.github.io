@@ -1435,7 +1435,7 @@
     // 진행중 → 예정 → 기획중 → 완료 → 취소 순서로, 사업마다 한 줄씩
     const cols = ["진행중", "예정", "기획중", "완료", "취소"].map((st) => {
       const items = list.filter((p) => p.status === st).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
-      if (st === "취소" && !items.length) return "";
+      if (!items.length) return ""; // 비어 있는 상태 칸은 숨김
       const allBtn = st === "완료" && items.length > 1 && isHead() ? '<button class="btn sm ghost pg-act" data-act="archiveDone">완료 ' + items.length + "개 모두 아카이브로</button>" : "";
       return '<section class="pgroup"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small>" + allBtn + "</h3>" +
         (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
@@ -1450,7 +1450,7 @@
         return k[0] === "etc" && !n ? "" : '<button role="tab" class="' + ((S.projSem || "") === k[0] ? "on" : "") + '" data-act="projSem" data-k="' + k[0] + '">' + k[1] + " <small>" + n + "</small></button>";
       }).join("") + "</div>" +
       '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
-      '<div class="plist2">' + cols + "</div>";
+      '<div class="plist2">' + (cols || '<div class="card empty">' + (allCur.length ? "조건에 맞는 사업이 없어요." : "아직 등록된 사업이 없어요." + (isHead() ? "<br>[+ 사업 추가]로 시작해 보세요." : "")) + "</div>") + "</div>";
   };
 
   /* ----- 사업 아카이브 (지난 학생회별) ----- */
