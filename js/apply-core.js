@@ -68,9 +68,22 @@
     return list;
   }
   // 참가비: 회비 납부자(fee) / 미납부자(feeUnpaid, 다를 때만)
-  const hasDues = (f) => Number(f.feeUnpaid) > 0 && Number(f.feeUnpaid) !== Number(f.fee);
-  const feeOf = (f, r) => (hasDues(f) && r && r.duesUnpaid ? Number(f.feeUnpaid) : Number(f.fee) || 0);
-  const anyFee = (f) => Number(f.fee) > 0 || Number(f.feeUnpaid) > 0;
+  //   2차가 있는 행사(has2): 1차 fee·feeUnpaid + 2차 fee2·fee2Unpaid, 학생이 '1차만 / 1차 + 2차 / (2차만)' 고름
+  const PART = "__part";
+  const PARTS = ["1차만", "1차 + 2차", "2차만"];
+  const has2 = (f) => !!(f && f.has2);
+  const partsOf = (f) => (f.only2 ? PARTS : PARTS.slice(0, 2));
+  const partOf = (f, r) => (has2(f) ? ((r && r.answers) || {})[PART] || "" : "");
+  const hasDues = (f) => (Number(f.feeUnpaid) > 0 && Number(f.feeUnpaid) !== Number(f.fee)) ||
+    (has2(f) && Number(f.fee2Unpaid) > 0 && Number(f.fee2Unpaid) !== Number(f.fee2));
+  const fee1Of = (f, un) => (un && Number(f.feeUnpaid) > 0 ? Number(f.feeUnpaid) : Number(f.fee) || 0);
+  const fee2Of = (f, un) => (un && Number(f.fee2Unpaid) > 0 ? Number(f.fee2Unpaid) : Number(f.fee2) || 0);
+  const partFee = (f, part, un) => (part === "2차만" ? 0 : fee1Of(f, un)) + (part === "1차 + 2차" || part === "2차만" ? fee2Of(f, un) : 0);
+  const feeOf = (f, r) => {
+    const un = hasDues(f) && !!(r && r.duesUnpaid);
+    return has2(f) ? partFee(f, partOf(f, r) || "1차만", un) : fee1Of(f, un);
+  };
+  const anyFee = (f) => Number(f.fee) > 0 || Number(f.feeUnpaid) > 0 || (has2(f) && (Number(f.fee2) > 0 || Number(f.fee2Unpaid) > 0));
   const needPay = (f, r) => isGoing(f, r) && !r.wait && anyFee(f);
   // 입금 기한: 날짜로 넣으면 '10월 23일(금)까지'
   const DOWK = ["일", "월", "화", "수", "목", "금", "토"];
@@ -80,7 +93,15 @@
   }
   function feeText(f) {
     if (!anyFee(f)) return "";
+    if (has2(f)) return "1차 " + won(fee1Of(f)) + " · 2차 " + won(fee2Of(f)) + (hasDues(f) ? " (회비 미납부자 1차 " + won(fee1Of(f, true)) + " · 2차 " + won(fee2Of(f, true)) + ")" : "");
     return hasDues(f) ? "회비 납부자 " + won(f.fee) + " · 미납부자 " + won(f.feeUnpaid) : won(f.fee);
+  }
+  // 2차 고르기 질문 (양식에 '2차가 있어요'를 켜면 자동으로 들어감)
+  function partQHTML(f) {
+    const dues = hasDues(f);
+    return '<div class="ap-q" role="group" aria-label="어디까지 참여하나요?"><div class="ap-ql">어디까지 참여하나요? <span class="req">*</span></div>' +
+      partsOf(f).map((o) => '<label class="ap-opt"><input type="radio" name="a_' + PART + '" value="' + esc(o) + '"> ' + esc(o) +
+        (anyFee(f) ? ' <span class="ap-fee">' + won(partFee(f, o)) + (dues ? " (미납부자 " + won(partFee(f, o, true)) + ")" : "") + "</span>" : "") + "</label>").join("") + "</div>";
   }
   function checkForm(f) {
     if (!qOf(f, "name") || !qOf(f, "sid") || !qOf(f, "phone")) return "‘이름’·‘학번’·‘전화번호’ 질문은 꼭 있어야 해요. (입금자명·중복 신청 확인·연락에 써요)";
@@ -145,7 +166,16 @@
     return headHTML(f) + infoHTML(f) +
       (f.mode === "first" ? '<p class="ap-note">제출한 시각 순서대로 정원 ' + esc(f.cap) + "명까지 확정되고, 그 뒤는 대기로 접수돼요.</p>" +
         (opts.count != null ? '<div class="ap-seat ' + (opts.count >= Number(f.cap) ? "full" : "") + '">' + (opts.count >= Number(f.cap) ? "정원이 다 찼어요 · 지금 신청하면 <b>대기 " + (opts.count - Number(f.cap) + 1) + "번</b>쯤이에요" : "지금 <b>" + opts.count + "명</b> 신청 · 남은 자리 <b>" + (Number(f.cap) - opts.count) + "</b>") + "</div>" : "") : "") +
-      '<form class="ap-form" novalidate>' + f.qs.map(qHTML).join("") +
+      '<form class="ap-form" novalidate>' + (function () {
+        const parts = f.qs.map(qHTML);
+        if (has2(f)) {
+          // 참여 여부 질문 바로 뒤, 없으면 동의 질문 앞, 그것도 없으면 맨 끝
+          let at = f.qs.findIndex((q) => q.type === "yesno" && q.attend);
+          at = at >= 0 ? at + 1 : f.qs.findIndex((q) => q.type === "agree");
+          parts.splice(at >= 0 ? at : parts.length, 0, partQHTML(f));
+        }
+        return parts.join("");
+      })() +
       '<p class="ap-err" hidden></p>' +
       '<button type="submit" class="ap-submit">' + (opts.preview ? "제출하기 (미리보기라 저장 안 됨)" : "제출하기") + "</button></form>";
   }
@@ -168,6 +198,12 @@
       if (!err && q.type === "phone" && v && v.replace(/\D/g, "").length < 10) err = "전화번호를 확인해 주세요.";
       out[q.id] = v;
     });
+    if (has2(f)) {
+      const c = formEl.querySelector('[name="a_' + PART + '"]:checked'), a = attendQ(f);
+      const going = !a || out[a.id] === "예";
+      out[PART] = going && c ? c.value : "";
+      if (!err && going && !out[PART]) err = "‘어디까지 참여하나요?’를 골라 주세요.";
+    }
     const n = qOf(f, "name"), s = qOf(f, "sid");
     return { answers: out, name: n ? out[n.id] : "", sid: s ? out[s.id] : "", err: err };
   }
@@ -180,8 +216,9 @@
       "<div>" + esc(r.name) + "님, " + (going ? "신청이 접수됐어요." : "응답해 주셔서 고마워요.") + "</div>" +
       (r.at ? '<div class="ap-time">접수 시각 ' + esc(stampText(r.at)) + "</div>" : "") +
       (f.mode === "first" && going ? (r.rank ? rankHTML(f, r.rank) : '<div class="ap-note">선착순은 접수 시각 순서로 정해져요. 정원 안인지는 학생회가 따로 알려 드려요.</div>') : "") + "</div>" +
-      (pay ? '<div class="ap-pay"><b>입금 안내</b><div>' + (dueText(f) ? esc(dueText(f)) + " " : "") + "<b>" + won(f.fee) + "</b>을 보내 주세요." +
-        (hasDues(f) ? " <b>학생회비 미납부자는 " + won(f.feeUnpaid) + "</b>이에요." : "") +
+      (pay ? '<div class="ap-pay"><b>입금 안내</b><div>' + (dueText(f) ? esc(dueText(f)) + " " : "") + (has2(f) && partOf(f, r) ? esc(partOf(f, r)) + " 참여로 " : "") +
+        "<b>" + won(feeOf(f, Object.assign({}, r, { duesUnpaid: false }))) + "</b>을 보내 주세요." +
+        (hasDues(f) ? " <b>학생회비 미납부자는 " + won(feeOf(f, Object.assign({}, r, { duesUnpaid: true }))) + "</b>이에요." : "") +
         (f.mode === "first" ? (r.rank && r.rank > Number(f.cap || 0) ? " <b>지금은 대기라서, 연락받은 뒤에 보내 주세요.</b>" : r.rank ? "" : " (대기로 접수됐다면 연락받은 뒤에 보내 주세요)") : "") + "</div>" +
         (f.account ? '<div class="ap-copy"><span>' + esc(f.account) + '</span><button type="button" data-copy="' + esc(String(f.account).replace(/[^\d-]/g, "")) + '">복사</button></div>' : "") +
         '<div>입금자명은 꼭 이렇게 적어 주세요</div><div class="ap-copy"><b>' + esc(dn) + '</b><button type="button" data-copy="' + esc(dn) + '">복사</button></div>' +
@@ -190,5 +227,5 @@
       (opts.preview ? '<button type="button" class="ap-link" data-ap-back>처음 화면으로</button>' : "");
   }
 
-  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, hasDues, feeOf, anyFee, dueText, feeText };
+  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, hasDues, feeOf, anyFee, dueText, feeText, PART, has2, partOf, partFee };
 })();

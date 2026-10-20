@@ -575,10 +575,25 @@
   const isSchool = (p) => !!(p && (p.isSchool !== undefined ? p.isSchool : p.kind === "학교 행사"));
   const kindTag = (p) => (isSchool(p) ? '<span class="kindtag">학교 행사</span>' : "");
   const semTag = (p) => { const s = semesterOf(p); return s ? '<span class="semtag">' + esc(s) + "</span>" : ""; };
+  // 연결된 행사: 합동응원전 ↔ 합동응원전 뒤풀이처럼 함께 가는 사업을 이어 둠 (뒤풀이 쪽에서 원래 행사를 고름)
+  const projById = (id) => (id && (S.cache.projects || []).find((x) => x.id === id)) || null;
+  const linkOptions = (selfId) => (S.cache.projects || []).filter((x) => isCurrent(x) && x.id !== selfId && x.status !== "취소")
+    .sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
+  function linkHTML(p) {
+    const up = projById(p.linkId);
+    const downs = (S.cache.projects || []).filter((x) => x.linkId === p.id);
+    const a = (x) => '<button type="button" class="plink-btn" data-act="viewProject" data-id="' + esc(x.id) + '">' + esc(x.name) + "</button>";
+    return (up ? '<span class="plink">↳ ' + a(up) + "</span>" : "") + (downs.length ? '<span class="plink">연결: ' + downs.map(a).join(", ") + "</span>" : "");
+  }
   const projectFields = (o) => [
     { name: "name", label: "사업 이름", required: true, placeholder: "예: 개강파티" },
     { name: "isSchool", label: "학교 행사", type: "checkbox" },
-  ].concat(o && o.council ? [
+  ].concat(o && o.past ? [] : [(function () {
+    const ls = linkOptions(o && o.selfId), labels = {};
+    ls.forEach((x) => (labels[x.id] = (isSchool(x) ? "[학교 행사] " : "") + x.name + (x.startDate ? " · " + fmtDate(x.startDate) : "")));
+    return { name: "linkId", label: "연결된 행사 (선택)", type: "select", options: ls.map((x) => x.id), labels: labels,
+      help: "예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’을 고르세요. 두 사업에 서로 연결이 표시돼요." };
+  })()]).concat(o && o.council ? [
     { name: "generation", label: "진행한 학생회 기수", required: !!o.past, half: true, placeholder: "예: 제28대", help: "아카이브에서 학생회별로 묶이는 기준이에요." },
     { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 하루" },
   ] : []).concat([
@@ -1324,6 +1339,7 @@
     return '<article class="card pcard" style="--c:' + deptColor(p.dept) + '">' +
       '<div class="ptop">' + deptTag(p.dept) + '<span class="st st-' + esc(p.status) + '">' + esc(p.status || "") + "</span>" + (opts.showYear ? '<span class="yr">' + esc(p.year) + "</span>" : "") + "</div>" +
       "<h4>" + kindTag(p) + semTag(p) + esc(p.name) + "</h4>" +
+      (p.linkId || (S.cache.projects || []).some((x) => x.linkId === p.id) ? '<p class="plinks-rel">' + linkHTML(p) + "</p>" : "") +
       '<dl class="meta">' + (period ? "<dt>사업일</dt><dd>" + period + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
@@ -1390,12 +1406,13 @@
     return '<div class="prow' + (open ? " open" : "") + '" style="--c:' + deptColor(p.dept) + '">' +
       '<button class="pr-head" data-act="toggleProj" data-id="' + esc(p.id) + '" aria-expanded="' + open + '">' +
       '<span class="pr-chev" aria-hidden="true">›</span>' + deptTag(p.dept) +
-      '<span class="pr-name">' + kindTag(p) + semTag(p) + esc(p.name) + (p.owner ? '<small>' + esc(p.owner) + "</small>" : "") + "</span>" +
+      '<span class="pr-name">' + kindTag(p) + semTag(p) + esc(p.name) + (projById(p.linkId) ? '<small class="pr-up">↳ ' + esc(projById(p.linkId).name) + "</small>" : "") + (p.owner ? '<small>' + esc(p.owner) + "</small>" : "") + "</span>" +
       '<span class="pr-meta">' +
       (ts.length ? '<span class="pr-prog" title="업무 분배 ' + done + "/" + ts.length + ' 완료"><i style="width:' + Math.round((done / ts.length) * 100) + '%"></i></span><span class="pr-cnt">업무 ' + done + "/" + ts.length + "</span>" : "") +
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") +
       '<span class="pr-when">' + when + "</span>" + dd + "</span></button>" +
       '<div class="pr-body">' +
+      (p.linkId || (S.cache.projects || []).some((x) => x.linkId === p.id) ? '<p class="plinks-rel">' + linkHTML(p) + "</p>" : "") +
       '<dl class="meta">' + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
@@ -1411,7 +1428,9 @@
     const tmap = await tasksByProject();
     const forms = await formsMap();
     const allCur = (await col("projects")).filter((p) => isActive(p));
-    const list = allCur.filter((p) => (!S.projKind || (S.projKind === "school") === isSchool(p)) && (!S.projDept || p.dept === S.projDept ||
+    // 학기 보기: 1학기 · 2학기 · 그 밖(방학·학기 없음)
+    const semOk = (p, k) => !k || (k === "etc" ? !/^[12]학기$/.test(semesterOf(p)) : semesterOf(p) === k);
+    const list = allCur.filter((p) => (!S.projKind || (S.projKind === "school") === isSchool(p)) && semOk(p, S.projSem) && (!S.projDept || p.dept === S.projDept ||
       (tmap[p.id] || []).some((t) => t.dept === S.projDept)));
     // 진행중 → 예정 → 기획중 → 완료 → 취소 순서로, 사업마다 한 줄씩
     const cols = ["진행중", "예정", "기획중", "완료", "취소"].map((st) => {
@@ -1426,6 +1445,10 @@
       '<div class="kindseg" role="tablist">' + [["", "전체"], ["council", "학생회 사업"], ["school", "학교 행사"]].map((k) =>
         '<button role="tab" class="' + ((S.projKind || "") === k[0] ? "on" : "") + '" data-act="projKind" data-k="' + k[0] + '">' + k[1] +
         ' <small>' + allCur.filter((p) => !k[0] || (k[0] === "school") === isSchool(p)).length + "</small></button>").join("") + "</div>" +
+      '<div class="kindseg semseg" role="tablist">' + [["", "모든 학기"], ["1학기", "1학기"], ["2학기", "2학기"], ["etc", "방학 · 기타"]].map((k) => {
+        const n = allCur.filter((p) => semOk(p, k[0])).length;
+        return k[0] === "etc" && !n ? "" : '<button role="tab" class="' + ((S.projSem || "") === k[0] ? "on" : "") + '" data-act="projSem" data-k="' + k[0] + '">' + k[1] + " <small>" + n + "</small></button>";
+      }).join("") + "</div>" +
       '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
       '<div class="plist2">' + cols + "</div>";
   };
@@ -1677,10 +1700,11 @@
     return '<div class="fm-stats">' + stat("응답", list.length) +
       stat(f.mode === "first" ? "정원 안 / 대기" : "참여", f.mode === "first" ? inn.length + " / " + (going.length - inn.length) : going.length) +
       (AP.attendQ(f) ? stat("불참", list.length - going.length) : "") +
+      (AP.has2(f) ? stat("2차", inn.filter((r) => /2차/.test(AP.partOf(f, r))).length + "명") : "") +
       (fee ? stat("입금", inn.filter((r) => r.paid).length + "/" + inn.length) : "") +
       stat("출석", inn.filter((r) => r.attended).length + "/" + inn.length) + "</div>" +
       (fee ? '<p class="muted small" style="margin:0">받을 돈 <b>' + AP.won(sum(inn)) + "</b> · 입금 확인 " + AP.won(sum(inn.filter((r) => r.paid))) +
-        (AP.hasDues(f) ? " · 회비 미납부자 " + inn.filter((r) => r.duesUnpaid).length + "명 (참가비 " + AP.won(f.fee) + " / 미납부자 " + AP.won(f.feeUnpaid) + ")" : "") + "</p>" : "");
+        (AP.hasDues(f) ? " · 회비 미납부자 " + inn.filter((r) => r.duesUnpaid).length + "명" : "") + " · 참가비 " + AP.feeText(f) + "</p>" : "");
   }
   function rosterRows(f) {
     const fm = S.fm, q = (fm.q || "").replace(/\s/g, "");
@@ -1695,18 +1719,21 @@
       if (x.type === "yesno" && x.attend) return v === "예" ? '<span class="fm-pill ok">참여</span>' : v ? '<span class="fm-pill">불참</span>' : "";
       return esc(Array.isArray(v) ? v.join(", ") : v);
     };
-    const th = "<tr><th>번호</th><th>제출 시각</th>" + qs.map((x) => "<th>" + esc(x.label) + "</th>").join("") +
+    const p2 = AP.has2(f);
+    const th = "<tr><th>번호</th><th>제출 시각</th>" + qs.map((x) => "<th>" + esc(x.label) + "</th>").join("") + (p2 ? "<th>참여</th>" : "") +
       (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? "<th>입금자명</th>" + (dues ? "<th>회비</th>" : "") + "<th>입금</th>" : "") + "<th>출석</th>" + (editable ? "<th></th>" : "") + "</tr>";
-    const n = 3 + qs.length + (fee ? 2 : 0) + (dues ? 1 : 0) + (f.mode === "first" ? 1 : 0) + (editable ? 1 : 0);
+    const n = 3 + qs.length + (p2 ? 1 : 0) + (fee ? 2 : 0) + (dues ? 1 : 0) + (f.mode === "first" ? 1 : 0) + (editable ? 1 : 0);
     const rows = list.map((r) => {
       const going = AP.isGoing(f, r), active = going && !r.wait, sid = esc(r.id);
       return '<tr class="' + (active ? "" : "off") + '">' +
         '<td class="num">' + (r.no ? r.no : "–") + '</td><td class="num">' + esc(AP.stampText(r.at)) + "</td>" +
         qs.map((x) => '<td class="' + (x.type === "phone" || x.type === "sid" || x.type === "name" ? "num" : "ans") + '">' + cell(x, r) + "</td>").join("") +
+        (p2 ? "<td>" + (AP.partOf(f, r) ? '<span class="fm-pill' + (/2차/.test(AP.partOf(f, r)) ? " ok" : "") + '">' + esc(AP.partOf(f, r)) + "</span>" : "") + "</td>" : "") +
         (f.mode === "first" ? "<td>" + (!going ? "" : r.wait ? '<span class="fm-pill warn">대기 ' + r.waitNo + "</span>" : '<span class="fm-pill ok">정원 안</span>') + "</td>" : "") +
         (fee ? '<td class="num"><b>' + (active ? esc(r.depositName || AP.depositName(r.sid, r.name)) : "–") + "</b></td>" +
           (dues ? "<td>" + (active ? '<button class="fm-dues' + (r.duesUnpaid ? " un" : "") + '" data-act="fmDues" data-sid="' + sid + '" title="눌러서 납부/미납 바꾸기">' + (r.duesUnpaid ? "미납" : "납부") + "</button><small class=\"muted\"> " + AP.won(AP.feeOf(f, r)) + "</small>" : "") + "</td>" : "") +
-          "<td>" + (active ? '<label class="fm-paid"><input type="checkbox" data-act="fmPaid" data-sid="' + sid + '"' + (r.paid ? " checked" : "") + "> " + (r.paid ? "확인" : "입금 전") + "</label>" : "") + "</td>" : "") +
+          "<td>" + (active ? '<label class="fm-paid"><input type="checkbox" data-act="fmPaid" data-sid="' + sid + '"' + (r.paid ? " checked" : "") + "> " + (r.paid ? "확인" : "입금 전") + "</label>" +
+            (p2 && !dues ? '<small class="muted"> ' + AP.won(AP.feeOf(f, r)) + "</small>" : "") : "") + "</td>" : "") +
         "<td>" + (active ? '<button class="fm-att' + (r.attended ? " on" : "") + '" data-act="fmAtt" data-sid="' + sid + '">' + (r.attended ? "✓ " + esc(r.attendedAt || "") : "확인") + "</button>" : "") + "</td>" +
         (editable ? '<td><button class="x" data-act="fmDelResp" data-sid="' + sid + '" aria-label="이 응답 지우기" title="이 응답 지우기">×</button></td>' : "") + "</tr>";
     }).join("") || '<tr><td colspan="' + n + '" class="muted" style="text-align:center;padding:28px">' + (q ? "찾는 사람이 없어요." : "아직 응답이 없어요. 링크를 단톡방에 올려 보세요.") + "</td></tr>";
@@ -1719,7 +1746,7 @@
       (fee ? '<button class="btn sm" data-act="fmBank">통장 내역으로 입금 확인</button>' : "") +
       '<button class="btn sm" data-act="fmCsv">엑셀(CSV) 받기</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
       '<div class="fm-tablewrap"><table class="fm-table" id="fmTable">' + rosterRows(f) + "</table></div>" +
-      '<p class="muted small">' + (fee ? "입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 24123이다홍). " + (AP.hasDues(f) ? "회비 미납부자는 [납부]를 눌러 [미납]으로 바꾸면 그 사람 참가비가 " + AP.won(f.feeUnpaid) + "으로 계산돼요. " : "") : "") +
+      '<p class="muted small">' + (fee ? "입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 24123이다홍). " + (AP.hasDues(f) ? "회비 미납부자는 [납부]를 눌러 [미납]으로 바꾸면 그 사람 참가비가 미납부자 금액으로 계산돼요. " : "") : "") +
         "행사 당일엔 이 화면에서 [확인]을 눌러 출석을 체크해요." + (AP.anyFee(f) && !canMoney() ? " 입금·회비 확인은 재무국이 해요." : "") + "</p>";
   }
   function refreshRoster() {
@@ -1732,7 +1759,7 @@
   /* ---------- 양식 만들기 ---------- */
   function buildHTML(p) {
     const fm = S.fm;
-    if (!fm.draft) { fm.draft = JSON.parse(JSON.stringify(fm.form)); fm.draft.feeSplit = Number(fm.draft.feeUnpaid) > 0; }
+    if (!fm.draft) { fm.draft = JSON.parse(JSON.stringify(fm.form)); fm.draft.feeSplit = Number(fm.draft.feeUnpaid) > 0 || Number(fm.draft.fee2Unpaid) > 0; }
     const f = fm.draft;
     const inp = (k, label, o) => { o = o || {};
       return '<div class="field' + (o.half ? " half" : "") + '"' + (o.id ? ' id="' + o.id + '"' : "") + (o.hidden ? " hidden" : "") + '><label>' + label + "</label>" +
@@ -1747,8 +1774,13 @@
       sel("mode", "모집 방식", [["normal", "일반 (기간 안에 누구나)"], ["first", "선착순 (정원 넘으면 대기)"]], { half: true }) +
       inp("cap", "정원", { half: true, num: true, id: "fmCapWrap", hidden: f.mode !== "first" }) +
       '<div class="field"><label class="fm-chk" style="margin:4px 0 0"><input type="checkbox" data-act="fmSplit"' + (f.feeSplit ? " checked" : "") + "> 회비 납부자와 미납부자의 참가비가 달라요</label></div>" +
-      money("fee", f.feeSplit ? "참가비 (회비 납부자)" : "참가비", "0이면 입금 안내 없음") +
-      (f.feeSplit ? money("feeUnpaid", "참가비 (회비 미납부자)", "미납부자가 낼 금액") : "") +
+      '<div class="field"><label class="fm-chk" style="margin:0"><input type="checkbox" data-act="fmHas2"' + (f.has2 ? " checked" : "") + "> 2차가 있어요 (1차·2차 참가비를 따로 받아요)</label></div>" +
+      money("fee", (f.has2 ? "1차 참가비" : "참가비") + (f.feeSplit ? " (회비 납부자)" : ""), "0이면 입금 안내 없음") +
+      (f.feeSplit ? money("feeUnpaid", (f.has2 ? "1차 참가비" : "참가비") + " (회비 미납부자)", "미납부자가 낼 금액") : "") +
+      (f.has2 ? money("fee2", "2차 참가비" + (f.feeSplit ? " (회비 납부자)" : ""), "1차 + 2차 참여자는 두 금액을 더해서 내요") +
+        (f.feeSplit ? money("fee2Unpaid", "2차 참가비 (회비 미납부자)", "미납부자가 낼 금액") : "") +
+        '<div class="field"><label class="fm-chk" style="margin:0"><input type="checkbox" data-act="fmOnly2"' + (f.only2 ? " checked" : "") + "> 2차만 참여하는 것도 받아요</label>" +
+        '<small class="help">학생 화면에 ‘어디까지 참여하나요? 1차만 / 1차 + 2차' + (f.only2 ? " / 2차만" : "") + "’ 질문이 금액과 함께 자동으로 들어가요.</small></div>" : "") +
       '<div class="field half"><label>입금 기한</label>' + dateInputHTML('data-fm-date="dueDate"', f.dueDate || "") +
         '<small class="help" id="fmDueText">' + (AP.dueText(f) ? "학생 화면: " + esc(AP.dueText(f)) : "날짜를 고르면 ‘10월 23일(금)까지’로 보여요") + "</small></div>" +
       inp("account", "입금 계좌", { half: !!f.feeSplit, ph: "예: 국민 123456-01-234567 (생명과학부 학생회)" }) +
@@ -1824,7 +1856,7 @@
     if (el.dataset.fm) {
       const k = el.dataset.fm;
       if (k === "cap") { const d = el.value.replace(/\D/g, "").slice(0, 5); el.value = d; f[k] = Number(d) || 0; }
-      else if (k === "fee" || k === "feeUnpaid") f[k] = Number(el.value.replace(/\D/g, "").slice(0, 9)) || 0;
+      else if (k === "fee" || k === "feeUnpaid" || k === "fee2" || k === "fee2Unpaid") f[k] = Number(el.value.replace(/\D/g, "").slice(0, 9)) || 0;
       else f[k] = el.value;
       if (k === "mode") { const w = document.getElementById("fmCapWrap"); if (w) w.hidden = f.mode !== "first"; }
       markDirty(); refreshPreview();
@@ -1903,6 +1935,9 @@
       delete doc.id;
       doc.qs = (doc.qs || []).map((q) => Object.assign({}, q, { options: (q.options || []).map((o) => String(o).trim()).filter(Boolean) }));
       doc.feeUnpaid = doc.feeSplit ? Number(doc.feeUnpaid) || 0 : 0;
+      doc.has2 = !!doc.has2; doc.only2 = doc.has2 && !!doc.only2;
+      doc.fee2 = doc.has2 ? Number(doc.fee2) || 0 : 0;
+      doc.fee2Unpaid = doc.has2 && doc.feeSplit ? Number(doc.fee2Unpaid) || 0 : 0;
       delete doc.feeSplit;
       // 권한 명단은 [권한 설정]에서만 바뀜 (양식을 고치는 동안 바뀌었을 수도 있으니 최신 값 유지)
       doc.editorUids = (fm.form && fm.form.editorUids) || [];
@@ -1989,8 +2024,18 @@
     fmSplit(el) {
       const f = S.fm.draft; if (!f) return;
       f.feeSplit = el.checked;
-      if (!f.feeSplit) f.feeUnpaid = 0;
+      if (!f.feeSplit) { f.feeUnpaid = 0; f.fee2Unpaid = 0; }
       markDirty(); renderPage();
+    },
+    fmHas2(el) {
+      const f = S.fm.draft; if (!f) return;
+      f.has2 = el.checked;
+      if (!f.has2) { f.fee2 = 0; f.fee2Unpaid = 0; f.only2 = false; }
+      markDirty(); renderPage();
+    },
+    fmOnly2(el) {
+      const f = S.fm.draft; if (!f) return;
+      f.only2 = el.checked; markDirty(); renderPage();
     },
     fmAddOpt(el) {
       const q = findQ(el.dataset.q); if (!q) return;
@@ -2045,8 +2090,8 @@
     fmCsv() {
       const f = S.fm.form, extra = (f.qs || []).filter((x) => x.type !== "name" && x.type !== "sid");
       const money = canMoney() && AP.anyFee(f), dues = money && AP.hasDues(f);
-      const head = ["번호", "이름", "학번", money ? "입금자명" : "", f.mode === "first" ? "선착순" : "", dues ? "회비" : "", money ? "참가비" : "", money ? "입금" : "", "출석", "제출 시각"].filter(Boolean).concat(extra.map((x) => x.label));
-      const rows = S.fm.resp.map((r) => [r.no || "", r.name, r.sid, money ? r.depositName : null, f.mode === "first" ? (!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안") : null,
+      const head = ["번호", "이름", "학번", AP.has2(f) ? "참여" : "", money ? "입금자명" : "", f.mode === "first" ? "선착순" : "", dues ? "회비" : "", money ? "참가비" : "", money ? "입금" : "", "출석", "제출 시각"].filter(Boolean).concat(extra.map((x) => x.label));
+      const rows = S.fm.resp.map((r) => [r.no || "", r.name, r.sid, AP.has2(f) ? AP.partOf(f, r) : null, money ? r.depositName : null, f.mode === "first" ? (!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안") : null,
         dues ? (r.duesUnpaid ? "미납" : "납부") : null, money ? AP.feeOf(f, r) : null, money ? (r.paid ? "O" : "") : null, r.attended ? "O " + (r.attendedAt || "") : "", AP.stampText(r.at)].filter((x) => x !== null)
         .concat(extra.map((x) => { const v = (r.answers || {})[x.id]; return x.type === "agree" ? (v ? "동의" : "") : Array.isArray(v) ? v.join(", ") : (v == null ? "" : v); })));
       const csv = "﻿" + [head].concat(rows).map((row) => row.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
@@ -2321,9 +2366,10 @@
     /* 사업 */
     projDept(el) { S.projDept = el.dataset.dept; renderPage(); },
     projKind(el) { S.projKind = el.dataset.k; renderPage(); },
+    projSem(el) { S.projSem = el.dataset.k; renderPage(); },
     archiveDept(el) { S.archiveDept = el.dataset.dept; renderPage(); },
     async addProject() {
-      await col("users");
+      await col("users"); await col("projects");
       openForm({ title: "사업 추가", fields: projectFields(), submitLabel: "추가",
         values: { year: S.settings.currentYear, status: "기획중", dept: S.projDept || (S.me && S.me.dept) || "" },
         onSubmit: async (v) => {
@@ -2352,7 +2398,7 @@
       const p = await findIn("projects", el.dataset.id);
       if (!p) return;
       await col("users");
-      openForm({ title: "사업 수정", fields: projectFields({ council: true }), values: Object.assign({}, p, { ownerSel: memberValue(p.dept, p.ownerUid, p.owner), isSchool: isSchool(p) }),
+      openForm({ title: "사업 수정", fields: projectFields({ council: true, selfId: p.id }), values: Object.assign({}, p, { ownerSel: memberValue(p.dept, p.ownerUid, p.owner), isSchool: isSchool(p) }),
         extraButtons: isHead() ? [{ label: "삭제", cls: "danger", onClick: async () => {
           if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)")) return;
           await DB.remove("projects", p.id);
@@ -2471,14 +2517,14 @@
       const p = await findIn("projects", el.dataset.id);
       if (!p) return;
       await DB.update("projects", p.id, { archived: false });
-      S.openProj[p.id] = true; S.projDept = ""; S.projKind = ""; S.scrollTo = p.id;
+      S.openProj[p.id] = true; S.projDept = ""; S.projKind = ""; S.projSem = ""; S.scrollTo = p.id;
       await after("projects"); toast("사업 기획안으로 다시 불러왔어요."); location.hash = "projects";
     },
     async viewProject(el) {
       const p = await findIn("projects", el.dataset.id);
       if (!p) return;
       // 사업 기획안에서 그 사업 줄을 펼쳐서 보여 줌
-      if (isActive(p)) { S.openProj[p.id] = true; S.projDept = ""; S.scrollTo = p.id; location.hash = "projects"; if (S.route === "projects") await renderPage(); }
+      if (isActive(p)) { S.openProj[p.id] = true; S.projDept = ""; S.projKind = ""; S.projSem = ""; S.scrollTo = p.id; location.hash = "projects"; if (S.route === "projects") await renderPage(); }
       else location.hash = "archive";
     },
     async reuseProject(el) {
