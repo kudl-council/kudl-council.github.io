@@ -241,7 +241,8 @@
     return ymd(new Date(new Date(end + "T00:00:00").getTime() + ARCHIVE_AFTER_DAYS * 86400000)) < today();
   };
   // 지금 학생회 사업은 끝나도 [사업 기획안]에 그대로 (완료 칸) → 다음 학생회로 넘길 때 아카이브로 이동
-  const isActive = (p) => isCurrent(p);
+  // 단, 완료된 사업을 [아카이브로 보내기] 하면(archived) 지금 학생회 사업이어도 아카이브에서 보임 — [다시 불러오기]로 되돌림
+  const isActive = (p) => isCurrent(p) && !p.archived;
   const genNum = (g) => { const m = String(g || "").match(/\d+/); return m ? Number(m[0]) : 0; };
   // 활동 이력: 지금 학생회에서의 국서·직책을 회원 기록에 남김 (같은 기수는 덮어씀)
   function withHistory(u) {
@@ -472,6 +473,7 @@
     bindDeptPosition(form);
     bindDeptMember(form);
     bindKind(form);
+    bindSemester(form);
     const first = form.querySelector("input:not([type=checkbox]),select,textarea");
     if (first && window.innerWidth > 700) first.focus();
   }
@@ -533,8 +535,41 @@
     { name: "memo", label: "메모 (주요 결정사항 등)", type: "textarea", rows: 2 },
   ];
   // 학기: 사업 추가·수정 창에서 직접 고른 값만 표시 (고르지 않으면 표시 안 함)
+  // 학기: 사업 날짜로 자동. 창에서 직접 바꾸면 그 값으로
+  //   그 해 개강·종강일이 [사이트 설정]에 있으면 그 기간 안일 때만 1학기/2학기 (방학이면 표시 안 함)
+  //   없으면 3~6월 1학기 · 9~12월 2학기 · 나머지(방학)는 표시 안 함
+  function semFromDate(iso) {
+    const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(iso || "");
+    if (!m) return "";
+    const sd = (S.settings.semDates || {})[m[1]] || {};
+    const in2 = (a, b) => a && b && iso >= a && iso <= b;
+    if ((sd.s1a && sd.s1b) || (sd.s2a && sd.s2b)) {
+      if (in2(sd.s1a, sd.s1b)) return "1학기";
+      if (in2(sd.s2a, sd.s2b)) return "2학기";
+      const n0 = Number(m[2]);
+      // 한 학기만 넣은 경우, 안 넣은 학기는 달로 판단
+      if (!(sd.s1a && sd.s1b) && n0 >= 3 && n0 <= 6) return "1학기";
+      if (!(sd.s2a && sd.s2b) && n0 >= 9) return "2학기";
+      return "";
+    }
+    const n = Number(m[2]);
+    return n >= 3 && n <= 6 ? "1학기" : n >= 9 ? "2학기" : "";
+  }
   function semesterOf(p) {
-    return p && p.semester && p.semester !== "학기 구분 없음" ? p.semester : "";
+    if (!p) return "";
+    if (p.semester === undefined) return semFromDate(p.startDate); // 학기를 따로 저장한 적 없는 옛 사업
+    return p.semester && p.semester !== "학기 구분 없음" ? p.semester : "";
+  }
+  // 사업 창: 사업 날짜를 넣으면 학기 칸이 자동으로 골라짐 (직접 다른 걸 고르면 그대로 둠)
+  function bindSemester(form) {
+    const sel = form.querySelector('select[name="semester"]'), dt = form.querySelector('input[name="startDate"]');
+    if (!sel || !dt) return;
+    let manual = !!sel.value && sel.value !== semFromDate(isoDate(dt.value));
+    sel.addEventListener("change", () => { manual = sel.value !== semFromDate(isoDate(dt.value)); });
+    const sync = () => setTimeout(() => { if (!manual) sel.value = semFromDate(isoDate(dt.value));  }, 0);
+    dt.addEventListener("input", sync);
+    dt.closest(".dwrap").addEventListener("change", sync);
+    sync();
   }
   // 구분: 학교 행사(대학·단과대 전체 행사, 학생대표자회의 등 우리가 주관하지 않고 참여하는 행사)
   const isSchool = (p) => !!(p && (p.isSchool !== undefined ? p.isSchool : p.kind === "학교 행사"));
@@ -549,11 +584,12 @@
   ] : []).concat([
     { name: "year", label: "연도", type: "number", required: true, half: true },
     { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
-    { name: "semester", label: "학기", type: "select", options: ["1학기", "2학기", "여름방학", "겨울방학"], half: true, help: "고르면 사업 이름 앞에 [1학기]처럼 붙어요. 학기와 상관없으면 '선택 안 함'" },
+    { name: "semester", label: "학기", type: "select", options: ["1학기", "2학기", "여름방학", "겨울방학"], half: true, help: "사업 날짜를 넣으면 자동으로 골라져요 (방학 중이면 '선택 안 함'). 다르면 직접 바꾸면 돼요." },
     { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true, help: "사업 날짜가 되면 자동으로 '진행중', 끝나면 '완료'가 돼요." },
     o && o.past ? { name: "owner", label: "담당자", half: true } : { name: "ownerSel", label: "담당자", type: "member", deptField: "dept", half: true, help: "담당 국서를 고르면 그 국서 사람이 나와요." },
     { name: "startDate", label: "사업 날짜 (시행일)", type: "date", half: true, help: "캘린더에 사업 일정으로 표시돼요." },
     { name: "endDate", label: "끝나는 날 (여러 날일 때만)", type: "date", half: true, help: "1박 2일 등일 때만 넣으세요." },
+    { name: "place", label: "장소 (있을 때만)", placeholder: "예: 하나스퀘어 B104 · 안암 ○○호프", help: "장소가 없는 사업(메이트 사업, 지원금 사업 등)은 비워 두세요." },
     { name: "budget", label: "예산", type: "money", placeholder: "숫자만 입력 (예: 1200000)" },
     { name: "summary", label: "한 줄 요약 · 다음 기수에게 남길 말", type: "textarea", rows: 3, placeholder: "예: 장소가 좁았음 → 내년엔 더 큰 곳 추천" },
     { name: "planUrl", label: "기획안 링크", type: "url", placeholder: "https://docs.google.com/…" },
@@ -1288,14 +1324,15 @@
     return '<article class="card pcard" style="--c:' + deptColor(p.dept) + '">' +
       '<div class="ptop">' + deptTag(p.dept) + '<span class="st st-' + esc(p.status) + '">' + esc(p.status || "") + "</span>" + (opts.showYear ? '<span class="yr">' + esc(p.year) + "</span>" : "") + "</div>" +
       "<h4>" + kindTag(p) + semTag(p) + esc(p.name) + "</h4>" +
-      '<dl class="meta">' + (period ? "<dt>사업일</dt><dd>" + period + "</dd>" : "") + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
+      '<dl class="meta">' + (period ? "<dt>사업일</dt><dd>" + period + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
       (links ? '<div class="plinks">' + links + "</div>" : "") +
       (opts.forms ? (function () { const b = projectFormBtn(p, opts.forms[p.id], opts); return b ? '<div class="plinks pform">' + b + "</div>" : ""; })() : "") +
       projectSchedHTML(p, opts) +
       projectTasksHTML(p, opts) +
-      (opts.readonly ? "" : '<div class="pfoot">' + (opts.archive && isHead() ? '<button class="btn sm" data-act="reuseProject" data-id="' + esc(p.id) + '">참고해서 새로 기획하기</button>' : "") +
+      (opts.readonly ? "" : '<div class="pfoot">' + (opts.archive && isHead() ? (isCurrent(p) && p.archived ? '<button class="btn sm" data-act="unarchiveProject" data-id="' + esc(p.id) + '">사업 기획안으로 다시 불러오기</button>' :
+        '<button class="btn sm" data-act="reuseProject" data-id="' + esc(p.id) + '">참고해서 새로 기획하기</button>') : "") +
       (isHead() ? '<button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button>' : "") + "</div>") + "</article>";
   }
   const schedRowHTML = (r) => '<div class="srow"><input class="s-title" placeholder="예: 가수요조사 기간" value="' + esc(r.title || "") + '" aria-label="일정 이름">' +
@@ -1359,12 +1396,13 @@
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") +
       '<span class="pr-when">' + when + "</span>" + dd + "</span></button>" +
       '<div class="pr-body">' +
-      '<dl class="meta">' + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
+      '<dl class="meta">' + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
       (links || formBtn || addBtns ? '<div class="plinks">' + links + formBtn + addBtns + "</div>" : "") +
       (blocks ? '<div class="pr-cols">' + blocks + "</div>" : "") +
-      (isHead() ? '<div class="pfoot"><button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button></div>' : "") +
+      (isHead() ? '<div class="pfoot">' + (p.status === "완료" || p.status === "취소" ? '<button class="btn sm" data-act="archiveProject" data-id="' + esc(p.id) + '">아카이브로 보내기</button>' : "") +
+        '<button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button></div>' : "") +
       "</div></div>";
   }
 
@@ -1379,10 +1417,11 @@
     const cols = ["진행중", "예정", "기획중", "완료", "취소"].map((st) => {
       const items = list.filter((p) => p.status === st).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
       if (st === "취소" && !items.length) return "";
-      return '<section class="pgroup"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small></h3>" +
+      const allBtn = st === "완료" && items.length > 1 && isHead() ? '<button class="btn sm ghost pg-act" data-act="archiveDone">완료 ' + items.length + "개 모두 아카이브로</button>" : "";
+      return '<section class="pgroup"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small>" + allBtn + "</h3>" +
         (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
     }).join("");
-    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌고 · 끝난 사업은 '완료'에 남아 있다가, 다음 학생회로 넘길 때 [사업 아카이브]로 옮겨져요</p></div>" +
+    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌어요 · 완료된 사업은 [아카이브로 보내기]로 정리할 수 있어요 (다음 학생회로 넘길 때는 자동으로 옮겨져요)</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
       '<div class="kindseg" role="tablist">' + [["", "전체"], ["council", "학생회 사업"], ["school", "학교 행사"]].map((k) =>
         '<button role="tab" class="' + ((S.projKind || "") === k[0] ? "on" : "") + '" data-act="projKind" data-k="' + k[0] + '">' + k[1] +
@@ -1428,7 +1467,7 @@
       })() + "</details>").join("");
     return '<div class="page-head"><div><h2>사업 아카이브</h2><p class="muted">역대 학생회 사업이 학생회별로 쌓여요 · 지금까지 ' + past.length + "개</p></div>" +
       (isHead() ? '<div class="actions"><button class="btn primary" data-act="addPastProject">+ 지난 사업 기록하기</button></div>' : "") + "</div>" +
-      '<div class="notice info small">학생회가 바뀔 때 관리 → 사이트 설정에서 <b>기수와 학생회 이름</b>을 바꾸면, ' + esc(curCouncil()) + '의 사업이 자동으로 이곳에 쌓여요.</div>' +
+      '<div class="notice info small">학생회가 바뀔 때 관리 → 사이트 설정에서 <b>기수와 학생회 이름</b>을 바꾸면, ' + esc(curCouncil()) + '의 사업이 자동으로 이곳에 쌓여요. 그 전에도 완료된 사업은 [사업 기획안]에서 <b>아카이브로 보내기</b>로 옮길 수 있고, 여기서 <b>다시 불러오기</b>로 되돌릴 수 있어요.</div>' +
       '<input class="search" data-search="archive" placeholder="사업 이름 · 학생회 이름으로 검색 (예: 개강파티, 윤슬)" value="' + esc(S.q.archive || "") + '">' +
       '<div class="filters">' + deptFilterChips("archiveDept", "archiveDept") + "</div>" +
       (body || '<div class="card empty">아직 기록된 지난 사업이 없어요.<br>[+ 지난 사업 기록하기]로 이전 학생회 자료를 옮겨 두면 후배들이 참고할 수 있어요.</div>');
@@ -2415,6 +2454,26 @@
           await after("projects"); toast(out.length ? "세부 일정을 저장했어요." : "세부 일정을 비웠어요.");
         } });
     },
+    async archiveProject(el) {
+      const p = await findIn("projects", el.dataset.id);
+      if (!p) return;
+      await DB.update("projects", p.id, { archived: true });
+      delete S.openProj[p.id];
+      await after("projects"); toast("'" + p.name + "'을(를) 아카이브로 보냈어요. 아카이브에서 다시 불러올 수 있어요.");
+    },
+    async archiveDone() {
+      const list = (await col("projects")).filter((p) => isActive(p) && p.status === "완료");
+      if (!list.length || !confirm("완료된 사업 " + list.length + "개를 모두 아카이브로 보낼까요?\n(아카이브에서 언제든 다시 불러올 수 있어요)")) return;
+      for (const p of list) await DB.update("projects", p.id, { archived: true });
+      await after("projects"); toast(list.length + "개를 아카이브로 보냈어요.");
+    },
+    async unarchiveProject(el) {
+      const p = await findIn("projects", el.dataset.id);
+      if (!p) return;
+      await DB.update("projects", p.id, { archived: false });
+      S.openProj[p.id] = true; S.projDept = ""; S.projKind = ""; S.scrollTo = p.id;
+      await after("projects"); toast("사업 기획안으로 다시 불러왔어요."); location.hash = "projects";
+    },
     async viewProject(el) {
       const p = await findIn("projects", el.dataset.id);
       if (!p) return;
@@ -2504,6 +2563,10 @@
         { name: "generation", label: "학생회 기수", required: true, half: true, placeholder: "예: 제29대" },
         { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 윤슬" },
         { name: "slogan", label: "학생회 슬로건 (한 줄)", placeholder: "예: 여러분과 다 함께 더 밝게 반짝일 미래를 위해", help: "왼쪽 메뉴 위, 홈 화면, 로그인 화면에 보여요. 비워 두면 안 보여요." },
+        { name: "s1a", label: S.settings.currentYear + "년 1학기 개강일", type: "date", half: true },
+        { name: "s1b", label: "1학기 종강일", type: "date", half: true },
+        { name: "s2a", label: S.settings.currentYear + "년 2학기 개강일", type: "date", half: true },
+        { name: "s2b", label: "2학기 종강일", type: "date", half: true, help: "넣어 두면 사업 날짜로 학기가 자동으로 골라져요. 비워 두면 3~6월 1학기, 9~12월 2학기로 골라요. 방학 중 사업은 학기 표시가 없어요." },
         { name: "homeMsg", label: "홈 화면에 '선배의 한마디' 보여주기 (끄면 모두의 홈에서 사라지고 소통방에서만 보여요. 켜 두면 각자 [숨기기]로 끌 수 있어요)", type: "checkbox" },
         { name: "fixExisting", label: "오타 수정이에요 — 지금 학생회의 기존 사업 기록에도 바뀐 기수·이름을 똑같이 적용", type: "checkbox",
           help: "새 학생회로 넘기는 거라면 체크하지 말고 [새 학생회로 넘기기] 버튼을 쓰세요." },
@@ -2513,13 +2576,19 @@
         { name: "minuteTypes", label: "회의 종류 (한 줄에 하나씩)", type: "textarea", rows: 4, required: true },
         { name: "minutesFolderUrl", label: "회의록 구글 드라이브 폴더 주소", type: "url", placeholder: "https://drive.google.com/drive/folders/…" },
       ];
-      openForm({ title: "사이트 설정", fields: fields, values: S.settings,
+      const sdNow = (S.settings.semDates || {})[S.settings.currentYear] || {};
+      openForm({ title: "사이트 설정", fields: fields, values: Object.assign({}, S.settings, sdNow),
         intro: '<p class="muted small">국서 이름을 바꾸면, 기존에 그 이름으로 등록된 회원·업무는 예전 이름 그대로 남아요. 필요하면 각 항목에서 다시 골라 주세요.</p>',
         onSubmit: async (v) => {
           const lines = (s) => String(s).split(/\n|,/).map((x) => x.trim()).filter(Boolean);
           v.depts = lines(v.depts); v.positions = lines(v.positions); v.execPositions = lines(v.execPositions); v.minuteTypes = lines(v.minuteTypes);
           if (!v.depts.length || !v.positions.length || !v.execPositions.length || !v.minuteTypes.length) throw new Error("목록은 하나 이상 있어야 해요.");
           const fix = v.fixExisting; delete v.fixExisting;
+          // 개강·종강일은 연도별로 보관 (지난 해 사업의 학기 표시가 바뀌지 않게)
+          const sd = { s1a: v.s1a || "", s1b: v.s1b || "", s2a: v.s2a || "", s2b: v.s2b || "" };
+          ["s1a", "s1b", "s2a", "s2b"].forEach((k) => delete v[k]);
+          if ((sd.s1a && sd.s1b && sd.s1a > sd.s1b) || (sd.s2a && sd.s2b && sd.s2a > sd.s2b)) throw new Error("종강일이 개강일보다 빨라요. 날짜를 확인해 주세요.");
+          v.semDates = Object.assign({}, S.settings.semDates || {}, { [S.settings.currentYear]: sd });
           const oldGen = S.settings.generation;
           const changed = v.generation !== oldGen || v.councilName !== S.settings.councilName;
           if (changed && !fix && v.generation !== oldGen &&

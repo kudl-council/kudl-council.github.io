@@ -1085,3 +1085,6 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .kindseg button:not(.on):hover { color: var(--ink); }
 /* 캘린더: 학교 행사만 보기 칩 앞 구분선 */
 .filters .fsep { width: 1px; align-self: stretch; background: var(--line, #e5e7eb); margin: 2px 4px; }
+/* 사업 기획안: '완료 n개 모두 아카이브로' */
+.pgroup h3 { display: flex; align-items: center; gap: 6px; }
+.pgroup h3 .pg-act { margin-left: auto; font-weight: 500; }
