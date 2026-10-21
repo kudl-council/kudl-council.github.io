@@ -124,6 +124,8 @@
     return '<div class="ap-rank wait"><b>대기 ' + (rank - cap) + "번</b><span>" + rank + "번째로 접수됐어요 (정원 " + cap + "명). 취소가 생기면 순서대로 연락드려요.</span></div>";
   }
 
+  // 학번 예시: 올해 연도 + 140 + 123 (예: 2026140123) — 해가 바뀌면 자동으로 바뀜
+  const sidExample = () => new Date().getFullYear() + "140123";
   /* ---------- 학생 화면 ---------- */
   function qHTML(q) {
     const req = q.required ? ' <span class="req">*</span>' : "";
@@ -133,7 +135,7 @@
         '<textarea id="a_' + q.id + '" ' + nm + ' rows="4" maxlength="1000"></textarea></div>';
     }
     if (q.type === "name" || q.type === "sid" || q.type === "phone" || q.type === "text") {
-      const ph = q.type === "sid" ? "2026250123" : q.type === "phone" ? "010-1234-5678" : q.type === "name" ? "홍길동" : "";
+      const ph = q.type === "sid" ? sidExample() : q.type === "phone" ? "010-1234-5678" : q.type === "name" ? "홍길동" : "";
       return '<div class="ap-q"><label class="ap-ql" for="a_' + q.id + '">' + esc(q.label) + req + "</label>" +
         '<input id="a_' + q.id + '" ' + nm + ' type="' + (q.type === "phone" ? "tel" : "text") + '"' +
         (q.type === "sid" || q.type === "phone" ? ' inputmode="numeric"' : "") + ' placeholder="' + ph + '" autocomplete="off" maxlength="' + (q.type === "text" ? 200 : 30) + '"></div>';
@@ -227,5 +229,5 @@
       (opts.preview ? '<button type="button" class="ap-link" data-ap-back>처음 화면으로</button>' : "");
   }
 
-  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, hasDues, feeOf, anyFee, dueText, feeText, PART, has2, partOf, partFee };
+  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, dueText, feeText, PART, has2, partOf, partFee };
 })();

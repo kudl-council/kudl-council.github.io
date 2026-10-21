@@ -474,6 +474,7 @@
     bindDeptMember(form);
     bindKind(form);
     bindSemester(form);
+    bindLink(form);
     const first = form.querySelector("input:not([type=checkbox]),select,textarea");
     if (first && window.innerWidth > 700) first.focus();
   }
@@ -482,7 +483,7 @@
   /* ---------- 필드 정의 ---------- */
   const profileFields = () => [
     { name: "name", label: "이름", required: true, half: true },
-    { name: "studentId", label: "학번", required: true, half: true, placeholder: "예: 2024250000" },
+    { name: "studentId", label: "학번", required: true, half: true, placeholder: "예: " + new Date().getFullYear() + "140123" },
     { name: "grade", label: "학년", type: "select", options: GRADES, required: true, half: true, help: "학번과 상관없이 학생회에서의 학년 (1학년 = 배우는 중, 2학년 = 주로 운영)" },
     { name: "dept", label: "소속 국서", type: "select", options: S.settings.depts, required: true, half: true },
     { name: "position", label: "직책", type: "select", options: execPositions().concat(deptPositions()), required: true, half: true },
@@ -538,29 +539,40 @@
   // 학기: 사업 날짜로 자동. 창에서 직접 바꾸면 그 값으로
   //   그 해 개강·종강일이 [사이트 설정]에 있으면 그 기간 안일 때만 1학기/2학기 (방학이면 표시 안 함)
   //   없으면 3~6월 1학기 · 9~12월 2학기 · 나머지(방학)는 표시 안 함
+  // 학기: [관리 → 사이트 설정]에 넣은 그 해 개강일~종강일 안이면 1학기/2학기, 그 밖(방학)은 표시 없음
   function semFromDate(iso) {
-    const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(iso || "");
+    const m = /^(\d{4})-\d{2}-\d{2}$/.exec(iso || "");
     if (!m) return "";
     const sd = (S.settings.semDates || {})[m[1]] || {};
-    const in2 = (a, b) => a && b && iso >= a && iso <= b;
-    if ((sd.s1a && sd.s1b) || (sd.s2a && sd.s2b)) {
-      if (in2(sd.s1a, sd.s1b)) return "1학기";
-      if (in2(sd.s2a, sd.s2b)) return "2학기";
-      const n0 = Number(m[2]);
-      // 한 학기만 넣은 경우, 안 넣은 학기는 달로 판단
-      if (!(sd.s1a && sd.s1b) && n0 >= 3 && n0 <= 6) return "1학기";
-      if (!(sd.s2a && sd.s2b) && n0 >= 9) return "2학기";
-      return "";
-    }
-    const n = Number(m[2]);
-    return n >= 3 && n <= 6 ? "1학기" : n >= 9 ? "2학기" : "";
+    const inR = (a, b) => a && b && iso >= a && iso <= b;
+    return inR(sd.s1a, sd.s1b) ? "1학기" : inR(sd.s2a, sd.s2b) ? "2학기" : "";
   }
+  const hasSemDates = (y) => { const sd = (S.settings.semDates || {})[y] || {}; return !!((sd.s1a && sd.s1b) || (sd.s2a && sd.s2b)); };
+  // 사업 날짜가 있으면 항상 날짜로 자동 계산 (직접 고르는 칸 없음). 날짜 없는 지난 사업 기록만 직접 고른 학기
   function semesterOf(p) {
     if (!p) return "";
-    if (p.semester === undefined) return semFromDate(p.startDate); // 학기를 따로 저장한 적 없는 옛 사업
+    // 개강·종강일을 넣은 해는 날짜로, 안 넣은 해(옛 기록)는 저장돼 있던 학기 그대로
+    if (p.startDate && hasSemDates(p.startDate.slice(0, 4))) return semFromDate(p.startDate);
     return p.semester && p.semester !== "학기 구분 없음" ? p.semester : "";
   }
   // 사업 창: 사업 날짜를 넣으면 학기 칸이 자동으로 골라짐 (직접 다른 걸 고르면 그대로 둠)
+  // 연결된 행사: 이 사업 날짜와 겹치는 행사만 보여 줌 (날짜를 바꾸면 목록도 바뀜)
+  function bindLink(form) {
+    const sel = form.querySelector('select[name="linkId"]'), a = form.querySelector('input[name="startDate"]'), b = form.querySelector('input[name="endDate"]');
+    if (!sel || !a) return;
+    const all = Array.from(sel.options).filter((o) => o.value).map((o) => ({ id: o.value, label: o.textContent }));
+    const field = sel.closest(".field"), help = field.querySelector(".help");
+    const sync = () => setTimeout(() => {
+      const s0 = isoDate(a.value) || "", e0 = (b && isoDate(b.value)) || s0, cur = sel.value;
+      const ok = all.filter((o) => { const x = projById(o.id); if (!x || !x.startDate || !s0) return false;
+        const xe = x.endDate && x.endDate > x.startDate ? x.endDate : x.startDate; return x.startDate <= (e0 > s0 ? e0 : s0) && xe >= s0; });
+      if (cur && !ok.some((o) => o.id === cur)) { const keep = all.find((o) => o.id === cur); if (keep) ok.unshift(keep); }
+      sel.innerHTML = '<option value="">선택 안 함</option>' + ok.map((o) => '<option value="' + esc(o.id) + '"' + (o.id === cur ? " selected" : "") + ">" + esc(o.label) + "</option>").join("");
+      if (help) help.textContent = !s0 ? "사업 날짜를 넣으면 같은 날 행사가 나와요." : ok.length ? "같은 날 행사만 나와요. 예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’." : "같은 날 다른 행사가 없어요.";
+    }, 0);
+    [a, b].filter(Boolean).forEach((el) => { el.addEventListener("input", sync); el.closest(".dwrap").addEventListener("change", sync); });
+    sync();
+  }
   function bindSemester(form) {
     const sel = form.querySelector('select[name="semester"]'), dt = form.querySelector('input[name="startDate"]');
     if (!sel || !dt) return;
@@ -592,14 +604,14 @@
     const ls = linkOptions(o && o.selfId), labels = {};
     ls.forEach((x) => (labels[x.id] = (isSchool(x) ? "[학교 행사] " : "") + x.name + (x.startDate ? " · " + fmtDate(x.startDate) : "")));
     return { name: "linkId", label: "연결된 행사 (선택)", type: "select", options: ls.map((x) => x.id), labels: labels,
-      help: "예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’을 고르세요. 두 사업에 서로 연결이 표시돼요." };
+      help: "사업 날짜가 겹치는 행사만 나와요. 예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’." };
   })()]).concat(o && o.council ? [
     { name: "generation", label: "진행한 학생회 기수", required: !!o.past, half: true, placeholder: "예: 제28대", help: "아카이브에서 학생회별로 묶이는 기준이에요." },
     { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 하루" },
   ] : []).concat([
     { name: "year", label: "연도", type: "number", required: true, half: true },
     { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
-    { name: "semester", label: "학기", type: "select", options: ["1학기", "2학기", "여름방학", "겨울방학"], half: true, help: "사업 날짜를 넣으면 자동으로 골라져요 (방학 중이면 '선택 안 함'). 다르면 직접 바꾸면 돼요." },
+    o && o.past ? { name: "semester", label: "학기 (날짜를 모를 때만)", type: "select", options: ["1학기", "2학기"], half: true, help: "사업 날짜를 넣으면 날짜로 자동 표시돼요." } : null,
     { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true, help: "사업 날짜가 되면 자동으로 '진행중', 끝나면 '완료'가 돼요." },
     o && o.past ? { name: "owner", label: "담당자", half: true } : { name: "ownerSel", label: "담당자", type: "member", deptField: "dept", half: true, help: "담당 국서를 고르면 그 국서 사람이 나와요." },
     { name: "startDate", label: "사업 날짜 (시행일)", type: "date", half: true, help: "캘린더에 사업 일정으로 표시돼요." },
@@ -609,7 +621,13 @@
     { name: "summary", label: "한 줄 요약 · 다음 기수에게 남길 말", type: "textarea", rows: 3, placeholder: "예: 장소가 좁았음 → 내년엔 더 큰 곳 추천" },
     { name: "planUrl", label: "기획안 링크", type: "url", placeholder: "https://docs.google.com/…" },
     { name: "extraUrl", label: "기타 자료 (드라이브 폴더 등)", type: "url", placeholder: "https://drive.google.com/…" },
-  ]);
+  ]).filter(Boolean).reduce((out, f, i, arr) => {
+    // '연결된 행사'는 날짜로 거르니 날짜 칸 바로 뒤에
+    if (f.name === "linkId") return out;
+    out.push(f);
+    if (f.name === "endDate") { const l = arr.find((x) => x.name === "linkId"); if (l) out.push(l); }
+    return out;
+  }, []);
 
   /* ============================================================
      화면 그리기
@@ -1445,10 +1463,11 @@
       '<div class="kindseg" role="tablist">' + [["", "전체"], ["council", "학생회 사업"], ["school", "학교 행사"]].map((k) =>
         '<button role="tab" class="' + ((S.projKind || "") === k[0] ? "on" : "") + '" data-act="projKind" data-k="' + k[0] + '">' + k[1] +
         ' <small>' + allCur.filter((p) => !k[0] || (k[0] === "school") === isSchool(p)).length + "</small></button>").join("") + "</div>" +
-      '<div class="kindseg semseg" role="tablist">' + [["", "모든 학기"], ["1학기", "1학기"], ["2학기", "2학기"], ["etc", "방학 · 기타"]].map((k) => {
+      (!hasSemDates(String(S.settings.currentYear)) ? '<span class="muted small sem-hint">학기 표시는 <b>관리 → 사이트 설정</b>에 올해 개강·종강일을 넣으면 붙어요</span>' :
+      '<div class="kindseg semseg" role="tablist">' + [["", "모든 학기"], ["1학기", "1학기"], ["2학기", "2학기"]].map((k) => {
         const n = allCur.filter((p) => semOk(p, k[0])).length;
         return k[0] === "etc" && !n ? "" : '<button role="tab" class="' + ((S.projSem || "") === k[0] ? "on" : "") + '" data-act="projSem" data-k="' + k[0] + '">' + k[1] + " <small>" + n + "</small></button>";
-      }).join("") + "</div>" +
+      }).join("") + "</div>") +
       '<div class="filters">' + deptFilterChips("projDept", "projDept") + "</div>" +
       '<div class="plist2">' + (cols || '<div class="card empty">' + (allCur.length ? "조건에 맞는 사업이 없어요." : "아직 등록된 사업이 없어요." + (isHead() ? "<br>[+ 사업 추가]로 시작해 보세요." : "")) + "</div>") + "</div>";
   };
@@ -2612,7 +2631,7 @@
         { name: "s1a", label: S.settings.currentYear + "년 1학기 개강일", type: "date", half: true },
         { name: "s1b", label: "1학기 종강일", type: "date", half: true },
         { name: "s2a", label: S.settings.currentYear + "년 2학기 개강일", type: "date", half: true },
-        { name: "s2b", label: "2학기 종강일", type: "date", half: true, help: "넣어 두면 사업 날짜로 학기가 자동으로 골라져요. 비워 두면 3~6월 1학기, 9~12월 2학기로 골라요. 방학 중 사업은 학기 표시가 없어요." },
+        { name: "s2b", label: "2학기 종강일", type: "date", half: true, help: "개강일~종강일 안의 사업에 [1학기]/[2학기]가 자동으로 붙어요. 그 밖(방학)은 표시가 없어요. 해마다 새로 넣어 주세요." },
         { name: "homeMsg", label: "홈 화면에 '선배의 한마디' 보여주기 (끄면 모두의 홈에서 사라지고 소통방에서만 보여요. 켜 두면 각자 [숨기기]로 끌 수 있어요)", type: "checkbox" },
         { name: "fixExisting", label: "오타 수정이에요 — 지금 학생회의 기존 사업 기록에도 바뀐 기수·이름을 똑같이 적용", type: "checkbox",
           help: "새 학생회로 넘기는 거라면 체크하지 말고 [새 학생회로 넘기기] 버튼을 쓰세요." },
