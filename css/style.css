@@ -1142,3 +1142,34 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .st-card dd { margin: 0; text-align: right; font-weight: 600; }
 .st-text { white-space: pre-wrap; word-break: keep-all; font-family: inherit; font-size: 13px; line-height: 1.6; background: var(--bg); border-radius: 10px; padding: 12px 14px; margin: 0; max-height: 360px; overflow: auto; }
 .st-room .tlist .trow { cursor: pointer; }
+/* ---------- 재무국방 · 예결산 미리 점검 ---------- */
+.au-drop { display: grid; gap: 4px; justify-items: center; text-align: center; padding: 26px 16px; border: 2px dashed var(--line); border-radius: 14px; background: var(--surface); cursor: pointer; margin: 12px 0; }
+.au-drop:hover { border-color: var(--accent); }
+.au-drop.busy { opacity: .6; pointer-events: none; }
+.au-drop b { font-size: 15px; }
+.au-sum .au-file { font-weight: 700; margin-bottom: 8px; word-break: break-all; }
+.au-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.au-chip { font-size: 13px; padding: 5px 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); }
+.au-chip.bad { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.au-chip.warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.au-chip.ok { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.au-sec h3 { margin-bottom: 6px; }
+.au-list { list-style: none; margin: 0; padding: 0; }
+.au-item { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.au-item:first-child { border-top: 0; }
+.au-ic { font-size: 16px; line-height: 1.4; flex: none; width: 22px; text-align: center; }
+.au-body { min-width: 0; flex: 1; }
+.au-t { font-weight: 600; font-size: 14px; }
+.au-no { display: inline-block; min-width: 20px; color: var(--muted); font-weight: 700; margin-right: 4px; }
+.au-st { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-left: 4px; background: var(--bg); color: var(--muted); vertical-align: 1px; }
+.au-bad .au-st { background: #fee2e2; color: #991b1b; }
+.au-warn .au-st { background: #fef3c7; color: #92400e; }
+.au-ok .au-st { background: #dcfce7; color: #166534; }
+.au-msg { font-size: 13px; color: var(--muted); margin-top: 2px; word-break: keep-all; }
+.au-item.done .au-t { color: var(--muted); }
+.au-cells { margin-top: 6px; font-size: 12.5px; }
+.au-cells summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+.au-cells ul { margin: 6px 0 0; padding-left: 16px; display: grid; gap: 3px; max-height: 320px; overflow: auto; }
+.au-cells code { font-weight: 700; background: var(--bg); padding: 0 5px; border-radius: 4px; }
+.au-chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; margin-top: 6px; cursor: pointer; }
+@media print { .au-drop, .au-chk, .fm-back { display: none !important; } .au-cells ul { max-height: none; } .au-cells:not([open]) ul { display: block; } }
