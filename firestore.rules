@@ -152,6 +152,11 @@ service cloud.firestore {
     }
     function roomViewer(d) { return approved() && hasProfile() && (me().dept == d || me().dept == execDeptName()); }
     function roomHead(d) { return canManage(d); }
+    // ---- 재무국방 · 추가 정산 (합동응원전 뒤풀이 등): 재무국 전원 + 회장단 ----
+    match /settlements/{id} {
+      allow read, create, update, delete: if admin() || isExecPos()
+        || (approved() && hasProfile() && (me().dept.matches('.*재무.*') || me().dept == execDeptName()));
+    }
     match /deptTasks/{id} {
       allow read: if admin() || roomViewer(resource.data.dept);
       allow create: if admin() || (roomHead(request.resource.data.dept)

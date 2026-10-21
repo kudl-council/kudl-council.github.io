@@ -22,7 +22,7 @@
   };
   const rid = () => "q" + Math.random().toString(36).slice(2, 8);
   const Q = (type, label, extra) => Object.assign({ id: rid(), type: type, label: label, required: true, options: [], attend: false, text: "" }, extra || {});
-  const agreeText = (what) => "수집 항목: 이름, 학번, 전화번호\n목적: " + what + " 참여 확인과 연락\n보관: 행사가 끝나고 2주 뒤 삭제\n학생회 안에서만 봐요.";
+  const agreeText = (what) => "수집 항목: 이름, 학번, 전화번호\n목적: " + what + " 참여 확인과 연락\n보관: 행사가 끝나고 최대 1년 (학생회가 바뀔 때 삭제)\n학생회 안에서만 봐요.";
 
   // 처음 만들 때 고르는 틀
   const TEMPLATES = {
