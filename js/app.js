@@ -560,6 +560,7 @@
   function bindLink(form) {
     const sel = form.querySelector('select[name="linkId"]'), a = form.querySelector('input[name="startDate"]'), b = form.querySelector('input[name="endDate"]');
     if (!sel || !a) return;
+    if (S.linkLock) { sel.disabled = true; sel.innerHTML = '<option value="">연결 안 됨</option>'; return; }
     const all = Array.from(sel.options).filter((o) => o.value).map((o) => ({ id: o.value, label: o.textContent }));
     const field = sel.closest(".field"), help = field.querySelector(".help");
     const sync = () => setTimeout(() => {
@@ -568,7 +569,7 @@
         const xe = x.endDate && x.endDate > x.startDate ? x.endDate : x.startDate; return x.startDate <= (e0 > s0 ? e0 : s0) && xe >= s0; });
       if (cur && !ok.some((o) => o.id === cur)) { const keep = all.find((o) => o.id === cur); if (keep) ok.unshift(keep); }
       sel.innerHTML = '<option value="">선택 안 함</option>' + ok.map((o) => '<option value="' + esc(o.id) + '"' + (o.id === cur ? " selected" : "") + ">" + esc(o.label) + "</option>").join("");
-      if (help) help.textContent = !s0 ? "사업 날짜를 넣으면 같은 날 행사가 나와요." : ok.length ? "같은 날 행사만 나와요. 예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’." : "같은 날 다른 행사가 없어요.";
+      if (help) help.textContent = !s0 ? "사업 날짜를 넣으면 같은 날 행사가 나와요." : ok.length ? "같은 날 행사만 나와요. 예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’." : "같은 날 연결할 수 있는 행사가 없어요.";
     }, 0);
     [a, b].filter(Boolean).forEach((el) => { el.addEventListener("input", sync); el.closest(".dwrap").addEventListener("change", sync); });
     sync();
@@ -589,11 +590,21 @@
   const semTag = (p) => { const s = semesterOf(p); return s ? '<span class="semtag">' + esc(s) + "</span>" : ""; };
   // 연결된 행사: 합동응원전 ↔ 합동응원전 뒤풀이처럼 함께 가는 사업을 이어 둠 (뒤풀이 쪽에서 원래 행사를 고름)
   const projById = (id) => (id && (S.cache.projects || []).find((x) => x.id === id)) || null;
-  const linkOptions = (selfId) => (S.cache.projects || []).filter((x) => isCurrent(x) && x.id !== selfId && x.status !== "취소")
+  // 연결은 한 방향 한 단계만: A가 B에 연결하면 B는 다른 사업에 연결할 수 없음 (뒤풀이 → 합동응원전, 개강총회 뒤풀이 → 개강총회 등)
+  //   예전에 서로 연결해 둔 경우: 학교 행사 쪽을 위로, 둘 다 같으면 먼저 만든 쪽을 위로
+  function linkUp(p, depth) {
+    const up = p && p.linkId ? projById(p.linkId) : null;
+    if (!up || up.id === p.id || (depth || 0) > 3) return null;
+    if (up.linkId === p.id) return isSchool(up) !== isSchool(p) ? (isSchool(up) ? up : null) : (String(up.id) < String(p.id) ? up : null);
+    return linkUp(up, (depth || 0) + 1) ? null : up;
+  }
+  const linkDowns = (p) => (S.cache.projects || []).filter((x) => x.id !== p.id && linkUp(x) === p);
+  const hasLinks = (p) => !!(linkUp(p) || linkDowns(p).length);
+  const linkOptions = (selfId) => (S.cache.projects || []).filter((x) => isCurrent(x) && x.id !== selfId && x.status !== "취소" && !linkUp(x))
     .sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
   function linkHTML(p) {
-    const up = projById(p.linkId);
-    const downs = (S.cache.projects || []).filter((x) => x.linkId === p.id);
+    const up = linkUp(p);
+    const downs = linkDowns(p);
     const a = (x) => '<button type="button" class="plink-btn" data-act="viewProject" data-id="' + esc(x.id) + '">' + esc(x.name) + "</button>";
     return (up ? '<span class="plink">↳ ' + a(up) + "</span>" : "") + (downs.length ? '<span class="plink">연결: ' + downs.map(a).join(", ") + "</span>" : "");
   }
@@ -601,10 +612,14 @@
     { name: "name", label: "사업 이름", required: true, placeholder: "예: 개강파티" },
     { name: "isSchool", label: "학교 행사", type: "checkbox" },
   ].concat(o && o.past ? [] : [(function () {
+    // 다른 사업이 이미 이 사업에 연결돼 있으면, 이 사업은 다른 곳에 연결할 수 없음
+    const self = o && o.selfId ? projById(o.selfId) : null, downs = self ? linkDowns(self) : [];
+    S.linkLock = downs.length ? "‘" + downs.map((x) => x.name).join("’, ‘") + "’이(가) 이 사업에 연결돼 있어서, 이 사업은 다른 사업에 연결할 수 없어요." : "";
+    if (S.linkLock) return { name: "linkId", label: "연결된 행사", type: "select", options: [], help: S.linkLock };
     const ls = linkOptions(o && o.selfId), labels = {};
     ls.forEach((x) => (labels[x.id] = (isSchool(x) ? "[학교 행사] " : "") + x.name + (x.startDate ? " · " + fmtDate(x.startDate) : "")));
     return { name: "linkId", label: "연결된 행사 (선택)", type: "select", options: ls.map((x) => x.id), labels: labels,
-      help: "사업 날짜가 겹치는 행사만 나와요. 예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’." };
+      help: "같은 날 행사만 나와요. 예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’." };
   })()]).concat(o && o.council ? [
     { name: "generation", label: "진행한 학생회 기수", required: !!o.past, half: true, placeholder: "예: 제28대", help: "아카이브에서 학생회별로 묶이는 기준이에요." },
     { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 하루" },
@@ -618,7 +633,7 @@
     { name: "endDate", label: "끝나는 날 (여러 날일 때만)", type: "date", half: true, help: "1박 2일 등일 때만 넣으세요." },
     { name: "place", label: "장소 (있을 때만)", placeholder: "예: 하나스퀘어 B104 · 안암 ○○호프", help: "장소가 없는 사업(메이트 사업, 지원금 사업 등)은 비워 두세요." },
     { name: "budget", label: "예산", type: "money", placeholder: "숫자만 입력 (예: 1200000)" },
-    { name: "summary", label: "한 줄 요약 · 다음 기수에게 남길 말", type: "textarea", rows: 3, placeholder: "예: 장소가 좁았음 → 내년엔 더 큰 곳 추천" },
+    { name: "summary", label: "비고", type: "textarea", rows: 3, placeholder: "예: 장소가 좁았음 → 내년엔 더 큰 곳 추천" },
     { name: "planUrl", label: "기획안 링크", type: "url", placeholder: "https://docs.google.com/…" },
     { name: "extraUrl", label: "기타 자료 (드라이브 폴더 등)", type: "url", placeholder: "https://drive.google.com/…" },
   ]).filter(Boolean).reduce((out, f, i, arr) => {
@@ -1362,7 +1377,7 @@
     return '<article class="card pcard" style="--c:' + deptColor(p.dept) + '">' +
       '<div class="ptop">' + deptTag(p.dept) + '<span class="st st-' + esc(p.status) + '">' + esc(p.status || "") + "</span>" + (opts.showYear ? '<span class="yr">' + esc(p.year) + "</span>" : "") + "</div>" +
       "<h4>" + kindTag(p) + semTag(p) + esc(p.name) + "</h4>" +
-      (p.linkId || (S.cache.projects || []).some((x) => x.linkId === p.id) ? '<p class="plinks-rel">' + linkHTML(p) + "</p>" : "") +
+      (hasLinks(p) ? '<p class="plinks-rel">' + linkHTML(p) + "</p>" : "") +
       '<dl class="meta">' + (period ? "<dt>사업일</dt><dd>" + period + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
@@ -1429,13 +1444,13 @@
     return '<div class="prow' + (open ? " open" : "") + (opts.child ? " pchild" : "") + '" style="--c:' + deptColor(p.dept) + '">' +
       '<button class="pr-head" data-act="toggleProj" data-id="' + esc(p.id) + '" aria-expanded="' + open + '">' +
       '<span class="pr-chev" aria-hidden="true">›</span>' + deptTag(p.dept) +
-      '<span class="pr-name">' + kindTag(p) + semTag(p) + esc(p.name) + (projById(p.linkId) ? '<small class="pr-up">↳ ' + esc(projById(p.linkId).name) + "</small>" : "") + (p.owner ? '<small>' + esc(p.owner) + "</small>" : "") + "</span>" +
+      '<span class="pr-name">' + kindTag(p) + semTag(p) + esc(p.name) + "" + (p.owner ? '<small>' + esc(p.owner) + "</small>" : "") + "</span>" +
       '<span class="pr-meta">' +
       (ts.length ? '<span class="pr-prog" title="업무 분배 ' + done + "/" + ts.length + ' 완료"><i style="width:' + Math.round((done / ts.length) * 100) + '%"></i></span><span class="pr-cnt">업무 ' + done + "/" + ts.length + "</span>" : "") +
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") +
       '<span class="pr-when">' + when + "</span>" + dd + "</span></button>" +
       '<div class="pr-body">' +
-      (p.linkId || (S.cache.projects || []).some((x) => x.linkId === p.id) ? '<p class="plinks-rel">' + linkHTML(p) + "</p>" : "") +
+      (hasLinks(p) ? '<p class="plinks-rel">' + linkHTML(p) + "</p>" : "") +
       '<dl class="meta">' + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
@@ -1450,9 +1465,10 @@
   function withLinkedBelow(arr) {
     const ids = {}; arr.forEach((p) => (ids[p.id] = 1));
     const out = [];
-    arr.filter((p) => !(p.linkId && ids[p.linkId])).forEach((p) => {
+    const upId = (p) => { const u = linkUp(p); return u ? u.id : ""; };
+    arr.filter((p) => !(upId(p) && ids[upId(p)])).forEach((p) => {
       out.push(p);
-      arr.filter((c) => c.linkId === p.id).forEach((c) => out.push(c));
+      arr.filter((c) => upId(c) === p.id).forEach((c) => out.push(c));
     });
     arr.forEach((p) => { if (out.indexOf(p) < 0) out.push(p); });
     return out;
@@ -1472,7 +1488,7 @@
       if (!items.length) return ""; // 비어 있는 상태 칸은 숨김
       const allBtn = st === "완료" && items.length > 1 && isHead() ? '<button class="btn sm ghost pg-act" data-act="archiveDone">완료 ' + items.length + "개 모두 아카이브로</button>" : "";
       return '<section class="pgroup"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small>" + allBtn + "</h3>" +
-        (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms, child: !!(p.linkId && items.some((x) => x.id === p.linkId)) })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
+        (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms, child: !!(linkUp(p) && items.some((x) => x.id === linkUp(p).id)) })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
     }).join("");
     return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌어요 · 완료된 사업은 [아카이브로 보내기]로 정리할 수 있어요 (다음 학생회로 넘길 때는 자동으로 옮겨져요)</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
