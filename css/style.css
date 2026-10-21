@@ -1247,3 +1247,7 @@ button.au-mk.mk-manual.on { color: #15803d; border-style: solid; }
 .au-ox button.on.x { background: #dc2626; color: #fff; }
 @media (max-width: 700px) { .au-row { padding: 12px 14px; flex-wrap: wrap; } .au-ox { margin-left: 28px; } .au-sec h3 { padding: 12px 14px; } }
 @media print { .au-drop, .au-up, .au-ox, .page-head .actions, .au-bar .btn { display: none !important; } .au-row .au-cells ul { max-height: none; } }
+/* 연결된 행사: 원래 행사 바로 밑에 살짝 들여서 */
+.prow.pchild { margin-left: 28px; position: relative; }
+.prow.pchild::before { content: ""; position: absolute; left: -16px; top: -6px; width: 10px; height: 30px; border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); border-bottom-left-radius: 8px; }
+@media (max-width: 700px) { .prow.pchild { margin-left: 16px; } .prow.pchild::before { left: -11px; width: 7px; } }

@@ -1426,7 +1426,7 @@
       '<button class="btn sm" data-act="distribute" data-id="' + esc(p.id) + '">+ 국서별 업무 분배</button>' : "";
     const blocks = [sch, tsk].filter((h) => h && !isBtn(h)).join("");
     const open = !!S.openProj[p.id];
-    return '<div class="prow' + (open ? " open" : "") + '" style="--c:' + deptColor(p.dept) + '">' +
+    return '<div class="prow' + (open ? " open" : "") + (opts.child ? " pchild" : "") + '" style="--c:' + deptColor(p.dept) + '">' +
       '<button class="pr-head" data-act="toggleProj" data-id="' + esc(p.id) + '" aria-expanded="' + open + '">' +
       '<span class="pr-chev" aria-hidden="true">›</span>' + deptTag(p.dept) +
       '<span class="pr-name">' + kindTag(p) + semTag(p) + esc(p.name) + (projById(p.linkId) ? '<small class="pr-up">↳ ' + esc(projById(p.linkId).name) + "</small>" : "") + (p.owner ? '<small>' + esc(p.owner) + "</small>" : "") + "</span>" +
@@ -1446,6 +1446,17 @@
       "</div></div>";
   }
 
+  // 연결된 행사(뒤풀이 등)는 원래 행사 바로 밑에 붙여서 보여 줌 (같은 칸 안에 둘 다 있을 때)
+  function withLinkedBelow(arr) {
+    const ids = {}; arr.forEach((p) => (ids[p.id] = 1));
+    const out = [];
+    arr.filter((p) => !(p.linkId && ids[p.linkId])).forEach((p) => {
+      out.push(p);
+      arr.filter((c) => c.linkId === p.id).forEach((c) => out.push(c));
+    });
+    arr.forEach((p) => { if (out.indexOf(p) < 0) out.push(p); });
+    return out;
+  }
   /* ----- 사업 기획안 (지금 학생회) ----- */
   PAGES.projects = async function () {
     const tmap = await tasksByProject();
@@ -1457,11 +1468,11 @@
       (tmap[p.id] || []).some((t) => t.dept === S.projDept)));
     // 진행중 → 예정 → 기획중 → 완료 → 취소 순서로, 사업마다 한 줄씩
     const cols = ["진행중", "예정", "기획중", "완료", "취소"].map((st) => {
-      const items = list.filter((p) => p.status === st).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9"));
+      const items = withLinkedBelow(list.filter((p) => p.status === st).sort((a, b) => (a.startDate || "9").localeCompare(b.startDate || "9")));
       if (!items.length) return ""; // 비어 있는 상태 칸은 숨김
       const allBtn = st === "완료" && items.length > 1 && isHead() ? '<button class="btn sm ghost pg-act" data-act="archiveDone">완료 ' + items.length + "개 모두 아카이브로</button>" : "";
       return '<section class="pgroup"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small>" + allBtn + "</h3>" +
-        (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
+        (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms, child: !!(p.linkId && items.some((x) => x.id === p.linkId)) })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
     }).join("");
     return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌어요 · 완료된 사업은 [아카이브로 보내기]로 정리할 수 있어요 (다음 학생회로 넘길 때는 자동으로 옮겨져요)</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
