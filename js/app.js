@@ -3006,56 +3006,113 @@
   /* ----- 재무국방 · 예결산 미리 점검 (파일은 이 기기에서만 읽고 어디에도 저장 안 함) ----- */
   function auditRoomHTML(room) {
     if (!/재무/.test(room) || !canSettle()) return "";
-    return '<section class="card st-room"><div class="card-head"><h3>📋 예결산 미리 점검 <small>심의 전에 체크리스트대로 확인</small></h3><a class="btn sm primary" href="#audit">점검하기</a></div>' +
+    return '<section class="card st-room"><div class="card-head"><h3>예결산 미리 점검 <small>심의 전에 체크리스트대로 확인</small></h3><a class="btn sm primary" href="#audit">점검하기</a></div>' +
       '<p class="muted small" style="margin:0">결산·예산안 엑셀(.xlsx)을 올리면 합계·SUMIF·누적 잔액·회계 형식·정렬·테두리 등을 자동으로 확인해 줘요.</p></section>';
   }
-  const AUDIT_ICON = { ok: "✅", bad: "❌", warn: "⚠️", manual: "👀", skip: "➖" };
-  const AUDIT_LABEL = { ok: "통과", bad: "고쳐야 해요", warn: "확인 필요", manual: "직접 확인", skip: "해당 없음" };
+  // 체크리스트 문항 (단체에서 받은 예결산 체크리스트 문구 그대로) — 점검 결과와 짝지음
+  const AU_Q = {
+    "1. 결산 관항목 및 요약|1": ["내용 점검 사항", "총합 확인", "결산 전체 수입의 수입액 총합과 결산 전체 지출의 지출액 총합이 일치하는가?"],
+    "1. 결산 관항목 및 요약|2": ["내용 점검 사항", "총합 확인", "결산 전체 수입의 예산 총합과 결산 전체 지출의 예산 총합이 일치하는가?"],
+    "1. 결산 관항목 및 요약|3": ["내용 점검 사항", "함수 사용", "각 '수입액'과 '지출액' 칸의 값이 SUMIF 함수를 활용하여 입력되었는가?"],
+    "1. 결산 관항목 및 요약|4": ["내용 점검 사항", "함수 사용", "SUMIF 함수에 올바른 코드가 입력되었는가?"],
+    "1. 결산 관항목 및 요약|5": ["내용 점검 사항", "함수 사용", "총합, 비율이 적절한 함수로 입력되어 있는가? (예: 결산 총합, 예산 대비 비율 등)"],
+    "1. 결산 관항목 및 요약|6": ["내용 점검 사항", "비고", "수입과 지출에서, 비용이 '금액*수량' 형식으로 비고란에 정리되어 있는가?"],
+    "1. 결산 관항목 및 요약 · 형식|1": ["형식 점검 사항", "제목", "상단 제목과 시트 제목이 적절한가? (결산안 ✕ / 결산 ○)"],
+    "1. 결산 관항목 및 요약 · 형식|2": ["형식 점검 사항", "정렬", "관, 항, 목과 비고란이 중앙으로 정렬되어 있는가?"],
+    "1. 결산 관항목 및 요약 · 형식|3": ["형식 점검 사항", "테두리", "셀 테두리가 빠진 곳은 없는가?"],
+    "1. 결산 관항목 및 요약 · 형식|4": ["형식 점검 사항", "표시", "'표시 형식'이 '회계'로 되어 있는가? (0원일 때 '₩ -')"],
+    "1. 결산 관항목 및 요약 · 형식|5": ["형식 점검 사항", "표시", "비율과 예산 대비 비율에 빈칸이 없는가? (#DIV/0! → '-', 비율 합계는 SUM)"],
+    "2. 결산 세부내역|1": ["", "잔액/총액", "전분기 이월금과 개강일의 통장 잔액이 일치하는가?"],
+    "2. 결산 세부내역|2": ["", "잔액/총액", "차분기 이월금과 방학 마지막 날의 통장 잔액이 일치하는가?"],
+    "2. 결산 세부내역|3": ["", "잔액/총액", "입금 총액과 출금 총액이 일치하는가?"],
+    "2. 결산 세부내역|4": ["", "잔액/총액", "전분기 이월금과 차분기 이월금의 날짜가 정확한가?"],
+    "2. 결산 세부내역|4-2": ["", "통장내역", "통장 거래내역이 세부내역에 거래 내역 하나씩 올바르게 입력되었는가?"],
+    "2. 결산 세부내역|4-3": ["", "통장내역", "순번이 이어지고, 코드가 관항목 표에 있는 코드인가?", 1],
+    "2. 결산 세부내역|5": ["", "함수 사용", "입금 총액과 출금 총액이 SUM 함수로 올바른 범위로 더해졌는가?"],
+    "2. 결산 세부내역|6": ["", "함수 사용", "누적 잔액이 (N-1번째 누적잔액 + N번째 입금액 − N번째 출금액) 함수로 구해졌는가?"],
+    "2. 결산 세부내역|7": ["", "표시", "'표시 형식'이 '회계'로 되어 있으며, 빈칸이 없는가? (0원일 때 '₩ -')"],
+    "2. 결산 세부내역|8": ["", "표시", "셀 테두리가 빠진 곳은 없는가?", 1],
+    "3. 증빙자료|1": ["", "통장내역", "통장내역의 기간이 전체 기간에 해당하는가?"],
+    "3. 증빙자료|2": ["", "통장내역", "통장 내역의 형식이 적절한가?"],
+    "3. 증빙자료|3": ["", "증빙", "세부내역에 대응하는 증빙자료가 빠짐없이 존재하며, 금액이 잘못 적힌 칸은 없는가?"],
+    "3. 증빙자료|4": ["", "증빙", "각 증빙자료에서 세부내역의 설명과 같은 목적으로 사용된 금액인가?"],
+    "4. 예산안 관항목 및 요약|1": ["", "총액", "예산안의 수입액 총액과 지출액 총액이 일치하는가? (전년도 총합은 달라도 됨)"],
+    "4. 예산안 관항목 및 요약|2": ["", "총액", "전년도 수입/지출 중, 올해 예산안에는 0원인 칸이 선례에 맞게 기입되었는가?"],
+    "4. 예산안 관항목 및 요약|3": ["", "함수 사용", "수입과 지출의 '총액, 비율, 전년도 수입액, 전년도 대비 비율'이 적절한 함수로 계산되어 있는가?"],
+    "4. 예산안 관항목 및 요약|4": ["", "표시", "예산안과 전년도 금액 항목의 '표시 형식'이 '회계'로 되어 있는가?"],
+    "4. 예산안 관항목 및 요약|5": ["", "표시", "비율과 전년도 대비 비율에 빈칸이 없는가?"],
+    "4. 예산안 관항목 및 요약|+": ["", "형식", "관·항·목·비고 가운데 정렬과 셀 테두리가 빠진 곳은 없는가?", 1],
+  };
+  // 최종 상태: 직접 확인 항목은 사람이 고른 o/x
+  const auState = (i, a) => { if (i.status !== "manual") return i.status; const v = (a.checked || {})[i.sec + "|" + i.no]; return v === "o" ? "ok" : v === "x" ? "bad" : "manual"; };
+  const AU_MARK = { ok: '<span class="au-mk ok" title="통과"></span>', bad: '<span class="au-mk bad" title="문제">✕</span>', warn: '<span class="au-mk warn" title="확인 필요">!</span>', manual: '<span class="au-mk manual" title="직접 확인"></span>', skip: '<span class="au-mk skip">–</span>' };
   PAGES.audit = async function () {
     if (!canSettle()) return '<div class="card empty">재무국과 회장단만 볼 수 있어요.</div>';
     const a = S.audit || {};
-    const head = '<div class="fm-head"><a class="fm-back" href="#room">← 재무국방</a><div class="fm-title"><h2>예결산 미리 점검</h2></div>' +
-      '<p class="muted small" style="margin:0">예결산 체크리스트 순서대로 확인해요. 파일은 <b>이 기기 안에서만</b> 읽고, 사이트에는 저장되지 않아요.</p></div>';
+    const head = '<div class="page-head"><div><h2>예결산 미리 점검</h2><p class="muted">예결산 체크리스트 순서대로 확인해요 · 파일은 이 기기 안에서만 읽고 사이트에 저장되지 않아요</p></div>' +
+      '<div class="actions"><a class="btn" href="#room">재무국방</a>' + (a.rep ? '<label class="btn primary au-up">다른 파일 점검<input type="file" accept=".xlsx" data-audit-file hidden></label>' : "") + "</div></div>";
     const drop = '<label class="au-drop' + (a.busy ? " busy" : "") + '"><input type="file" accept=".xlsx" data-audit-file hidden>' +
-      "<b>" + (a.busy ? "읽는 중…" : a.rep ? "다른 파일 점검하기" : "결산·예산안 엑셀 파일 고르기") + "</b>" +
-      '<span class="muted small">.xlsx 파일 (구글 시트는 파일 → 다운로드 → Microsoft Excel). 결산 관항목·세부내역·예산안 시트가 한 파일에 있으면 한 번에 점검해요.</span></label>';
+      '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>' +
+      "<b>" + (a.busy ? "읽는 중…" : "결산·예산안 엑셀 파일 올리기") + "</b>" +
+      '<span class="muted small">.xlsx 파일 · 구글 시트는 [파일 → 다운로드 → Microsoft Excel]<br>결산 관항목·세부내역·예산안 시트가 한 파일에 있으면 한 번에 점검해요</span></label>';
     if (a.err) return head + drop + '<div class="notice warn">' + esc(a.err) + "</div>";
     if (!a.rep) return head + drop;
-    const rep = a.rep, cnt = { bad: 0, warn: 0, ok: 0, manual: 0 };
-    rep.items.forEach((i) => { if (cnt[i.status] != null) cnt[i.status]++; });
-    a.checked = a.checked || {};
-    const secs = [];
-    rep.items.forEach((i) => { let s = secs.find((x) => x.name === i.sec); if (!s) secs.push((s = { name: i.sec, items: [] })); s.items.push(i); });
-    const itemHTML = (i, k) => {
-      const key = i.sec + "|" + i.no, done = i.status === "manual" && a.checked[key];
-      return '<li class="au-item au-' + i.status + (done ? " done" : "") + '"><span class="au-ic">' + (done ? "☑️" : AUDIT_ICON[i.status]) + "</span>" +
-        '<div class="au-body"><div class="au-t"><span class="au-no">' + esc(i.no) + "</span>" + esc(i.title) + ' <span class="au-st">' + AUDIT_LABEL[i.status] + "</span></div>" +
-        '<div class="au-msg">' + esc(i.msg) + "</div>" +
-        (i.cells.length ? '<details class="au-cells"' + (i.status === "bad" && i.cells.length <= 8 ? " open" : "") + "><summary>어디인지 보기 (" + i.cells.length + ")</summary><ul>" +
-          i.cells.slice(0, 80).map((c) => "<li><code>" + esc(c.ref.replace(/^.*!/, "")) + '</code> <span class="muted small">' + esc(c.ref.indexOf("!") > 0 ? c.ref.split("!")[0] : "") + "</span> " + esc(c.msg) + "</li>").join("") +
-          (i.cells.length > 80 ? '<li class="muted">… 외 ' + (i.cells.length - 80) + "칸</li>" : "") + "</ul></details>" : "") +
-        (i.status === "manual" ? '<label class="au-chk"><input type="checkbox" data-act="auCheck" data-k="' + esc(key) + '"' + (done ? " checked" : "") + "> 확인했어요</label>" : "") + "</div></li>";
+    const rep = a.rep, items = rep.items.filter((i) => i.no !== "-" || i.status !== "skip");
+    const st = (i) => auState(i, a);
+    const cnt = { bad: 0, warn: 0, ok: 0 };
+    items.forEach((i) => { const s = st(i); if (s === "bad") cnt.bad++; else if (s === "ok") cnt.ok++; else if (s === "warn" || s === "manual") cnt.warn++; });
+    const flt = a.filter || "";
+    const show = (i) => { const s = st(i); return !flt || (flt === "bad" ? s === "bad" : flt === "warn" ? s === "warn" || s === "manual" : s === "ok"); };
+    // 큰 묶음(1~4) → 작은 묶음(내용/형식) → 문항
+    const big = [];
+    items.forEach((i) => {
+      const name = i.sec.replace(/ · 형식$/, ""), q = AU_Q[i.sec + "|" + i.no] || ["", "", i.title];
+      let b = big.find((x) => x.name === name); if (!b) big.push((b = { name: name, groups: [] }));
+      let g = b.groups.find((x) => x.name === q[0]); if (!g) b.groups.push((g = { name: q[0], items: [] }));
+      g.items.push({ i: i, q: q });
+    });
+    const row = (x, n) => {
+      const i = x.i, q = x.q, s = st(i), key = i.sec + "|" + i.no, pick = (a.checked || {})[key];
+      return '<li class="au-row s-' + s + '">' + AU_MARK[s] +
+        '<div class="au-main"><div class="au-q">' + (q[1] ? '<span class="au-cat">' + esc(q[1]) + " · </span>" : "") + (i.no === "-" || q[3] ? "" : n + ". ") + esc(q[2]) +
+          (q[3] ? ' <span class="au-tag">추가 점검</span>' : i.status === "manual" ? ' <span class="au-tag">직접 확인</span>' : "") + "</div>" +
+          (i.msg ? '<div class="au-sub">' + esc(i.msg) + "</div>" : "") +
+          (i.cells.length ? '<details class="au-cells"' + (s === "bad" && i.cells.length <= 6 ? " open" : "") + "><summary>" + (s === "bad" ? "고칠 곳" : "확인할 곳") + " " + i.cells.length + "개 보기</summary><ul>" +
+            i.cells.slice(0, 80).map((c) => "<li><code>" + esc(c.ref.replace(/^.*!/, "")) + "</code><span>" + esc(c.msg) + "</span></li>").join("") +
+            (i.cells.length > 80 ? '<li class="muted">… 외 ' + (i.cells.length - 80) + "개</li>" : "") + "</ul></details>" : "") + "</div>" +
+        (i.status === "manual" ? '<div class="au-ox" role="group" aria-label="직접 확인 결과"><button class="' + (pick === "o" ? "on o" : "") + '" data-act="auPick" data-k="' + esc(key) + '" data-v="o">O</button><button class="' + (pick === "x" ? "on x" : "") + '" data-act="auPick" data-k="' + esc(key) + '" data-v="x">X</button></div>' : "") +
+        "</li>";
     };
-    return head + drop +
-      '<div class="card au-sum"><div class="au-file">📄 ' + esc(rep.file) + '</div><div class="au-chips">' +
-        '<span class="au-chip bad">❌ 고쳐야 해요 <b>' + cnt.bad + '</b></span><span class="au-chip warn">⚠️ 확인 필요 <b>' + cnt.warn + "</b></span>" +
-        '<span class="au-chip ok">✅ 통과 <b>' + cnt.ok + '</b></span><span class="au-chip manual">👀 직접 확인 <b>' + Object.keys(a.checked).filter((k) => a.checked[k]).length + "/" + cnt.manual + "</b></span></div>" +
-        '<p class="muted small" style="margin:6px 0 0">찾은 시트: ' + [["결산 관항목", rep.found.S], ["세부내역", rep.found.D], ["예산안", rep.found.B]].map((x) => x[0] + " " + (x[1] ? "✓" : "✕")).join(" · ") +
-        ' · <button class="linkbtn small" data-act="print">인쇄 / PDF로 저장</button></p></div>' +
-      secs.map((s) => '<section class="card au-sec"><h3>' + esc(s.name) + '</h3><ul class="au-list">' + s.items.map(itemHTML).join("") + "</ul></section>").join("") +
-      '<p class="muted small">자동 점검은 수식·숫자·서식만 봐요. 통장 내역·증빙자료와의 대조(👀)는 직접 확인해 주세요. 테두리(⚠️)는 엑셀 화면과 다르게 보일 수 있어요.</p>';
+    const body = big.map((b) => {
+      const groups = b.groups.map((g) => {
+        // 번호는 필터와 관계없이 체크리스트 순서대로
+        let n = 0; const num = {}; g.items.forEach((x) => { if (!x.q[3] && x.i.no !== "-") num[x.i.sec + x.i.no] = ++n; });
+        const rows2 = g.items.filter((x) => show(x.i)).map((x) => row(x, num[x.i.sec + x.i.no]));
+        return rows2.length ? (g.name ? '<div class="au-gh">' + esc(g.name) + "</div>" : "") + '<ul class="au-list">' + rows2.join("") + "</ul>" : ""; }).join("");
+      return groups ? '<section class="au-sec"><h3>' + esc(b.name) + "</h3>" + groups + "</section>" : "";
+    }).join("") || '<div class="card empty">이 조건에 맞는 항목이 없어요.</div>';
+    const chip = (k, label, n) => '<button class="au-chip' + (flt === k ? " on" : "") + (k ? " c-" + k : "") + '" data-act="auFilter" data-k="' + k + '">' + label + (k ? " <b>" + n + "</b>" : "") + "</button>";
+    const kind = [rep.found.S || rep.found.D ? "결산" : "", rep.found.B ? "예산안" : ""].filter(Boolean);
+    return head +
+      '<div class="au-file"><span class="au-kind">' + esc(kind.join(" · ") || "파일") + "</span><b>" + esc(rep.file.replace(/\.xlsx$/i, "")) + "</b></div>" +
+      '<div class="card au-bar"><div class="au-chips">' + chip("", "전체") + chip("bad", "문제", cnt.bad) + chip("warn", "확인 필요", cnt.warn) + chip("ok", "통과", cnt.ok) + "</div>" +
+        '<button class="btn sm" data-act="print">PDF로 저장</button></div>' +
+      body +
+      '<p class="muted small">자동 점검은 수식·숫자·서식을 봐요. 통장 내역·증빙자료와 대조하는 항목은 직접 확인하고 O / X를 눌러 주세요. 테두리는 엑셀 화면과 조금 다를 수 있어요.</p>';
   };
   document.addEventListener("change", async function (e) {
     const el = e.target;
     if (!el.matches || !el.matches("input[data-audit-file]") || !el.files || !el.files[0]) return;
     const file = el.files[0];
     S.audit = { busy: true }; renderPage();
-    try { const wb = await window.AUDIT.read(file); S.audit = { rep: window.AUDIT.run(wb), checked: {} }; }
+    try { const wb = await window.AUDIT.read(file); S.audit = { rep: window.AUDIT.run(wb), checked: {}, filter: "" }; }
     catch (er) { console.error(er); S.audit = { err: "파일을 읽지 못했어요: " + (er && er.message ? er.message : er) + " (.xlsx 파일인지 확인해 주세요)" }; }
     renderPage();
   });
+  const auKeep = () => { const y = window.scrollY; renderPage().then(() => window.scrollTo(0, y)); };
   Object.assign(ACTS, {
-    auCheck(el) { S.audit.checked[el.dataset.k] = el.checked; renderPage(); },
+    auPick(el) { const c = S.audit.checked; c[el.dataset.k] = c[el.dataset.k] === el.dataset.v ? "" : el.dataset.v; auKeep(); },
+    auFilter(el) { S.audit.filter = el.dataset.k; auKeep(); },
   });
   PAGES.settle = async function () {
     if (!canSettle()) return '<div class="card empty">재무국과 회장단만 볼 수 있어요.</div>';
