@@ -1712,6 +1712,32 @@
   };
 
   /* ---------- 참여자 명단 ---------- */
+  // 질문별 필터 (예/아니오 · 객관식 · 체크박스 · 2차 참여 · 입금 · 출석)
+  function fmFilterDefs(f) {
+    const defs = (f.qs || []).filter((q) => q.type === "yesno" || q.type === "choice" || q.type === "multi").map((q) => ({
+      k: q.id, label: q.label, opts: q.type === "yesno" ? ["예", "아니오"] : (q.options || []).filter((o) => String(o).trim()),
+      get: (r) => (r.answers || {})[q.id] }));
+    if (AP.has2(f)) defs.push({ k: AP.PART, label: "참여 (1차·2차)", opts: (f.only2 ? ["1차만", "1차 + 2차", "2차만"] : ["1차만", "1차 + 2차"]), get: (r) => AP.partOf(f, r) });
+    if (AP.anyFee(f) && canMoney()) defs.push({ k: "__paid", label: "입금", opts: ["확인", "입금 전"], get: (r) => (r.paid ? "확인" : "입금 전") });
+    defs.push({ k: "__att", label: "출석", opts: ["출석", "아직"], get: (r) => (r.attended ? "출석" : "아직") });
+    return defs;
+  }
+  function fmFiltered(f) {
+    const fm = S.fm, q = (fm.q || "").replace(/\s/g, ""), af = fm.af || {};
+    const defs = fmFilterDefs(f).filter((d) => af[d.k]);
+    return fm.resp.filter((r) => (!q || [r.name, r.sid, r.depositName].some((x) => String(x || "").indexOf(q) >= 0)) &&
+      defs.every((d) => { const v = d.get(r); return Array.isArray(v) ? v.indexOf(af[d.k]) >= 0 : v === af[d.k]; }));
+  }
+  function fmFiltersHTML(f) {
+    const af = S.fm.af || {}, defs = fmFilterDefs(f);
+    const short = (t) => (String(t).length > 16 ? String(t).slice(0, 15) + "…" : t);
+    const on = defs.some((d) => af[d.k]);
+    return '<div class="fm-filters"><span class="muted small">모아 보기</span>' + defs.map((d) =>
+      '<label class="fm-fsel' + (af[d.k] ? " on" : "") + '" title="' + esc(d.label) + '"><span>' + esc(short(d.label)) + '</span><select data-fm-filter="' + esc(d.k) + '"><option value="">전체</option>' +
+        d.opts.map((o) => '<option value="' + esc(o) + '"' + (af[d.k] === o ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select></label>").join("") +
+      (on ? '<button class="linkbtn small" data-act="fmFilterReset">필터 지우기</button>' : "") +
+      '<span class="muted small" id="fmFcount"></span></div>';
+  }
   function rosterStats(f, list) {
     const going = list.filter((r) => AP.isGoing(f, r)), inn = going.filter((r) => !r.wait), fee = AP.anyFee(f) && canMoney();
     const sum = (arr) => arr.reduce((k, r) => k + AP.feeOf(f, r), 0);
@@ -1725,9 +1751,78 @@
       (fee ? '<p class="muted small" style="margin:0">받을 돈 <b>' + AP.won(sum(inn)) + "</b> · 입금 확인 " + AP.won(sum(inn.filter((r) => r.paid))) +
         (AP.hasDues(f) ? " · 회비 미납부자 " + inn.filter((r) => r.duesUnpaid).length + "명" : "") + " · 참가비 " + AP.feeText(f) + "</p>" : "");
   }
+  // 엑셀로 받을 표 (지금 화면의 검색·필터가 걸린 그대로)
+  function rosterTable() {
+    const f = S.fm.form, extra = (f.qs || []).filter((x) => x.type !== "name" && x.type !== "sid");
+    const money = canMoney() && AP.anyFee(f), dues = money && AP.hasDues(f);
+    const head = ["번호", "이름", "학번"].concat(extra.map((x) => x.label), AP.has2(f) ? ["참여"] : [], f.mode === "first" ? ["선착순"] : [],
+      money ? ["입금자명"] : [], dues ? ["회비"] : [], money ? ["참가비", "입금"] : [], ["출석", "제출 시각"]);
+    const rows = fmFiltered(f).map((r) => [r.no || "", r.name, r.sid].concat(
+      extra.map((x) => { const v = (r.answers || {})[x.id]; return x.type === "agree" ? (v ? "동의" : "") : Array.isArray(v) ? v.join(", ") : (v == null ? "" : v); }),
+      AP.has2(f) ? [AP.partOf(f, r)] : [], f.mode === "first" ? [!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안"] : [],
+      money ? [r.depositName || ""] : [], dues ? [r.duesUnpaid ? "미납" : "납부"] : [], money ? [AP.needPay(f, r) ? AP.feeOf(f, r) : "", r.paid ? "O" : ""] : [],
+      [r.attended ? "O " + (r.attendedAt || "") : "", AP.stampText(r.at)]));
+    return { head: head, rows: rows };
+  }
+  // 아주 작은 .xlsx 만들기 (외부 라이브러리 없이): 첫 줄 굵게·고정, 학번·전화번호는 글자로
+  function makeXlsx(table, sheetName) {
+    const x = (v) => String(v == null ? "" : v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+    const col = (i) => { let s = ""; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+    const width = (s) => Array.from(String(s)).reduce((k, ch) => k + (ch.charCodeAt(0) > 255 ? 2 : 1), 0);
+    const ncol = table[0].length, w = [];
+    for (let c = 0; c < ncol; c++) w.push(Math.min(50, Math.max(6, ...table.map((r) => width(r[c] == null ? "" : r[c]))) + 2));
+    const rowsXml = table.map((r, ri) => '<row r="' + (ri + 1) + '">' + r.map((v, ci) => {
+      const ref = col(ci) + (ri + 1), st = ri === 0 ? ' s="1"' : "";
+      return typeof v === "number" ? '<c r="' + ref + '"' + st + "><v>" + v + "</v></c>" : '<c r="' + ref + '" t="inlineStr"' + st + '><is><t xml:space="preserve">' + x(v) + "</t></is></c>";
+    }).join("") + "</row>").join("");
+    const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships", CT = "application/vnd.openxmlformats-officedocument.spreadsheetml.";
+    const files = {
+      "[Content_Types].xml": X + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="' + CT + 'sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="' + CT + 'worksheet+xml"/>' +
+        '<Override PartName="/xl/styles.xml" ContentType="' + CT + 'styles+xml"/></Types>',
+      "_rels/.rels": X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="' + R + '/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+      "xl/workbook.xml": X + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="' + R + '"><sheets><sheet name="' + x(sheetName) + '" sheetId="1" r:id="rId1"/></sheets></workbook>',
+      "xl/_rels/workbook.xml.rels": X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="' + R + '/worksheet" Target="worksheets/sheet1.xml"/>' +
+        '<Relationship Id="rId2" Type="' + R + '/styles" Target="styles.xml"/></Relationships>',
+      "xl/styles.xml": X + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="맑은 고딕"/></font><font><b/><sz val="11"/><name val="맑은 고딕"/></font></fonts>' +
+        '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF3F4F6"/></patternFill></fill></fills>' +
+        '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+        '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>',
+      "xl/worksheets/sheet1.xml": X + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+        "<cols>" + w.map((v, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + v + '" customWidth="1"/>').join("") + "</cols><sheetData>" + rowsXml + "</sheetData></worksheet>",
+    };
+    return new Blob([zipStore(files)], { type: CT + "sheet" });
+  }
+  // 압축 없는 zip 묶기 (xlsx 파일은 사실 zip)
+  let CRC_T = null;
+  function crc32(b) {
+    if (!CRC_T) { CRC_T = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; CRC_T[n] = c >>> 0; } }
+    let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0;
+  }
+  function zipStore(files) {
+    const enc = new TextEncoder(), parts = [], cd = [];
+    let off = 0;
+    const d = new Date(), dt = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(), tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    Object.keys(files).forEach((name) => {
+      const nb = enc.encode(name), data = enc.encode(files[name]), crc = crc32(data);
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true); h.setUint16(10, tm, true); h.setUint16(12, dt, true);
+      h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nb.length, true); h.setUint16(28, 0, true);
+      parts.push(new Uint8Array(h.buffer), nb, data);
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true); c.setUint16(12, tm, true); c.setUint16(14, dt, true);
+      c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nb.length, true); c.setUint32(42, off, true);
+      cd.push(new Uint8Array(c.buffer), nb);
+      off += 30 + nb.length + data.length;
+    });
+    const cdSize = cd.reduce((k, a) => k + a.length, 0), e = new DataView(new ArrayBuffer(22)), n = Object.keys(files).length;
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, n, true); e.setUint16(10, n, true); e.setUint32(12, cdSize, true); e.setUint32(16, off, true);
+    return new Blob(parts.concat(cd, [new Uint8Array(e.buffer)]));
+  }
   function rosterRows(f) {
-    const fm = S.fm, q = (fm.q || "").replace(/\s/g, "");
-    const list = fm.resp.filter((r) => !q || [r.name, r.sid, r.depositName].some((x) => String(x || "").indexOf(q) >= 0));
+    const fm = S.fm, q = (fm.q || "").replace(/\s/g, ""), filtered = Object.values(fm.af || {}).some(Boolean);
+    const list = fmFiltered(f);
     const qs = f.qs || [];
     const editable = canEditForm(f), fee = AP.anyFee(f) && canMoney(), dues = fee && AP.hasDues(f);
     const cell = (x, r) => {
@@ -1755,7 +1850,7 @@
             (p2 && !dues ? '<small class="muted"> ' + AP.won(AP.feeOf(f, r)) + "</small>" : "") : "") + "</td>" : "") +
         "<td>" + (active ? '<button class="fm-att' + (r.attended ? " on" : "") + '" data-act="fmAtt" data-sid="' + sid + '">' + (r.attended ? "✓ " + esc(r.attendedAt || "") : "확인") + "</button>" : "") + "</td>" +
         (editable ? '<td><button class="x" data-act="fmDelResp" data-sid="' + sid + '" aria-label="이 응답 지우기" title="이 응답 지우기">×</button></td>' : "") + "</tr>";
-    }).join("") || '<tr><td colspan="' + n + '" class="muted" style="text-align:center;padding:28px">' + (q ? "찾는 사람이 없어요." : "아직 응답이 없어요. 링크를 단톡방에 올려 보세요.") + "</td></tr>";
+    }).join("") || '<tr><td colspan="' + n + '" class="muted" style="text-align:center;padding:28px">' + (q || filtered ? "조건에 맞는 사람이 없어요." : "아직 응답이 없어요. 링크를 단톡방에 올려 보세요.") + "</td></tr>";
     return "<thead>" + th + "</thead><tbody>" + rows + "</tbody>";
   }
   function rosterHTML(f) {
@@ -1763,7 +1858,8 @@
     return '<div id="fmStats">' + rosterStats(f, S.fm.resp) + "</div>" +
       '<div class="fm-tools"><input type="search" data-fm-search placeholder="이름 · 학번 · 입금자명 찾기" value="' + esc(S.fm.q || "") + '">' +
       (fee ? '<button class="btn sm" data-act="fmBank">통장 내역으로 입금 확인</button>' : "") +
-      '<button class="btn sm" data-act="fmCsv">엑셀(CSV) 받기</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
+      '<button class="btn sm" data-act="fmXlsx">엑셀 받기</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
+      fmFiltersHTML(f) +
       '<div class="fm-tablewrap"><table class="fm-table" id="fmTable">' + rosterRows(f) + "</table></div>" +
       '<p class="muted small">' + (fee ? "입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 24123이다홍). " + (AP.hasDues(f) ? "회비 미납부자는 [납부]를 눌러 [미납]으로 바꾸면 그 사람 참가비가 미납부자 금액으로 계산돼요. " : "") : "") +
         "행사 당일엔 이 화면에서 [확인]을 눌러 출석을 체크해요." + (AP.anyFee(f) && !canMoney() ? " 입금·회비 확인은 재무국이 해요." : "") + "</p>";
@@ -1772,6 +1868,8 @@
     const f = S.fm.form, t = document.getElementById("fmTable"), s = document.getElementById("fmStats");
     if (t) t.innerHTML = rosterRows(f);
     if (s) s.innerHTML = rosterStats(f, S.fm.resp);
+    const c = document.getElementById("fmFcount");
+    if (c) { const n = fmFiltered(f).length; c.textContent = n === S.fm.resp.length ? "" : "· " + n + "명 보는 중"; }
   }
   const hm = () => { const d = new Date(); return z(d.getHours()) + ":" + z(d.getMinutes()); };
 
@@ -1869,6 +1967,11 @@
     if (!el.dataset) return;
     if (el.dataset.fmSearch !== undefined) {
       S.fm.q = el.value; refreshRoster(); return;
+    }
+    if (el.dataset.fmFilter !== undefined) {
+      S.fm.af = Object.assign({}, S.fm.af, { [el.dataset.fmFilter]: el.value });
+      const bar = el.closest(".fm-filters"); if (bar) bar.outerHTML = fmFiltersHTML(S.fm.form);
+      refreshRoster(); return;
     }
     const f = S.fm.draft;
     if (!f) return;
@@ -2105,6 +2208,19 @@
               '<p class="muted small">아직 입금 안 된 사람: ' + (todo.length - hit.length) + "명</p>");
           }, 0);
         } });
+    },
+    fmFilterReset() { S.fm.af = {}; const bar = document.querySelector(".fm-filters"); if (bar) bar.outerHTML = fmFiltersHTML(S.fm.form); refreshRoster(); },
+    fmXlsx() {
+      const t = rosterTable();
+      const p = (S.cache.projects || []).find((x) => x.id === S.fm.pid);
+      const name = String((p && p.name) || S.fm.form.title || "명단").replace(/[\\/:*?"<>|\[\]]/g, "").trim() || "명단";
+      const part = Object.values(S.fm.af || {}).some(Boolean) || S.fm.q ? "_필터" : "";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(makeXlsx([t.head].concat(t.rows), name.slice(0, 30)));
+      a.download = name + "_참여자명단" + part + "_" + today() + ".xlsx";
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+      toast((part ? "지금 보이는 " + t.rows.length + "명을" : t.rows.length + "명 전체를") + " 받았어요. 개인정보가 있으니 회장단 드라이브에만 보관하세요.");
     },
     fmCsv() {
       const f = S.fm.form, extra = (f.qs || []).filter((x) => x.type !== "name" && x.type !== "sid");

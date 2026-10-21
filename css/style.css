@@ -1099,3 +1099,9 @@ details.year summary small { color: var(--muted); font-size: 13px; margin-left: 
 .plink-btn { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .pr-name .pr-up { color: var(--muted); font-weight: 500; }
 .sem-hint { margin-left: 10px; }
+/* 참여자 명단: 질문별 모아 보기 */
+.fm-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 10px; }
+.fm-fsel { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 12px; font-weight: 600; color: var(--muted); }
+.fm-fsel select { border: 0; background: var(--bg); border-radius: 999px; padding: 3px 8px; font: inherit; color: var(--ink); cursor: pointer; }
+.fm-fsel.on { border-color: var(--ink); color: var(--ink); }
+.fm-fsel.on select { background: var(--ink); color: var(--surface); }
