@@ -2024,10 +2024,12 @@
         '<button data-act="fmMoveQ" data-dir="1" data-q="' + esc(q.id) + '" aria-label="아래로"' + (i < qs.length - 1 ? "" : " disabled") + ">↓</button>" +
         (t.fixed ? "" : '<button data-act="fmDelQ" data-q="' + esc(q.id) + '" aria-label="삭제">×</button>') + "</div></div>" +
         '<div class="fields"><div class="field"><label>질문</label><input data-fq="label" data-q="' + esc(q.id) + '" value="' + esc(q.label) + '"></div>' +
-        (q.type === "agree" ? "" : '<div class="field"><label>설명 <small class="muted">(선택 · 질문 아래 작은 글씨로 보여요)</small></label><textarea rows="2" data-fq="desc" data-q="' + esc(q.id) + '" placeholder="예: 하나은행 100-0000-0000 홍길동으로 입금해 주세요.">' + esc(q.desc || "") + "</textarea></div>") +
+        // 설명은 필요할 때만: [+ 설명 추가]를 누르면 칸이 생김
+        (q.type === "agree" ? "" : q.desc || q.showDesc ? '<div class="field"><label>설명 <small class="muted">· 질문 아래 작은 글씨로 보여요</small> <button class="linkbtn small fm-ddel" data-act="fmDelDesc" data-q="' + esc(q.id) + '">설명 삭제</button></label>' +
+          '<textarea rows="2" data-fq="desc" data-q="' + esc(q.id) + '">' + esc(q.desc || "") + "</textarea></div>" : "") +
         (optEditor ? '<div class="field">' + optEditor + "</div>" : "") +
         (q.type === "agree" ? '<div class="field"><label>동의 안내문</label><textarea rows="4" data-fq="text" data-q="' + esc(q.id) + '">' + esc(q.text || "") + "</textarea></div>" : "") + "</div>" +
-        "<div>" + (t.fixed ? '<span class="muted small">항상 필수</span>' : '<label class="fm-chk"><input type="checkbox" data-fq="required" data-q="' + esc(q.id) + '"' + (q.required ? " checked" : "") + "> 필수</label>") +
+        "<div>" + (q.type !== "agree" && !q.desc && !q.showDesc ? '<button class="linkbtn small fm-dadd" data-act="fmAddDesc" data-q="' + esc(q.id) + '">+ 설명 추가</button>' : "") + (t.fixed ? '<span class="muted small">항상 필수</span>' : '<label class="fm-chk"><input type="checkbox" data-fq="required" data-q="' + esc(q.id) + '"' + (q.required ? " checked" : "") + "> 필수</label>") +
         (q.type === "yesno" ? '<label class="fm-chk"><input type="checkbox" data-fq="attend" data-q="' + esc(q.id) + '"' + (q.attend ? " checked" : "") + "> 참여 여부 질문 (‘아니오’면 입금 안내·명단 번호에서 빠짐)</label>" : "") + "</div></div>";
     }).join("");
   }
@@ -2089,6 +2091,11 @@
       if (k === "options") q.options = el.value.split("\n").map((s) => s.trim()).filter(Boolean);
       else if (k === "required" || k === "attend") q[k] = el.checked;
       else q[k] = el.value;
+      // 참여 여부 질문은 하나만: 새로 체크하면 다른 질문의 체크는 자동으로 풀림
+      if (k === "attend" && el.checked) {
+        const others = S.fm.draft.qs.filter((x) => x !== q && x.attend);
+        if (others.length) { others.forEach((x) => (x.attend = false)); redrawQs(); toast("참여 여부 질문은 하나만 돼요. ‘" + others[0].label + "’의 체크를 풀었어요."); return; }
+      }
       markDirty(); refreshPreview();
     }
   });
@@ -2151,7 +2158,7 @@
         ownerDept: f.ownerDept || formDeptFor(p), keepUntil: keepOf(f, p) || keepDefault(p), keepV2: true, cap: Number(f.cap) || 0, fee: Number(f.fee) || 0,
         open: !!f.open, updatedAt: new Date().toISOString(), updatedBy: S.authUser.uid });
       delete doc.id;
-      doc.qs = (doc.qs || []).map((q) => Object.assign({}, q, { options: (q.options || []).map((o) => String(o).trim()).filter(Boolean) }));
+      doc.qs = (doc.qs || []).map((q) => { const o = Object.assign({}, q, { options: (q.options || []).map((x) => String(x).trim()).filter(Boolean) }); delete o.showDesc; if (!String(o.desc || "").trim()) delete o.desc; return o; });
       doc.feeUnpaid = doc.feeSplit ? Number(doc.feeUnpaid) || 0 : 0;
       doc.has2 = !!doc.has2; doc.only2 = doc.has2 && !!doc.only2;
       doc.fee2 = doc.has2 ? Number(doc.fee2) || 0 : 0;
@@ -2255,6 +2262,8 @@
       const f = S.fm.draft; if (!f) return;
       f.only2 = el.checked; markDirty(); renderPage();
     },
+    fmAddDesc(el) { const q = findQ(el.dataset.q); if (!q) return; q.showDesc = true; redrawQs(); const t = document.querySelector('textarea[data-fq="desc"][data-q="' + q.id + '"]'); if (t) t.focus(); },
+    fmDelDesc(el) { const q = findQ(el.dataset.q); if (!q) return; q.desc = ""; q.showDesc = false; redrawQs(); },
     fmAddOpt(el) {
       const q = findQ(el.dataset.q); if (!q) return;
       q.options = (q.options || []).concat(["옵션 " + ((q.options || []).length + 1)]);

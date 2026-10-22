@@ -1254,3 +1254,5 @@ button.au-mk.mk-manual.on { color: #15803d; border-style: solid; }
 /* 신청서: 질문 아래 설명 */
 .ap-qd { font-size: 13px; color: var(--muted); line-height: 1.55; white-space: pre-wrap; word-break: keep-all; margin: -2px 0 2px; }
 .ap-q > .ap-ql + .ap-qd { margin-top: 2px; }
+.fm-dadd { margin-right: 12px; }
+.fm-ddel { float: right; font-weight: 500; color: var(--muted); }
