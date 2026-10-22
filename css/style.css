@@ -1256,3 +1256,55 @@ button.au-mk.mk-manual.on { color: #15803d; border-style: solid; }
 .ap-q > .ap-ql + .ap-qd { margin-top: 2px; }
 .fm-dadd { margin-right: 12px; }
 .fm-ddel { float: right; font-weight: 500; color: var(--muted); }
+/* 양식 만들기: 설명 추가 · 질문 추가 위치 */
+.fm-q .fm-dadd { display: inline-block; margin: 6px 0 0; padding: 0; border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.fm-q .fm-dadd:hover { color: var(--accent); }
+.fm-addbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 12px 14px; border: 1.5px dashed var(--line); border-radius: 14px; background: var(--bg); }
+.fm-addlbl { font-size: 13px; font-weight: 700; color: var(--accent); margin-right: 4px; }
+.fm-addt { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.fm-addt:hover { border-color: var(--accent); color: var(--accent); }
+.fm-q .field .fm-dadd { justify-self: start; align-self: start; width: auto; text-align: left; }
+/* 양식 만들기: 질문 사이 ⊕ */
+.fm-gap { position: relative; height: 26px; display: flex; align-items: center; justify-content: center; }
+.fm-gap::before { content: ""; position: absolute; left: 14px; right: 14px; top: 50%; border-top: 1px dashed transparent; transition: border-color .15s; }
+.fm-gap:hover::before, .fm-gap.open::before { border-top-color: var(--accent); }
+.fm-gapbtn { position: relative; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: grid; place-items: center; cursor: pointer; opacity: .55; transition: opacity .15s, color .15s, border-color .15s, transform .15s; }
+.fm-gap:hover .fm-gapbtn, .fm-gap.open .fm-gapbtn { opacity: 1; color: var(--accent); border-color: var(--accent); }
+.fm-gap.open .fm-gapbtn { transform: rotate(45deg); background: var(--accent); color: #fff; }
+.fm-gapmenu { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; width: max-content; max-width: 92%; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 10px 30px rgba(20,20,40,.14); }
+.fm-gapmenu[hidden] { display: none; }
+@media (hover: none) { .fm-gapbtn { opacity: .9; } }
+/* 질문 추가: 아래 저장 줄 맨 왼쪽 (항상 보임) · 메뉴는 위로 펼쳐짐 */
+.fm-addwrap { height: auto; display: inline-flex; }
+.fm-addwrap::before { display: none; }
+.fm-addq { font-weight: 700; color: var(--accent); border-color: var(--accent); background: var(--surface); }
+.fm-addq .pl { display: inline-block; font-size: 16px; line-height: 1; margin-right: 2px; transition: transform .15s; }
+.fm-addwrap.open .fm-addq { background: var(--accent); color: #fff; }
+.fm-addwrap.open .fm-addq .pl { transform: rotate(45deg); }
+.fm-gapmenu.up { top: auto; bottom: calc(100% + 8px); left: 0; transform: none; justify-content: flex-start; width: 300px; max-width: 80vw; }
+.fm-gapttl { width: 100%; font-size: 11.5px; color: var(--muted); font-weight: 600; padding: 0 2px 2px; }
+.fm-save .fm-addwrap + .btn.primary { margin-left: 4px; }
+/* 양식 만들기: 구글폼처럼 고른 질문 옆에 붙는 도구 막대 */
+@media (min-width: 901px) {
+  .fm-build { grid-template-columns: minmax(0, 1fr) 54px 380px; gap: 12px; }
+  .fm-rail { position: relative; align-self: stretch; }
+  .fm-tool { position: absolute; left: 2px; top: 0; height: auto; display: block; transition: top .22s ease; z-index: 15; }
+  .fm-tool::before { display: none; }
+  .fm-save .fm-addwrap { display: none; }
+}
+@media (max-width: 900px) { .fm-rail { display: none; } }
+.fm-toolbtn { width: 48px; height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); display: grid; place-items: center; cursor: pointer; box-shadow: 0 1px 3px rgba(20,20,40,.06), 0 6px 16px rgba(20,20,40,.08); transition: color .15s, border-color .15s; }
+.fm-toolbtn:hover, .fm-tool.open .fm-toolbtn { color: var(--accent); border-color: var(--accent); }
+.fm-gapmenu.side { top: 0; left: auto; right: calc(100% + 8px); transform: none; width: 260px; justify-content: flex-start; }
+.fm-q { transition: box-shadow .15s, border-color .15s; }
+.fm-q.act { border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent), 0 4px 16px rgba(20,20,40,.06); }
+.fm-gapmenu.side { max-width: none; width: 270px; }
+@media (min-width: 901px) {
+  .fm-pvcol { position: sticky; top: 12px; align-self: start; }
+  .fm-pvcol .fm-preview { position: static; max-height: calc(100vh - 60px); }
+}
+.fm-gapmenu.side { display: grid; align-content: start; gap: 2px; height: auto; bottom: auto; width: 210px; padding: 8px; }
+.fm-gapmenu.side[hidden] { display: none; }
+.fm-gapmenu.side .fm-addt { border: 0; border-radius: 9px; text-align: left; padding: 9px 10px; font-size: 14px; background: none; }
+.fm-gapmenu.side .fm-addt:hover { background: var(--accent-soft); color: var(--accent); }
+.fm-gapmenu.side .fm-gapttl { padding: 2px 6px 6px; }

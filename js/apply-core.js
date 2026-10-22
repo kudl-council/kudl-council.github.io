@@ -165,8 +165,7 @@
   function infoHTML(f) {
     const bits = [];
     if (f.mode === "first") bits.push('<span class="ap-pill acc">선착순 ' + esc(f.cap) + "명</span>");
-    if (anyFee(f)) bits.push('<span class="ap-pill">참가비 ' + feeText(f) + "</span>");
-    if (anyFee(f) && dueText(f)) bits.push('<span class="ap-pill">입금 ' + esc(dueText(f)) + "</span>");
+    // 참가비·입금 기한은 위에 따로 안 띄움 (제출 후 입금 안내에서 보여 줌)
     return bits.length ? '<div class="ap-bits">' + bits.join("") + "</div>" : "";
   }
   function formHTML(f, opts) {

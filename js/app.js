@@ -871,6 +871,7 @@
     try {
       page.innerHTML = await fn();
       if (S.route === "settle") settleRefresh();
+      if (S.route === "form") placeTool();
       if (S.scrollTo) {
         const el = page.querySelector('[data-act="toggleProj"][data-id="' + S.scrollTo + '"]');
         S.scrollTo = "";
@@ -2001,17 +2002,24 @@
       "</div></div>";
     return '<div class="fm-build"><div class="fm-edit">' + basics +
       '<div class="card"><div class="fm-qhead" style="margin-bottom:10px"><h3>질문 <small>' + f.qs.length + "개</small></h3></div>" +
-      '<div id="fmQs" style="display:grid;gap:10px">' + qsHTML() + "</div>" +
-      '<div style="margin-top:12px"><div class="muted small" style="font-weight:700;margin-bottom:6px">질문 추가</div><div class="fm-add">' +
-      Object.keys(AP.TYPES).map((k) => '<button class="btn sm" data-act="fmAddQ" data-type="' + k + '">+ ' + AP.TYPES[k].label + "</button>").join("") + "</div></div></div>" +
-      '<div class="fm-save"><button class="btn primary" data-act="fmSave">저장</button><span class="dirty" id="fmDirty"' + (fm.dirty || !fm.form ? "" : " hidden") + ">" + (fm.form ? "저장 안 한 변경이 있어요" : "아직 저장 전이에요") + "</span>" +
+      '<div id="fmQs" style="display:grid;gap:10px">' + qsHTML() + "</div></div>" +
+      '<div class="fm-save"><div class="fm-gap fm-addwrap"><button class="btn fm-addq" data-act="fmGap" aria-label="질문 추가"><span class="pl">+</span> 질문 추가</button><div class="fm-gapmenu up" hidden></div></div><button class="btn primary" data-act="fmSave">저장</button><span class="dirty" id="fmDirty"' + (fm.dirty || !fm.form ? "" : " hidden") + ">" + (fm.form ? "저장 안 한 변경이 있어요" : "아직 저장 전이에요") + "</span>" +
       (fm.form ? '<button class="btn ghost" data-act="fmDiscard">되돌리기</button><span style="flex:1"></span><button class="btn danger sm" data-act="fmDelete">양식·명단 삭제</button>' : '<button class="btn ghost" data-act="fmDiscard">취소</button>') + "</div></div>" +
-      '<div><div class="fm-preview-label">학생이 보는 화면 (고치면 바로 바뀌어요)</div><div class="fm-preview" id="fmPreview">' + previewHTML() + "</div></div></div>";
+      '<div class="fm-rail" id="fmRail"><div class="fm-tool fm-gap" id="fmTool"><button class="fm-toolbtn" data-act="fmGap" data-tool="1" title="질문 추가" aria-label="질문 추가">' +
+        '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8" stroke-linecap="round"/></svg></button>' +
+        '<div class="fm-gapmenu side" hidden></div></div></div>' +
+      '<div class="fm-pvcol"><div class="fm-preview-label">학생이 보는 화면 (고치면 바로 바뀌어요)</div><div class="fm-preview" id="fmPreview">' + previewHTML() + "</div></div></div>";
   }
+  // 질문 추가 줄: 동의 질문은 항상 맨 끝이라, 그 바로 위에 둠 (동의 질문이 없으면 맨 끝)
+  // 질문 사이 ⊕: 누르면 그 자리에 넣을 질문 종류가 펼쳐짐
+  function gapClose() { document.querySelectorAll(".fm-gap.open").forEach((g) => { g.classList.remove("open"); g.querySelector(".fm-gapmenu").hidden = true; }); }
+  document.addEventListener("click", (e) => { if (!e.target.closest(".fm-gap")) gapClose(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") gapClose(); });
   function qsHTML() {
     const qs = S.fm.draft.qs;
-    if (!qs.length) return '<p class="muted small">질문이 없어요. 아래에서 추가해 주세요.</p>';
-    return qs.map(function (q, i) {
+    if (!qs.length) return '<p class="muted small">질문이 없어요. 아래 [+ 질문 추가]로 넣어 주세요.</p>';
+    const ai = qs.findIndex((q) => q.type === "agree");
+    const cards = qs.map(function (q, i) {
       const t = AP.TYPES[q.type] || { label: q.type };
       const opts = q.type === "yesno" ? ["예", "아니오"] : (q.options || []);
       const ico = q.type === "multi" ? "fm-oi box" : "fm-oi";
@@ -2023,15 +2031,17 @@
         '<div class="fm-qtools"><button data-act="fmMoveQ" data-dir="-1" data-q="' + esc(q.id) + '" aria-label="위로"' + (i ? "" : " disabled") + ">↑</button>" +
         '<button data-act="fmMoveQ" data-dir="1" data-q="' + esc(q.id) + '" aria-label="아래로"' + (i < qs.length - 1 ? "" : " disabled") + ">↓</button>" +
         (t.fixed ? "" : '<button data-act="fmDelQ" data-q="' + esc(q.id) + '" aria-label="삭제">×</button>') + "</div></div>" +
-        '<div class="fields"><div class="field"><label>질문</label><input data-fq="label" data-q="' + esc(q.id) + '" value="' + esc(q.label) + '"></div>' +
+        '<div class="fields"><div class="field"><label>질문</label><input data-fq="label" data-q="' + esc(q.id) + '" value="' + esc(q.label) + '">' +
+          (q.type !== "agree" && !q.desc && !q.showDesc ? '<button class="fm-dadd" data-act="fmAddDesc" data-q="' + esc(q.id) + '">+ 설명 추가</button>' : "") + "</div>" +
         // 설명은 필요할 때만: [+ 설명 추가]를 누르면 칸이 생김
         (q.type === "agree" ? "" : q.desc || q.showDesc ? '<div class="field"><label>설명 <small class="muted">· 질문 아래 작은 글씨로 보여요</small> <button class="linkbtn small fm-ddel" data-act="fmDelDesc" data-q="' + esc(q.id) + '">설명 삭제</button></label>' +
           '<textarea rows="2" data-fq="desc" data-q="' + esc(q.id) + '">' + esc(q.desc || "") + "</textarea></div>" : "") +
         (optEditor ? '<div class="field">' + optEditor + "</div>" : "") +
         (q.type === "agree" ? '<div class="field"><label>동의 안내문</label><textarea rows="4" data-fq="text" data-q="' + esc(q.id) + '">' + esc(q.text || "") + "</textarea></div>" : "") + "</div>" +
-        "<div>" + (q.type !== "agree" && !q.desc && !q.showDesc ? '<button class="linkbtn small fm-dadd" data-act="fmAddDesc" data-q="' + esc(q.id) + '">+ 설명 추가</button>' : "") + (t.fixed ? '<span class="muted small">항상 필수</span>' : '<label class="fm-chk"><input type="checkbox" data-fq="required" data-q="' + esc(q.id) + '"' + (q.required ? " checked" : "") + "> 필수</label>") +
+        "<div>" + (t.fixed ? '<span class="muted small">항상 필수</span>' : '<label class="fm-chk"><input type="checkbox" data-fq="required" data-q="' + esc(q.id) + '"' + (q.required ? " checked" : "") + "> 필수</label>") +
         (q.type === "yesno" ? '<label class="fm-chk"><input type="checkbox" data-fq="attend" data-q="' + esc(q.id) + '"' + (q.attend ? " checked" : "") + "> 참여 여부 질문 (‘아니오’면 입금 안내·명단 번호에서 빠짐)</label>" : "") + "</div></div>";
-    }).join("");
+    });
+    return cards.join("");
   }
   function previewHTML() {
     const fm = S.fm, f = curForm();
@@ -2055,8 +2065,21 @@
     }, now ? 0 : 120);
   }
   function dueHint() { const h = document.getElementById("fmDueText"); if (h && S.fm.draft) h.textContent = AP.dueText(S.fm.draft) ? "학생 화면: " + AP.dueText(S.fm.draft) : "날짜를 고르면 ‘10월 23일(금)까지’로 보여요"; }
-  function markDirty() { S.fm.dirty = true; const d = document.getElementById("fmDirty"); if (d) { d.hidden = false; d.textContent = "저장 안 한 변경이 있어요"; } }
-  function redrawQs() { const b = document.getElementById("fmQs"); if (b) b.innerHTML = qsHTML(); markDirty(); refreshPreview(true); }
+  function markDirty() { setTimeout(placeTool, 0); S.fm.dirty = true; const d = document.getElementById("fmDirty"); if (d) { d.hidden = false; d.textContent = "저장 안 한 변경이 있어요"; } }
+  function redrawQs() { const b = document.getElementById("fmQs"); if (b) b.innerHTML = qsHTML(); markDirty(); refreshPreview(true); placeTool(); }
+  // 구글폼처럼: 고른(누른) 질문 카드에 표시하고, 오른쪽 도구 막대를 그 카드 옆으로 옮김
+  function placeTool() {
+    const box = document.getElementById("fmQs"), rail = document.getElementById("fmRail"), tool = document.getElementById("fmTool");
+    if (!box || !rail || !tool || !S.fm.draft) return;
+    const qs = S.fm.draft.qs;
+    if (!qs.some((q) => q.id === S.fm.activeQ)) { const nonAgree = qs.filter((q) => q.type !== "agree"); S.fm.activeQ = (nonAgree[nonAgree.length - 1] || qs[0] || {}).id; }
+    box.querySelectorAll(".fm-q").forEach((c) => c.classList.toggle("act", c.dataset.q === S.fm.activeQ));
+    const card = box.querySelector('.fm-q[data-q="' + S.fm.activeQ + '"]');
+    tool.style.top = card ? Math.max(0, card.getBoundingClientRect().top - rail.getBoundingClientRect().top) + "px" : "0px";
+  }
+  document.addEventListener("focusin", (e) => { const c = e.target.closest && e.target.closest("#fmQs .fm-q"); if (c && S.fm.activeQ !== c.dataset.q) { S.fm.activeQ = c.dataset.q; placeTool(); } });
+  document.addEventListener("mousedown", (e) => { const c = e.target.closest && e.target.closest("#fmQs .fm-q"); if (c && S.fm.activeQ !== c.dataset.q) { S.fm.activeQ = c.dataset.q; placeTool(); } });
+  window.addEventListener("resize", () => placeTool());
   const findQ = (id) => S.fm.draft.qs.find((q) => q.id === id);
 
   // 입력할 때마다 초안에 반영
@@ -2132,13 +2155,31 @@
       S.fm.draft = Object.assign(AP.newForm(tpl, p.name), { ownerDept: formDeptFor(p), projectDept: p.dept, keepUntil: keepDefault(p) });
       S.fm.tab = "build"; S.fm.dirty = true; renderPage();
     },
+    fmGap(el) {
+      const g = el.closest(".fm-gap"), m = g.querySelector(".fm-gapmenu"), was = g.classList.contains("open");
+      gapClose();
+      if (was) return;
+      const qs = S.fm.draft.qs;
+      const types = Object.keys(AP.TYPES).filter((k) => !(AP.TYPES[k].fixed && AP.qOf(S.fm.draft, k)) && !(k === "agree" && qs.some((q) => q.type === "agree")));
+      m.innerHTML = '<div class="fm-gapttl">' + (el.dataset.tool ? "선택한 질문 바로 아래에 추가돼요" : "동의 질문 바로 위에 추가돼요") + "</div>" + types.map((k) => '<button class="fm-addt" data-act="fmAddQ" data-type="' + k + '"' + (el.dataset.tool ? ' data-after="1"' : "") + ">" + AP.TYPES[k].label + "</button>").join("");
+      m.hidden = false; g.classList.add("open");
+    },
     fmAddQ(el) {
       const t = el.dataset.type, multi = t === "choice" || t === "multi";
       if (AP.TYPES[t].fixed && AP.qOf(S.fm.draft, t)) return toast("‘" + AP.TYPES[t].label + "’ 질문은 이미 있어요.", true);
-      S.fm.draft.qs.push(AP.Q(t, multi || t === "text" || t === "long" || t === "yesno" ? "제목 없는 질문" : t === "agree" ? "안내 내용에 동의합니다" : AP.TYPES[t].label, multi ? { options: ["옵션 1"] } : {}));
+      const nq = AP.Q(t, multi || t === "text" || t === "long" || t === "yesno" ? "제목 없는 질문" : t === "agree" ? "안내 내용에 동의합니다" : AP.TYPES[t].label, multi ? { options: ["옵션 1"] } : {});
+      const qs = S.fm.draft.qs, ai = qs.findIndex((q) => q.type === "agree");
+      // 누른 ⊕ 자리에 넣음. 동의 질문은 항상 맨 끝 (그 아래로는 못 넣음)
+      // 오른쪽 도구 막대(구글폼처럼)로 넣으면 선택한 질문 바로 아래, 아래 저장 줄로 넣으면 동의 질문 바로 위
+      const actI = qs.findIndex((q) => q.id === S.fm.activeQ);
+      let at = el.dataset.after && actI >= 0 ? actI + 1 : (ai >= 0 ? ai : qs.length);
+      if (t === "agree") at = qs.length; else if (ai >= 0 && at > ai) at = ai;
+      qs.splice(at, 0, nq);
+      S.fm.activeQ = nq.id;
       redrawQs();
-      const last = document.getElementById("fmQs").lastElementChild;
+      const last = document.querySelector('#fmQs .fm-q[data-q="' + nq.id + '"]');
       if (last) { last.scrollIntoView({ block: "center", behavior: "smooth" }); const i = last.querySelector("input"); if (i) i.select(); }
+      gapClose();
     },
     fmDelQ(el) {
       const q = findQ(el.dataset.q);
