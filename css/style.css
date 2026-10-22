@@ -1251,3 +1251,6 @@ button.au-mk.mk-manual.on { color: #15803d; border-style: solid; }
 .prow.pchild { margin-left: 28px; position: relative; }
 .prow.pchild::before { content: ""; position: absolute; left: -16px; top: -6px; width: 10px; height: 30px; border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); border-bottom-left-radius: 8px; }
 @media (max-width: 700px) { .prow.pchild { margin-left: 16px; } .prow.pchild::before { left: -11px; width: 7px; } }
+/* 신청서: 질문 아래 설명 */
+.ap-qd { font-size: 13px; color: var(--muted); line-height: 1.55; white-space: pre-wrap; word-break: keep-all; margin: -2px 0 2px; }
+.ap-q > .ap-ql + .ap-qd { margin-top: 2px; }

@@ -2024,6 +2024,7 @@
         '<button data-act="fmMoveQ" data-dir="1" data-q="' + esc(q.id) + '" aria-label="아래로"' + (i < qs.length - 1 ? "" : " disabled") + ">↓</button>" +
         (t.fixed ? "" : '<button data-act="fmDelQ" data-q="' + esc(q.id) + '" aria-label="삭제">×</button>') + "</div></div>" +
         '<div class="fields"><div class="field"><label>질문</label><input data-fq="label" data-q="' + esc(q.id) + '" value="' + esc(q.label) + '"></div>' +
+        (q.type === "agree" ? "" : '<div class="field"><label>설명 <small class="muted">(선택 · 질문 아래 작은 글씨로 보여요)</small></label><textarea rows="2" data-fq="desc" data-q="' + esc(q.id) + '" placeholder="예: 하나은행 100-0000-0000 홍길동으로 입금해 주세요.">' + esc(q.desc || "") + "</textarea></div>") +
         (optEditor ? '<div class="field">' + optEditor + "</div>" : "") +
         (q.type === "agree" ? '<div class="field"><label>동의 안내문</label><textarea rows="4" data-fq="text" data-q="' + esc(q.id) + '">' + esc(q.text || "") + "</textarea></div>" : "") + "</div>" +
         "<div>" + (t.fixed ? '<span class="muted small">항상 필수</span>' : '<label class="fm-chk"><input type="checkbox" data-fq="required" data-q="' + esc(q.id) + '"' + (q.required ? " checked" : "") + "> 필수</label>") +

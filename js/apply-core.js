@@ -127,7 +127,15 @@
   // 학번 예시: 올해 연도 + 140 + 123 (예: 2026140123) — 해가 바뀌면 자동으로 바뀜
   const sidExample = () => new Date().getFullYear() + "140123";
   /* ---------- 학생 화면 ---------- */
+  // 질문 아래 설명(선택): 질문 제목 바로 밑에 작은 글씨로
   function qHTML(q) {
+    const h = qHTML0(q), d = String(q.desc || "").trim();
+    if (!d || !h) return h;
+    const dh = '<div class="ap-qd">' + esc(d) + "</div>";
+    // 제목(label/div.ap-ql) 바로 뒤에 넣기
+    return h.replace(/(<(label|div) class="ap-ql"[^>]*>[\s\S]*?<\/\2>)/, "$1" + dh);
+  }
+  function qHTML0(q) {
     const req = q.required ? ' <span class="req">*</span>' : "";
     const nm = 'name="a_' + q.id + '"';
     if (q.type === "long") {
