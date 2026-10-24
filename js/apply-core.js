@@ -160,8 +160,9 @@
     }
     return "";
   }
-  const headHTML = (f) => '<div class="ap-brand"><span class="ap-mark">DLS</span>고려대학교 생명과학부 학생회</div>' +
-    '<div class="ap-ev"><h1>' + esc(f.title || "행사 신청") + "</h1>" + (f.desc ? "<p>" + esc(f.desc) + "</p>" : "") + "</div>";
+  // 제출 후 화면(short)에서는 긴 안내문을 빼고 제목만
+  const headHTML = (f, short) => '<div class="ap-brand"><span class="ap-mark">DLS</span>고려대학교 생명과학부 학생회</div>' +
+    '<div class="ap-ev"><h1>' + esc(f.title || "행사 신청") + "</h1>" + (f.desc && !short ? "<p>" + esc(f.desc) + "</p>" : "") + "</div>";
   function infoHTML(f) {
     const bits = [];
     if (f.mode === "first") bits.push('<span class="ap-pill acc">선착순 ' + esc(f.cap) + "명</span>");
@@ -221,7 +222,7 @@
     opts = opts || {};
     const going = isGoing(f, r), dn = depositName(r.sid, r.name);
     const pay = going && anyFee(f);
-    return headHTML(f) + '<div class="ap-done"><span class="ap-pill ok">' + (going ? "신청 완료" : "응답 제출") + "</span>" +
+    return headHTML(f, true) + '<div class="ap-done"><span class="ap-pill ok">' + (going ? "신청 완료" : "응답 제출") + "</span>" +
       "<div>" + esc(r.name) + "님, " + (going ? "신청이 접수됐어요." : "응답해 주셔서 고마워요.") + "</div>" +
       (r.at ? '<div class="ap-time">접수 시각 ' + esc(stampText(r.at)) + "</div>" : "") +
       (f.mode === "first" && going ? (r.rank ? rankHTML(f, r.rank) : '<div class="ap-note">선착순은 접수 시각 순서로 정해져요. 정원 안인지는 학생회가 따로 알려 드려요.</div>') : "") + "</div>" +
@@ -236,5 +237,19 @@
       (opts.preview ? '<button type="button" class="ap-link" data-ap-back>처음 화면으로</button>' : "");
   }
 
+  // 전화번호: 숫자만 쳐도 010-1234-5678 처럼 하이픈이 자동으로 (신청 페이지 · 미리보기 공통)
+  const fmtPhone = (v) => {
+    const d = String(v || "").replace(/\D/g, "").slice(0, 11);
+    if (d.length < 4) return d;
+    if (d.length < 8) return d.slice(0, 3) + "-" + d.slice(3);
+    return d.length === 10 ? d.slice(0, 3) + "-" + d.slice(3, 6) + "-" + d.slice(6) : d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7);
+  };
+  document.addEventListener("input", function (e) {
+    const el = e.target;
+    if (!el.matches || !el.matches('.ap-form input[type="tel"]')) return;
+    const atEnd = el.selectionStart === el.value.length;
+    el.value = fmtPhone(el.value);
+    if (atEnd) el.setSelectionRange(el.value.length, el.value.length);
+  });
   window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, dueText, feeText, PART, has2, partOf, partFee };
 })();

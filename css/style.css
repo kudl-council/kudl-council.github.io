@@ -1308,3 +1308,11 @@ button.au-mk.mk-manual.on { color: #15803d; border-style: solid; }
 .fm-gapmenu.side .fm-addt { border: 0; border-radius: 9px; text-align: left; padding: 9px 10px; font-size: 14px; background: none; }
 .fm-gapmenu.side .fm-addt:hover { background: var(--accent-soft); color: var(--accent); }
 .fm-gapmenu.side .fm-gapttl { padding: 2px 6px 6px; }
+/* 양식: 참가비 상자 · 이름 */
+.fm-paybox { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.fm-paybox > .field:not(.half) { grid-column: 1 / -1; }
+.fm-paybox .fm-more { grid-column: 1 / -1; }
+.fm-more summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink); padding: 2px 0; }
+.fm-more .fields { margin-top: 10px; }
+@media (max-width: 700px) { .fm-paybox { grid-template-columns: 1fr; } }
+.fm-fname { font-weight: 600; color: var(--muted); }

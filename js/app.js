@@ -1448,7 +1448,7 @@
       '<span class="pr-name">' + kindTag(p) + semTag(p) + esc(p.name) + "" + (p.owner ? '<small>' + esc(p.owner) + "</small>" : "") + "</span>" +
       '<span class="pr-meta">' +
       (ts.length ? '<span class="pr-prog" title="업무 분배 ' + done + "/" + ts.length + ' 완료"><i style="width:' + Math.round((done / ts.length) * 100) + '%"></i></span><span class="pr-cnt">업무 ' + done + "/" + ts.length + "</span>" : "") +
-      (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") +
+      (f && f.length ? '<span class="fm-pill ' + (f.some((x) => x.open) ? "ok" : "") + '">' + (f.some((x) => x.open) ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") +
       '<span class="pr-when">' + when + "</span>" + dd + "</span></button>" +
       '<div class="pr-body">' +
       (hasLinks(p) ? '<p class="plinks-rel">' + linkHTML(p) + "</p>" : "") +
@@ -1657,18 +1657,26 @@
 
   async function formsMap() {
     if (!S.cache.forms) { try { S.cache.forms = await DB.list("forms"); } catch (e) { S.cache.forms = []; } }
+    // 사업 하나에 양식 여러 개 (가수요조사 · 실수요조사 · 준비위원 모집 등): 사업 번호 → 양식 목록
     const m = {};
-    S.cache.forms.forEach((f) => (m[f.id] = f));
+    S.cache.forms.forEach((f) => { const k = f.projectId || f.id; (m[k] = m[k] || []).push(f); });
+    Object.keys(m).forEach((k) => m[k].sort((a, b) => (a.id === k ? -1 : b.id === k ? 1 : String(a.createdAt || "").localeCompare(String(b.createdAt || "")))));
     return m;
   }
+  const formLabel = (f, list) => f.name || (list && list.length > 1 ? f.title || "신청" : "신청 페이지");
   // 사업 카드에 붙는 버튼
   // 명단을 정리한 사업은 남겨 둔 인원 수를 보여 줌
-  const formSummaryHTML = (f) => (f && f.summary ? '<span class="fm-sum" title="명단은 정리돼서 지워졌고 인원 수만 남아 있어요">📋 ' + esc(summaryText(f.summary)) + "</span>" : "");
-  function projectFormBtn(p, f, opts) {
-    if (f && f.summary && (opts.archive || opts.readonly)) return formSummaryHTML(f);
-    if (f) return '<a class="btn sm" href="#form/' + encodeURIComponent(p.id) + '">📝 신청 페이지 <span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "받는 중" : "닫힘") + "</span></a>" + formSummaryHTML(f);
-    if (opts.readonly || opts.archive || !canEditForm({ ownerDept: formDeptFor(p) })) return "";
-    return '<a class="btn sm ghost" href="#form/' + encodeURIComponent(p.id) + '">+ 신청 양식 만들기</a>';
+  const formSummaryHTML = (f, label) => (f && f.summary ? '<span class="fm-sum" title="명단은 정리돼서 지워졌고 인원 수만 남아 있어요">📋 ' + (label ? esc(label) + " · " : "") + esc(summaryText(f.summary)) + "</span>" : "");
+  function projectFormBtn(p, list, opts) {
+    list = Array.isArray(list) ? list : list ? [list] : [];
+    const many = list.length > 1;
+    const out = list.map((f) => {
+      const label = formLabel(f, list);
+      if (f.summary && (opts.archive || opts.readonly)) return formSummaryHTML(f, many ? label : "");
+      return '<a class="btn sm" href="#form/' + encodeURIComponent(f.id) + '">📝 ' + esc(label) + ' <span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "받는 중" : "닫힘") + "</span></a>" + formSummaryHTML(f);
+    }).join("");
+    if (opts.readonly || opts.archive || !canEditForm({ ownerDept: formDeptFor(p) })) return out;
+    return out + '<a class="btn sm ghost" href="#form/' + encodeURIComponent("+" + p.id) + '">+ ' + (list.length ? "양식 추가" : "신청 양식 만들기") + "</a>";
   }
 
   // 명단: 제출 순서대로 정렬하고 번호·선착순 대기 계산
@@ -1724,10 +1732,22 @@
   }
 
   PAGES.form = async function () {
-    const pid = S.routeArg;
-    const p = (await col("projects")).find((x) => x.id === pid);
-    if (!p) return '<div class="card empty">사업을 찾을 수 없어요.<br><a class="btn" href="#projects">사업 기획안으로</a></div>';
+    // 주소: #form/양식번호 · 새 양식은 #form/+사업번호 (사업의 첫 양식은 번호 = 사업 번호, 그 뒤는 사업번호-xxxx)
+    let pid = S.routeArg, newFor = "";
+    if (pid.charAt(0) === "+") {
+      newFor = pid.slice(1);
+      const has = ((await formsMap())[newFor] || []).some((x) => x.id === newFor);
+      pid = has ? newFor + "-" + Date.now().toString(36) : newFor;
+      try { history.replaceState(null, "", "#form/" + encodeURIComponent(pid)); } catch (e) { /* 무시 */ }
+      S.routeArg = pid;
+    }
+    const keepProj = S.fm.pid === pid ? S.fm.projId : "";
     await loadFm(pid);
+    const projects = await col("projects");
+    const projId = (S.fm.form && S.fm.form.projectId) || newFor || keepProj || (projects.some((x) => x.id === pid) ? pid : pid.replace(/-[a-z0-9]+$/, ""));
+    S.fm.projId = projId;
+    const p = projects.find((x) => x.id === projId);
+    if (!p) return '<div class="card empty">사업을 찾을 수 없어요.<br><a class="btn" href="#projects">사업 기획안으로</a></div>';
     const fm = S.fm, f = fm.form;
     const editable = canEditForm(f || { ownerDept: formDeptFor(p) });
     const viewer = canSeeRoster(f);
@@ -1736,7 +1756,7 @@
     if (fm.tab === "build" && !editable) fm.tab = "preview";
 
     let head = '<div class="fm-head"><a class="fm-back" href="#projects">← 사업 기획안</a>' +
-      '<div class="fm-title"><h2>' + esc(p.name) + "</h2>" + deptTag(p.dept) +
+      '<div class="fm-title"><h2>' + esc(p.name) + (curForm() && curForm().name ? ' <span class="fm-fname">· ' + esc(curForm().name) + "</span>" : "") + "</h2>" + deptTag(p.dept) +
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") + "</div>";
     if (f) {
       head += '<div class="fm-link"><code>' + esc(applyUrl(pid)) + "</code>" +
@@ -1901,15 +1921,16 @@
     const forms = await DB.list("forms"), projects = await col("projects");
     const pById = {}; projects.forEach((x) => (pById[x.id] = x));
     const sheets = [], summary = [["사업", "학생회", "사업 날짜", "신청", "참여", "출석", "명단 상태"]];
-    for (const f of forms.sort((a, b) => String((pById[a.id] || {}).startDate || "").localeCompare(String((pById[b.id] || {}).startDate || "")))) {
-      const p = pById[f.id] || {};
+    const pOf = (f) => pById[f.projectId || f.id] || {};
+    for (const f of forms.sort((a, b) => String(pOf(a).startDate || "").localeCompare(String(pOf(b).startDate || "")))) {
+      const p = pOf(f), fname = (p.name || f.title || f.id) + (f.name ? " " + f.name : "");
       let list = [];
       try { list = ordered(f, await DB.list(respPath(f.id))); } catch (e) { continue; } // 볼 권한이 없는 명단은 건너뜀
       const sm = list.length ? rosterSummary(f, list) : f.summary;
       if (!list.length && !f.summary) continue;
-      summary.push([p.name || f.title || f.id, councilLabel(p.generation, p.councilName), p.startDate ? dotDate(p.startDate) : "",
+      summary.push([fname, councilLabel(p.generation, p.councilName), p.startDate ? dotDate(p.startDate) : "",
         sm ? sm.applied : 0, sm ? sm.going : 0, sm ? sm.attended : 0, list.length ? "명단 있음" : "정리됨 (" + dotDate(f.summary.at) + ")"]);
-      if (list.length) { const t = rosterTable(f, list, true); sheets.push({ name: p.name || f.title || f.id, table: [t.head].concat(t.rows) }); }
+      if (list.length) { const t = rosterTable(f, list, true); sheets.push({ name: fname, table: [t.head].concat(t.rows) }); }
     }
     if (summary.length === 1) return 0;
     downloadBlob(makeXlsxBook([{ name: "요약", table: summary }].concat(sheets)), "신청명단_전체_" + councilLabel(S.settings.generation, S.settings.councilName).replace(/\s/g, "") + "_" + today() + ".xlsx");
@@ -1973,6 +1994,7 @@
   function buildHTML(p) {
     const fm = S.fm;
     if (!fm.draft) { fm.draft = JSON.parse(JSON.stringify(fm.form)); fm.draft.feeSplit = Number(fm.draft.feeUnpaid) > 0 || Number(fm.draft.fee2Unpaid) > 0; }
+    if (fm.draft.payOn === undefined) fm.draft.payOn = AP.anyFee(fm.draft);
     const f = fm.draft;
     const inp = (k, label, o) => { o = o || {};
       return '<div class="field' + (o.half ? " half" : "") + '"' + (o.id ? ' id="' + o.id + '"' : "") + (o.hidden ? " hidden" : "") + '><label>' + label + "</label>" +
@@ -1983,20 +2005,24 @@
     const sel = (k, label, opts, o) => '<div class="field' + (o && o.half ? " half" : "") + '"><label>' + label + '</label><select data-fm="' + k + '"' + (o && o.disabled ? " disabled" : "") + ">" +
       opts.map((x) => '<option value="' + esc(x[0]) + '"' + (String(f[k]) === String(x[0]) ? " selected" : "") + ">" + esc(x[1]) + "</option>").join("") + "</select>" + (o && o.help ? '<small class="help">' + o.help + "</small>" : "") + "</div>";
     const basics = '<div class="card"><h3>기본 정보</h3><div class="fields">' +
+      inp("name", "양식 이름 <small class=\"muted\">(학생에게는 안 보여요)</small>", { ph: "예: 가수요조사, 실수요조사, 준비위원 모집", help: "한 사업에 양식을 여러 개 만들 때 구분하는 이름이에요" }) +
       inp("title", "신청서 제목") + inp("desc", "안내문 (일시·장소 등)", { area: true }) +
       sel("mode", "모집 방식", [["normal", "일반 (기간 안에 누구나)"], ["first", "선착순 (정원 넘으면 대기)"]], { half: true }) +
       inp("cap", "정원", { half: true, num: true, id: "fmCapWrap", hidden: f.mode !== "first" }) +
-      '<div class="field"><label class="fm-chk" style="margin:4px 0 0"><input type="checkbox" data-act="fmSplit"' + (f.feeSplit ? " checked" : "") + "> 회비 납부자와 미납부자의 참가비가 달라요</label></div>" +
-      '<div class="field"><label class="fm-chk" style="margin:0"><input type="checkbox" data-act="fmHas2"' + (f.has2 ? " checked" : "") + "> 2차가 있어요 (1차·2차 참가비를 따로 받아요)</label></div>" +
-      money("fee", (f.has2 ? "1차 참가비" : "참가비") + (f.feeSplit ? " (회비 납부자)" : ""), "0이면 입금 안내 없음") +
-      (f.feeSplit ? money("feeUnpaid", (f.has2 ? "1차 참가비" : "참가비") + " (회비 미납부자)", "미납부자가 낼 금액") : "") +
-      (f.has2 ? money("fee2", "2차 참가비" + (f.feeSplit ? " (회비 납부자)" : ""), "1차 + 2차 참여자는 두 금액을 더해서 내요") +
-        (f.feeSplit ? money("fee2Unpaid", "2차 참가비 (회비 미납부자)", "미납부자가 낼 금액") : "") +
-        '<div class="field"><label class="fm-chk" style="margin:0"><input type="checkbox" data-act="fmOnly2"' + (f.only2 ? " checked" : "") + "> 2차만 참여하는 것도 받아요</label>" +
-        '<small class="help">학생 화면에 ‘어디까지 참여하나요? 1차만 / 1차 + 2차' + (f.only2 ? " / 2차만" : "") + "’ 질문이 금액과 함께 자동으로 들어가요.</small></div>" : "") +
-      '<div class="field half"><label>입금 기한</label>' + dateInputHTML('data-fm-date="dueDate"', f.dueDate || "") +
-        '<small class="help" id="fmDueText">' + (AP.dueText(f) ? "학생 화면: " + esc(AP.dueText(f)) : "날짜를 고르면 ‘10월 23일(금)까지’로 보여요") + "</small></div>" +
-      inp("account", "입금 계좌", { half: !!f.feeSplit, ph: "예: 국민 123456-01-234567 (생명과학부 학생회)" }) +
+      // 참가비: 받는 경우에만 펼침. 미납부자·2차 금액은 '금액이 사람마다 달라요' 안에 (비워 두면 없음)
+      '<div class="field"><label class="fm-chk" style="margin:4px 0 0"><input type="checkbox" data-act="fmPay"' + (f.payOn ? " checked" : "") + "> 참가비를 받아요</label>" +
+        '<small class="help">준비위원 모집, 가수요조사처럼 돈을 안 받는 신청이면 체크하지 마세요</small></div>' +
+      (f.payOn ? '<div class="fm-paybox">' +
+        money("fee", f.has2 ? "참가비 (1차)" : "참가비", "회비 납부자 기준 금액") +
+        '<div class="field half"><label>입금 기한</label>' + dateInputHTML('data-fm-date="dueDate"', f.dueDate || "") +
+          '<small class="help" id="fmDueText">' + (AP.dueText(f) ? "학생 화면: " + esc(AP.dueText(f)) : "날짜를 고르면 ‘10월 23일(금)까지’로 보여요") + "</small></div>" +
+        inp("account", "입금 계좌", { ph: "예: 국민 123456-01-234567 (생명과학부 학생회)" }) +
+        '<details class="fm-more"' + (Number(f.feeUnpaid) > 0 || Number(f.fee2) > 0 ? " open" : "") + '><summary>금액이 사람마다 달라요 <span class="muted">(회비 미납부자 · 2차)</span></summary><div class="fields">' +
+          money("feeUnpaid", f.has2 ? "회비 미납부자 (1차)" : "회비 미납부자 참가비", "비워 두면 위와 같은 금액") +
+          money("fee2", "2차 참가비", "비워 두면 2차 없음 · 넣으면 ‘1차만 / 1차+2차’ 질문이 자동으로 생겨요") +
+          (f.has2 && Number(f.feeUnpaid) > 0 ? money("fee2Unpaid", "회비 미납부자 (2차)", "비워 두면 2차 참가비와 같음") : "") +
+          (f.has2 ? '<div class="field half"><label class="fm-chk" style="margin:22px 0 0"><input type="checkbox" data-act="fmOnly2"' + (f.only2 ? " checked" : "") + "> 2차만 참여도 받아요</label></div>" : "") +
+        "</div></details></div>" : "") +
       sel("ownerDept", "양식 담당 국서", (S.settings.depts || []).map((d) => [d, d]), { half: true, disabled: !isExecMember(), help: isExecMember() ? "이 국서의 국장·2학년이 양식을 고칠 수 있어요" : "회장단만 바꿀 수 있어요" }) +
       '<div class="field half"><label>명단 보관 기한</label>' + dateInputHTML('data-fm-date="keepUntil"', keepOf(f, p) || keepDefault(p)) + '<small class="help">기본은 행사 끝나고 1년. 그 전에 학생회를 넘기면 그때 지워지고 신청·참여 인원 수만 남아요</small></div>' +
       "</div></div>";
@@ -2099,7 +2125,11 @@
     if (el.dataset.fm) {
       const k = el.dataset.fm;
       if (k === "cap") { const d = el.value.replace(/\D/g, "").slice(0, 5); el.value = d; f[k] = Number(d) || 0; }
-      else if (k === "fee" || k === "feeUnpaid" || k === "fee2" || k === "fee2Unpaid") f[k] = Number(el.value.replace(/\D/g, "").slice(0, 9)) || 0;
+      else if (k === "fee" || k === "feeUnpaid" || k === "fee2" || k === "fee2Unpaid") {
+        f[k] = Number(el.value.replace(/\D/g, "").slice(0, 9)) || 0;
+        f.has2 = Number(f.fee2) > 0; f.feeSplit = Number(f.feeUnpaid) > 0;
+        if (!f.has2) f.only2 = false;
+      }
       else f[k] = el.value;
       if (k === "mode") { const w = document.getElementById("fmCapWrap"); if (w) w.hidden = f.mode !== "first"; }
       markDirty(); refreshPreview();
@@ -2150,7 +2180,7 @@
   const FORM_ACTS = {
     fmTab(el) { S.fm.tab = el.dataset.tab; S.fm.pv = null; renderPage(); },
     fmStart() {
-      const p = (S.cache.projects || []).find((x) => x.id === S.fm.pid);
+      const p = (S.cache.projects || []).find((x) => x.id === S.fm.projId);
       const tpl = (document.querySelector('input[name="fmTpl"]:checked') || {}).value || "basic";
       S.fm.draft = Object.assign(AP.newForm(tpl, p.name), { ownerDept: formDeptFor(p), projectDept: p.dept, keepUntil: keepDefault(p) });
       S.fm.tab = "build"; S.fm.dirty = true; renderPage();
@@ -2192,19 +2222,21 @@
       const t = qs[i]; qs[i] = qs[j]; qs[j] = t; redrawQs();
     },
     async fmSave(el) {
-      const fm = S.fm, f = fm.draft, p = (S.cache.projects || []).find((x) => x.id === fm.pid);
+      const fm = S.fm, f = fm.draft, p = (S.cache.projects || []).find((x) => x.id === fm.projId);
       const bad = AP.checkForm(f);
       if (bad) return toast(bad, true);
-      const doc = Object.assign({}, f, { projectId: fm.pid, projectName: p ? p.name : f.projectName || "", projectDept: p ? p.dept : f.projectDept,
+      const doc = Object.assign({}, f, { projectId: fm.projId || fm.pid, createdAt: (fm.form && fm.form.createdAt) || new Date().toISOString(), projectName: p ? p.name : f.projectName || "", projectDept: p ? p.dept : f.projectDept,
         ownerDept: f.ownerDept || formDeptFor(p), keepUntil: keepOf(f, p) || keepDefault(p), keepV2: true, cap: Number(f.cap) || 0, fee: Number(f.fee) || 0,
         open: !!f.open, updatedAt: new Date().toISOString(), updatedBy: S.authUser.uid });
       delete doc.id;
       doc.qs = (doc.qs || []).map((q) => { const o = Object.assign({}, q, { options: (q.options || []).map((x) => String(x).trim()).filter(Boolean) }); delete o.showDesc; if (!String(o.desc || "").trim()) delete o.desc; return o; });
-      doc.feeUnpaid = doc.feeSplit ? Number(doc.feeUnpaid) || 0 : 0;
-      doc.has2 = !!doc.has2; doc.only2 = doc.has2 && !!doc.only2;
-      doc.fee2 = doc.has2 ? Number(doc.fee2) || 0 : 0;
-      doc.fee2Unpaid = doc.has2 && doc.feeSplit ? Number(doc.fee2Unpaid) || 0 : 0;
-      delete doc.feeSplit;
+      // 참가비를 안 받으면 금액 관련 값은 모두 비움. 미납부자·2차는 금액을 넣었을 때만 켜짐
+      if (!doc.payOn) Object.assign(doc, { fee: 0, feeUnpaid: 0, fee2: 0, fee2Unpaid: 0 });
+      doc.feeUnpaid = Number(doc.feeUnpaid) || 0;
+      doc.fee2 = Number(doc.fee2) || 0;
+      doc.has2 = doc.fee2 > 0; doc.only2 = doc.has2 && !!doc.only2;
+      doc.fee2Unpaid = doc.has2 && doc.feeUnpaid > 0 ? Number(doc.fee2Unpaid) || 0 : 0;
+      delete doc.feeSplit; delete doc.payOn;
       // 권한 명단은 [권한 설정]에서만 바뀜 (양식을 고치는 동안 바뀌었을 수도 있으니 최신 값 유지)
       doc.editorUids = (fm.form && fm.form.editorUids) || [];
       doc.viewerUids = (fm.form && fm.form.viewerUids) || [];
@@ -2287,6 +2319,12 @@
       Object.assign(r, patch); refreshRoster();
       if (v) toast(r.name + " 출석 확인 (" + patch.attendedAt + ")");
     },
+    fmPay(el) {
+      const f = S.fm.draft; if (!f) return;
+      f.payOn = el.checked;
+      if (!f.payOn) Object.assign(f, { fee: 0, feeUnpaid: 0, fee2: 0, fee2Unpaid: 0, has2: false, only2: false, feeSplit: false });
+      markDirty(); const y = window.scrollY; renderPage().then(() => window.scrollTo(0, y));
+    },
     fmSplit(el) {
       const f = S.fm.draft; if (!f) return;
       f.feeSplit = el.checked;
@@ -2363,8 +2401,8 @@
     },
     fmXlsx() {
       const t = rosterTable();
-      const p = (S.cache.projects || []).find((x) => x.id === S.fm.pid);
-      const name = String((p && p.name) || S.fm.form.title || "명단").replace(/[\\/:*?"<>|\[\]]/g, "").trim() || "명단";
+      const p = (S.cache.projects || []).find((x) => x.id === S.fm.projId);
+      const name = String(((p && p.name) || S.fm.form.title || "명단") + (S.fm.form.name ? " " + S.fm.form.name : "")).replace(/[\\/:*?"<>|\[\]]/g, "").trim() || "명단";
       const part = Object.values(S.fm.af || {}).some(Boolean) || S.fm.q ? "_필터" : "";
       const a = document.createElement("a");
       a.href = URL.createObjectURL(makeXlsx([t.head].concat(t.rows), name.slice(0, 30)));
@@ -2689,7 +2727,7 @@
           if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)")) return;
           await DB.remove("projects", p.id);
           // 신청 양식·명단도 함께 지움 (권한이 없으면 보관 기한에 자동으로 지워짐)
-          try { if (await DB.get("forms", p.id)) { for (const r of await DB.list(respPath(p.id))) await DB.remove(respPath(p.id), r.id); await DB.remove("forms", p.id); dirty("forms"); } } catch (e) { console.warn(e); }
+          try { for (const fx of ((await formsMap())[p.id] || [])) { for (const r of await DB.list(respPath(fx.id))) await DB.remove(respPath(fx.id), r.id); await clearSlots(fx.id); await DB.remove("forms", fx.id); } dirty("forms"); } catch (e) { console.warn(e); }
           try { for (const t of (await col("tasks")).filter((x) => x.projectId === p.id)) await DB.update("tasks", t.id, { projectId: "" }); } catch (e) { /* 국원은 업무를 못 고침 — 업무는 그대로 남음 */ }
           closeModal(); await after("projects", "tasks"); toast("삭제했어요.");
         } }] : [],
@@ -3206,7 +3244,7 @@
       (o.money ? ' inputmode="numeric" data-money' : o.num ? ' inputmode="numeric"' : "") + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : "") + (o.cls ? ' class="' + o.cls + '"' : "") + ">"; };
     const projOpts = (S.cache.projects || []).filter((p) => isCurrent(p) || p.id === d.projectId).sort((a, b) => (b.startDate || "").localeCompare(a.startDate || ""));
     const rounds = ROUNDS.filter((r) => d.places.some((p) => p.round === r));
-    const f = d.projectId ? (await formsMap())[d.projectId] : null;
+    const fl = d.projectId ? (await formsMap())[d.projectId] || [] : [], f = fl.length ? fl : null;
     const placeRow = (p, i) => '<tr><td><select data-st="places.' + i + '.round">' + ROUNDS.map((r) => '<option' + (p.round === r ? " selected" : "") + ">" + r + "</option>").join("") + "</select></td>" +
       "<td>" + inp("places." + i + ".name", p.name, { ph: "예: 쿠마" }) + "</td><td>" + inp("places." + i + ".deposit", p.deposit, { money: 1 }) + "</td><td>" + inp("places." + i + ".paid", p.paid, { money: 1 }) + "</td>" +
       '<td class="st-total" data-st-total="' + i + '"></td><td>' + inp("places." + i + ".us", p.us, { num: 1, cls: "n" }) + "</td><td>" + inp("places." + i + ".them", p.them, { num: 1, cls: "n" }) + "</td>" +
@@ -3303,10 +3341,12 @@
     },
     // 연결 사업의 신청 명단에서: 차수별 1인 선수합금 = 양식 참가비, 미입금자 = 참여하는데 입금 확인 안 된 사람
     async stImport() {
-      const d = S.st.d, f = await DB.get("forms", d.projectId);
+      // 참가비를 받는 양식(2차가 있으면 그 양식)을 골라서 불러옴
+      const d = S.st.d, fl = (await formsMap())[d.projectId] || [];
+      const f = fl.find((x) => AP.has2(x)) || fl.find((x) => AP.anyFee(x)) || fl[0];
       if (!f) return toast("이 사업에는 신청 양식이 없어요.", true);
       let list = [];
-      try { list = ordered(f, await DB.list(respPath(d.projectId))); } catch (e) { return toast("명단을 볼 권한이 없어요.", true); }
+      try { list = ordered(f, await DB.list(respPath(f.id))); } catch (e) { return toast("명단을 볼 권한이 없어요.", true); }
       const going = list.filter((r) => AP.isGoing(f, r) && !r.wait);
       const inRound = (r, rd) => !AP.has2(f) ? rd === "1차" : rd === "1차" ? AP.partOf(f, r) !== "2차만" : rd === "2차" ? /2차/.test(AP.partOf(f, r)) : false;
       const msg = [];
@@ -3359,6 +3399,7 @@
   });
   document.addEventListener("change", function (e) {
     const el = e.target;
+    if (el.dataset && (el.dataset.fm === "fee2" || el.dataset.fm === "feeUnpaid") && S.fm && S.fm.draft) { const y = window.scrollY; renderPage().then(() => window.scrollTo(0, y)); return; }
     if (el.classList && el.classList.contains("dnative")) {
       const t = el.closest(".dwrap").querySelector("input[data-date]");
       if (t) t.value = dotDate(el.value);
