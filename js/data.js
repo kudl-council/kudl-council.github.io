@@ -77,8 +77,22 @@
       batch.set(f.collection("responses").doc(sid), Object.assign({}, data, withSlot ? { slotId: slotId } : {}, { at: ts }));
       // 수정 링크용 사본 (열쇠 = data.editKey)
       if (data.editKey) batch.set(f.collection("edits").doc(data.editKey), { sid: sid, name: data.name, answers: data.answers, touchedAt: ts });
+      // 구글 로그인 양식: 이 계정이 낸 응답 표시 (계정 하나당 한 번 · 다시 들어오면 내 응답을 찾음)
+      if (data.ownerUid) batch.set(f.collection("mine").doc(data.ownerUid), { sid: sid, at: ts });
       await batch.commit();
       return slotId;
+    },
+    // 로그인한 사람이 이 양식에 낸 응답 (없으면 null)
+    async getMine(formId, uid) {
+      const f = this.fs.collection("forms").doc(formId);
+      const m = await f.collection("mine").doc(uid).get();
+      if (!m.exists) return null;
+      const d = await f.collection("responses").doc(m.data().sid).get();
+      return d.exists ? plain(Object.assign({ id: d.id }, d.data())) : null;
+    },
+    async ownerEdit(formId, docId, patch) {
+      const ts = firebase.firestore.FieldValue.serverTimestamp();
+      await this.fs.collection("forms").doc(formId).collection("responses").doc(docId).update(Object.assign({}, patch, { editedAt: ts }));
     },
     // 예전 응답에 수정 열쇠 넣기 (양식 담당자가 명단을 열 때 자동으로) — 예전 열쇠 사본은 지움
     async prepEdit(formId, sid, key, oldKey, data) {
@@ -342,8 +356,17 @@
       if (withSlot) { slotId = await this.add("forms/" + formId + "/slots", { at: at }); }
       await this.set(path, sid, Object.assign({}, data, withSlot ? { slotId: slotId } : {}, { at: at }));
       if (data.editKey) await this.set("forms/" + formId + "/edits", data.editKey, { sid: sid, name: data.name, answers: data.answers, touchedAt: at });
+      if (data.ownerUid) {
+        if ((this.store["forms/" + formId + "/mine"] || {})[data.ownerUid]) { const e = new Error("permission-denied"); e.code = "permission-denied"; throw e; }
+        await this.set("forms/" + formId + "/mine", data.ownerUid, { sid: sid, at: at });
+      }
       return slotId;
     },
+    async getMine(formId, uid) {
+      const m = await this.get("forms/" + formId + "/mine", uid);
+      return m ? this.get("forms/" + formId + "/responses", m.sid) : null;
+    },
+    async ownerEdit(formId, docId, patch) { await this.update("forms/" + formId + "/responses", docId, Object.assign({}, patch, { editedAt: Date.now() })); },
     async prepEdit(formId, sid, key, oldKey, data) {
       await this.update("forms/" + formId + "/responses", sid, { editKey: key });
       await this.set("forms/" + formId + "/edits", key, { sid: sid, name: data.name, answers: data.answers, touchedAt: Date.now() });

@@ -6,8 +6,10 @@
   function toast(m) { const t = document.getElementById("toast"); t.textContent = m; t.className = "show"; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = ""), 2400); }
   const fail = (t, m) => { box.innerHTML = '<div class="ap-brand"><span class="ap-mark">DLS</span>고려대학교 생명과학부 학생회</div><div class="ap-closed"><b>' + esc(t) + "</b><span>" + esc(m) + "</span></div>"; };
 
-  let F = null, id = "", count = null, E = null, editKey = "";
-  const canEdit = () => F && F.allowEdit !== false && canHash();
+  let F = null, id = "", count = null, E = null, editKey = "", U = null, mode = "key";
+  // 구글 로그인 양식: 로그인한 본인이 학번·이름·전화번호까지 고칠 수 있음 (학번+전화번호 찾기는 안 씀)
+  const LOGIN = () => !!(F && F.login === true && F.mode !== "first");
+  const canEdit = () => F && F.allowEdit !== false && !LOGIN() && canHash();
   const editUrl = (key) => location.href.split("?")[0] + "?f=" + encodeURIComponent(id) + "&e=" + encodeURIComponent(key);
   // 이 기기에서 낸 응답의 수정 열쇠 기억 (다시 들어오면 [내 응답 고치기] 안내)
   const memKey = () => "apEdit:" + id;
@@ -24,7 +26,9 @@
   function showForm() {
     const mine = !E && canEdit() && recall();
     box.innerHTML = (DB.mode === "demo" ? '<div class="demobar" style="border-radius:10px">데모 모드 — 제출해도 실제로 저장되지 않아요.</div>' : "") +
-      (E ? '<div class="ap-editbar"><b>제출한 응답을 고치는 중이에요</b><span>학번·전화번호는 바꿀 수 없어요. 고친 뒤 [수정하기]를 눌러 주세요.</span>' +
+      (LOGIN() && U ? '<div class="ap-editbar soft ap-who"><span><b>' + esc(U.name || U.email) + "</b>" + (U.name && U.email ? ' <small>' + esc(U.email) + "</small>" : "") + " 계정으로 " + (E ? "낸 응답이에요" : "신청해요") + '</span><button type="button" class="ap-findbtn sub" data-ap-logout>다른 계정으로</button></div>' : "") +
+      (E && mode === "owner" ? '<div class="ap-editbar"><b>이미 신청했어요 · 내 응답을 고칠 수 있어요</b><span>' + (F.allowEdit === false ? "이 신청은 고칠 수 없어요. 고칠 게 있으면 학생회에 말해 주세요." : "학번·이름·전화번호도 고칠 수 있어요. 고친 뒤 [수정하기]를 눌러 주세요.") + "</span></div>" : "") +
+      (E && mode === "key" ? '<div class="ap-editbar"><b>제출한 응답을 고치는 중이에요</b><span>학번·전화번호는 바꿀 수 없어요. 고친 뒤 [수정하기]를 눌러 주세요.</span>' +
         '<span class="ap-eb-acts"><button type="button" class="ap-findbtn sub" data-ap-find>다른 학번으로 찾기</button><button type="button" class="ap-findbtn sub" data-ap-new>새로 신청하기</button></span></div>' : "") +
       (!E && canEdit() && F.open ? '<div class="ap-editbar soft"><span>' + (mine ? "이 기기에서 이미 신청했어요." : "이미 신청했나요?") + "</span>" +
         (mine ? '<span class="ap-eb-acts"><a href="' + esc(editUrl(mine)) + '">내 응답 고치기 →</a><button type="button" class="ap-findbtn sub" data-ap-find>다른 학번으로 찾기</button></span>' : '<button type="button" class="ap-findbtn" data-ap-find>내 응답 고치기 →</button>') + "</div>" : "") +
@@ -32,7 +36,14 @@
     const form = box.querySelector("form");
     if (!form) return;
     form.addEventListener("submit", submit);
-    if (E) {
+    if (E && mode === "owner") {
+      A.fillAnswers(F, form, E.answers);
+      const sq = A.qOf(F, "sid"); if (sq) { const el = form.querySelector('[name="a_' + sq.id + '"]'); if (el) el.value = E.sid || E.id; }
+      const aq = A.attendQ(F);
+      if (F.mode === "first" && aq) form.querySelectorAll('[name="a_' + aq.id + '"]').forEach((x) => (x.disabled = true));
+      const b = form.querySelector('[type="submit"]');
+      if (b) { b.textContent = "수정하기"; if (F.allowEdit === false) { b.disabled = true; form.querySelectorAll("input, textarea").forEach((x) => (x.disabled = true)); } }
+    } else if (E) {
       A.fillAnswers(F, form, E.answers);
       // 학번·전화번호는 내 응답을 찾는 열쇠라서 못 바꿈
       ["sid", "phone"].forEach((t) => { const q = A.qOf(F, t); if (!q) return; const el = form.querySelector('[name="a_' + q.id + '"]'); if (el) { if (t === "sid") el.value = E.sid; el.readOnly = true; el.classList.add("ap-locked"); } });
@@ -52,6 +63,20 @@
     const say = (m) => { err.hidden = false; err.textContent = m; err.scrollIntoView({ block: "center", behavior: "smooth" }); };
     if (r.err) return say(r.err);
     err.hidden = true; btn.disabled = true; btn.textContent = E ? "고치는 중…" : "제출하는 중…";
+    if (E && mode === "owner") {
+      const patch = { sid: r.sid, name: r.name, depositName: A.depositName(r.sid, r.name), answers: r.answers };
+      try {
+        await DB.ownerEdit(id, E.id, patch);
+        E = Object.assign({}, E, patch);
+        box.innerHTML = A.doneHTML(F, patch, { edited: true, loginHint: true });
+        window.scrollTo(0, 0);
+      } catch (er) {
+        btn.disabled = false; btn.textContent = "수정하기";
+        const m = String((er && (er.code || er.message)) || er);
+        say(/permission|insufficient/i.test(m) ? "지금은 고칠 수 없어요. 신청이 마감됐을 수 있어요. 학생회에 말해 주세요." : "고치지 못했어요. 잠시 뒤 다시 시도해 주세요. (" + m + ")");
+      }
+      return;
+    }
     if (E) {
       const patch = { name: r.name, depositName: A.depositName(E.sid, r.name), answers: r.answers };
       try {
@@ -71,6 +96,7 @@
     const data = { sid: r.sid, name: r.name, depositName: A.depositName(r.sid, r.name), answers: r.answers, paid: false, attended: false };
     const key = canEdit() ? await keyFor(r.sid, phoneOf(r.answers)) : "";
     if (key) data.editKey = key;
+    if (LOGIN()) { if (!U) return showLogin(); data.ownerUid = U.uid; }
     const first = F.mode === "first" && A.isGoing(F, data);
     try {
       const slotId = await DB.submitResponse(id, r.sid, data, first);
@@ -79,15 +105,43 @@
       // 선착순: 내가 몇 번째인지 서버에 물어봄 (안 되면 그냥 넘어감)
       if (first && slotId) { try { rank = await DB.slotRank(id, slotId); } catch (e) { console.warn(e); } }
       const shown = Object.assign({ at: Date.now(), rank: rank }, data); delete shown.editKey;
-      box.innerHTML = A.doneHTML(F, shown, key ? { editHint: true } : {});
+      box.innerHTML = A.doneHTML(F, shown, key ? { editHint: true } : LOGIN() ? { loginHint: F.allowEdit !== false } : {});
       window.scrollTo(0, 0);
     } catch (er) {
       btn.disabled = false; btn.textContent = "제출하기";
       const m = String((er && (er.code || er.message)) || er);
-      if (/permission|insufficient/i.test(m)) say("이미 이 학번으로 신청했거나, 방금 신청이 마감됐어요." + (canEdit() ? " 이미 신청했다면 맨 위 [내 응답 고치기]에서 학번·전화번호로 고칠 수 있어요." : " 잘못 신청했다면 학생회에 말해 주세요."));
+      if (/permission|insufficient/i.test(m) && LOGIN()) say("이 학번으로 이미 다른 계정에서 신청했거나, 방금 신청이 마감됐어요. 학번을 확인하고, 그래도 안 되면 학생회에 말해 주세요.");
+      else if (/permission|insufficient/i.test(m)) say("이미 이 학번으로 신청했거나, 방금 신청이 마감됐어요." + (canEdit() ? " 이미 신청했다면 맨 위 [내 응답 고치기]에서 학번·전화번호로 고칠 수 있어요." : " 잘못 신청했다면 학생회에 말해 주세요."));
       else if (/unavailable|network|offline/i.test(m)) say("인터넷 연결을 확인하고 다시 눌러 주세요.");
       else say("제출하지 못했어요. 잠시 뒤 다시 시도해 주세요. (" + m + ")");
     }
+  }
+  // ---------- 구글 로그인 양식 ----------
+  // 카카오톡·인스타 등 앱 안 브라우저에서는 구글 로그인이 막혀 있음 → 바깥 브라우저로
+  const UA = navigator.userAgent || "";
+  const IN_KAKAO = /KAKAOTALK/i.test(UA);
+  const IN_APP = IN_KAKAO || /Instagram|FBAN|FBAV|Line\/|NAVER\(inapp|everytime|DaumApps|; wv\)/i.test(UA);
+  function showLogin(msg) {
+    const head = '<div class="ap-brand"><span class="ap-mark">DLS</span>고려대학교 생명과학부 학생회</div><div class="ap-ev"><h1>' + esc(F.title || "행사 신청") + "</h1>" + (F.desc ? "<p>" + esc(F.desc) + "</p>" : "") + "</div>";
+    if (!F.open) { box.innerHTML = A.formHTML(F, {}); return; }
+    if (IN_APP) {
+      box.innerHTML = head + '<div class="ap-login"><b>크롬이나 사파리에서 열어 주세요</b><span>이 신청은 구글 로그인이 필요한데, ' + (IN_KAKAO ? "카카오톡" : "이 앱") + " 안에서는 구글 로그인이 막혀 있어요.</span>" +
+        (IN_KAKAO ? '<a class="ap-submit" href="kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href) + '">다른 브라우저로 열기</a>' : "") +
+        '<div class="ap-copy"><span class="ap-url">' + esc(location.href) + '</span><button type="button" data-copy="' + esc(location.href) + '" data-copy-label="링크">복사</button></div>' +
+        '<span class="ap-hint">' + (IN_KAKAO ? "버튼이 안 되면 " : "") + "오른쪽 위 ⋮ 또는 공유 버튼 → ‘다른 브라우저로 열기’ / ‘Safari로 열기’를 누르거나, 링크를 복사해 크롬·사파리에 붙여 넣어 주세요.</span></div>";
+      return;
+    }
+    box.innerHTML = head + '<div class="ap-login"><b>구글 계정으로 로그인하고 신청해요</b><span>계정 하나당 한 번 신청할 수 있고, 나중에 같은 계정으로 들어오면 학번·이름·전화번호까지 고칠 수 있어요.</span>' +
+      (msg ? '<p class="ap-err">' + esc(msg) + "</p>" : "") +
+      '<button type="button" class="ap-gbtn" data-ap-login><svg viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>구글로 로그인하고 신청하기</button></div>';
+  }
+  async function afterLogin() {
+    E = null; mode = "key";
+    let mine = null;
+    try { mine = await DB.getMine(id, U.uid); } catch (e) { console.warn(e); }
+    if (mine) { E = mine; mode = "owner"; }
+    if (!E && F.mode === "first" && F.open) { try { count = await DB.countSlots(id); } catch (e) { count = null; } }
+    showForm(); window.scrollTo(0, 0);
   }
   // [내 응답 고치기] → 학번·전화번호로 찾기
   function showFind(msg) {
@@ -112,7 +166,13 @@
       showForm(); window.scrollTo(0, 0);
     });
   }
-  document.addEventListener("click", function (e) {
+  document.addEventListener("click", async function (e) {
+    if (e.target.closest("[data-ap-login]")) {
+      const b = e.target.closest("[data-ap-login]"); b.disabled = true;
+      try { await DB.signIn(); } catch (er) { b.disabled = false; showLogin("로그인하지 못했어요. 다시 눌러 주세요. (" + ((er && (er.code || er.message)) || er) + ")"); }
+      return;
+    }
+    if (e.target.closest("[data-ap-logout]")) { try { await DB.signOut(); } catch (er) { /* 무시 */ } U = null; E = null; showLogin(); return; }
     if (e.target.closest("[data-ap-find]")) { E = null; editKey = ""; clearUrlKey(); showFind(); window.scrollTo(0, 0); return; }
     if (e.target.closest("[data-ap-new]")) { E = null; editKey = ""; clearUrlKey(); forget(); showForm(); window.scrollTo(0, 0); return; }
     if (e.target.closest("[data-ap-back2]")) { showForm(); return; }
@@ -131,6 +191,17 @@
     try { F = await DB.get("forms", id); } catch (e) { F = null; }
     if (!F) return fail("없는 신청 페이지예요", "학생회가 보낸 링크를 다시 확인해 주세요.");
     document.title = (F.title || "행사 신청") + " · 생명과학부 학생회";
+    if (LOGIN()) {
+      // 로그인 상태가 바뀔 때마다 (팝업 로그인 · 다른 계정) 다시 그림
+      let first = true;
+      DB.onAuth(function (u) {
+        U = u;
+        if (!U) showLogin();
+        else afterLogin();
+        first = false;
+      });
+      return;
+    }
     if (editKey) {
       if (!F.open) return fail("지금은 고칠 수 없어요", "신청이 마감돼서 응답을 고칠 수 없어요. 고칠 게 있으면 학생회에 말해 주세요.");
       if (!canEdit()) return fail("이 신청은 고칠 수 없어요", "고칠 게 있으면 학생회에 말해 주세요.");

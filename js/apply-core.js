@@ -235,6 +235,7 @@
         '<div>입금자명은 꼭 이렇게 적어 주세요</div><div class="ap-copy"><b>' + esc(dn) + '</b><button type="button" data-copy="' + esc(dn) + '">복사</button></div>' +
         '<div class="ap-hint">입학연도 2자리 + 학번 뒤 3자리 + 이름</div></div>' : "") +
       // 수정 링크 (제출할 때 받은 열쇠로 신청 받는 동안 고칠 수 있음)
+      (opts.loginHint ? '<p class="ap-hint ap-c">고칠 게 생기면 이 링크로 다시 들어와 <b>같은 구글 계정</b>으로 로그인하면 돼요. (신청을 받는 동안만)</p>' : "") +
       (opts.editHint ? '<p class="ap-hint ap-c">고칠 게 생기면 이 신청 페이지 맨 위 <b>[내 응답 고치기]</b>에서 학번·전화번호를 넣으면 돼요. (신청을 받는 동안만)</p>' : "") +
       '<p class="ap-hint ap-c">이 화면을 캡처해 두면 좋아요.' + (opts.preview || ed ? "" : " 같은 학번으로는 한 번만 신청할 수 있어요.") + "</p>" +
       (opts.preview ? '<button type="button" class="ap-link" data-ap-back>처음 화면으로</button>' : "");

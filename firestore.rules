@@ -265,7 +265,11 @@ service cloud.firestore {
       match /responses/{sid} {
         allow create: if form().get('open', false) == true
           && sid.matches('^[0-9]{10}$')
-          && request.resource.data.keys().hasOnly(['sid', 'name', 'depositName', 'answers', 'at', 'paid', 'attended', 'slotId', 'editKey'])
+          && request.resource.data.keys().hasOnly(['sid', 'name', 'depositName', 'answers', 'at', 'paid', 'attended', 'slotId', 'editKey', 'ownerUid'])
+          // 구글 로그인 양식: 로그인한 본인 계정으로만, 계정 하나당 한 번(mine/계정)
+          && (form().get('login', false) != true || (signedIn() && request.resource.data.get('ownerUid', '') == request.auth.uid
+              && getAfter(/databases/$(database)/documents/forms/$(fid)/mine/$(request.auth.uid)).data.sid == sid))
+          && (!('ownerUid' in request.resource.data) || (signedIn() && request.resource.data.ownerUid == request.auth.uid))
           && (!('editKey' in request.resource.data) || (request.resource.data.editKey is string && request.resource.data.editKey.size() >= 20 && request.resource.data.editKey.size() <= 64))
           && request.resource.data.sid == sid
           && request.resource.data.at == request.time
@@ -274,6 +278,8 @@ service cloud.firestore {
           && request.resource.data.depositName is string && request.resource.data.depositName.size() <= 40
           && request.resource.data.answers is map && request.resource.data.answers.size() <= 40;
         allow read, delete: if formViewer(form());
+        // 구글 로그인 양식: 본인 응답은 본인이 볼 수 있음
+        allow get: if signedIn() && resource.data.get('ownerUid', '') == request.auth.uid;
         // 출석 체크는 명단을 보는 사람 누구나, 입금·회비 납부 여부는 재무국만
         allow update: if formViewer(form()) && (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended', 'attendedAt'])
@@ -282,6 +288,15 @@ service cloud.firestore {
         // 예전 응답도 고칠 수 있게: 양식을 고치는 사람이 수정 열쇠(editKey)만 넣어 줄 수 있음
           || (formEditor(form()) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['editKey'])
             && request.resource.data.editKey is string && request.resource.data.editKey.size() >= 20 && request.resource.data.editKey.size() <= 64)
+        // 구글 로그인 양식: 본인이 학번·이름·전화번호·답까지 고칠 수 있음 (입금·출석·제출 시각은 그대로)
+          || (signedIn() && resource.data.get('ownerUid', '') == request.auth.uid
+            && form().get('open', false) == true && form().get('allowEdit', true) != false
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sid', 'name', 'depositName', 'answers', 'editedAt'])
+            && request.resource.data.editedAt == request.time
+            && request.resource.data.sid is string && request.resource.data.sid.matches('^[0-9]{10}$')
+            && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 30
+            && request.resource.data.depositName is string && request.resource.data.depositName.size() <= 40
+            && request.resource.data.answers is map && request.resource.data.answers.size() <= 40)
         // 학생이 자기 응답 고치기 (로그인 없음): 제출할 때 받은 '수정 링크'(edits/열쇠)를 같은 순간에 함께 고쳐야만 됨
         //   → 열쇠를 아는 사람(본인)만 고칠 수 있음. 입금·출석·학번·제출 시각은 못 바꿈
           || (form().get('open', false) == true && form().get('allowEdit', true) != false
@@ -292,6 +307,14 @@ service cloud.firestore {
             && request.resource.data.depositName is string && request.resource.data.depositName.size() <= 40
             && request.resource.data.answers is map && request.resource.data.answers.size() <= 40
             && getAfter(/databases/$(database)/documents/forms/$(fid)/edits/$(resource.data.editKey)).data.touchedAt == request.time);
+      }
+      // 구글 로그인 양식: 계정별 '내가 낸 응답' 표시 (문서 번호 = 구글 계정)
+      match /mine/{uid} {
+        allow get: if signedIn() && request.auth.uid == uid;
+        allow list, delete: if formViewer(form());
+        allow create: if signedIn() && request.auth.uid == uid && form().get('open', false) == true
+          && request.resource.data.keys().hasOnly(['sid', 'at']) && request.resource.data.at == request.time
+          && getAfter(/databases/$(database)/documents/forms/$(fid)/responses/$(request.resource.data.sid)).data.get('ownerUid', '') == uid;
       }
       // 응답 수정용 사본 (문서 번호 = 수정 링크의 열쇠, 길고 무작위라 본인만 앎)
       //   열쇠를 아는 사람만 한 개씩 읽을 수 있음(목록 보기는 명단 보는 사람만)

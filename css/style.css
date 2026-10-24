@@ -1328,3 +1328,15 @@ input.ap-locked { background: var(--bg); color: var(--muted); }
 .ap-eb-acts { display: inline-flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .ap-editbar.soft .ap-eb-acts { margin-top: 0; }
 .ap-findbtn.sub { font-weight: 600; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; font-size: 12.5px; }
+
+/* 구글 로그인 양식 */
+.ap-login { display: grid; gap: 10px; padding: 20px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); text-align: center; }
+.ap-login > b { font-size: 16px; }
+.ap-login > span { color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+.ap-login .ap-copy { text-align: left; }
+.ap-login .ap-url { font-size: 12px; word-break: break-all; color: var(--muted); }
+.ap-login .ap-submit { display: block; text-decoration: none; }
+.ap-gbtn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 13px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: #1f1f1f; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.ap-gbtn:disabled { opacity: .6; cursor: default; }
+.ap-who small { color: var(--muted); font-weight: 400; margin-left: 4px; }
+.ap-c { text-align: center; }
