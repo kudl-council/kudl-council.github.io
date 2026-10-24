@@ -44,13 +44,14 @@
       });
     },
     // quick: 신청서용 — 구글 계정이 하나만 로그인돼 있으면 고르는 화면 없이 바로 넘어감
-    async signIn(quick) {
+    // noRedirect: 아이폰·사파리는 '페이지 이동' 방식 로그인이 돌아와도 풀려 버림(사파리 추적 방지) → 창(팝업) 방식만
+    async signIn(quick, noRedirect) {
       const p = new firebase.auth.GoogleAuthProvider();
       if (!quick) p.setCustomParameters({ prompt: "select_account" });
       try {
         await this.auth.signInWithPopup(p);
       } catch (e) {
-        if (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment") {
+        if (!noRedirect && (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment")) {
           await this.auth.signInWithRedirect(p);
         } else if (e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") {
           throw e;

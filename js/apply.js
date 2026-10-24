@@ -159,6 +159,8 @@
   // 카카오톡·인스타 등 앱 안 브라우저에서는 구글 로그인이 막혀 있음 → 바깥 브라우저로
   const UA = navigator.userAgent || "";
   const IN_KAKAO = /KAKAOTALK/i.test(UA);
+  // 아이폰·아이패드(모든 브라우저)와 맥 사파리: 구글 원탭이 '계속하기'만 반복되는 문제가 있어 원탭을 안 쓰고 기본 로그인 창만 씀
+  const APPLE_WEBKIT = /iP(hone|ad|od)/i.test(UA) || (/Macintosh/i.test(UA) && navigator.maxTouchPoints > 1) || (/Safari/i.test(UA) && !/Chrome|Chromium|CriOS|Edg|OPR|Android/i.test(UA));
   const IN_APP = IN_KAKAO || /Instagram|FBAN|FBAV|Line\/|NAVER\(inapp|everytime|DaumApps|; wv\)/i.test(UA);
   function showLogin(msg) {
     const head = '<div class="ap-brand"><span class="ap-mark">DLS</span>고려대학교 생명과학부 학생회</div><div class="ap-ev"><h1>' + esc(F.title || "행사 신청") + "</h1>" + (F.desc ? "<p>" + esc(F.desc) + "</p>" : "") + "</div>";
@@ -181,7 +183,7 @@
   let gsiReady = null;
   function oneTap() {
     const cid = (window.SITE_CONFIG || {}).googleClientId;
-    if (!cid || DB.mode !== "firebase") return;
+    if (!cid || DB.mode !== "firebase" || APPLE_WEBKIT) return;
     if (!gsiReady) gsiReady = new Promise((ok, no) => { const s = document.createElement("script"); s.src = "https://accounts.google.com/gsi/client"; s.async = true; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
     gsiReady.then(() => {
       const g = window.google && google.accounts && google.accounts.id; if (!g) return;
@@ -239,7 +241,11 @@
   document.addEventListener("click", async function (e) {
     if (e.target.closest("[data-ap-login]")) {
       const b = e.target.closest("[data-ap-login]"); b.disabled = true;
-      try { await DB.signIn(true); } catch (er) { b.disabled = false; showLogin("로그인하지 못했어요. 다시 눌러 주세요. (" + ((er && (er.code || er.message)) || er) + ")"); }
+      try { await DB.signIn(true, APPLE_WEBKIT); } catch (er) {
+        b.disabled = false;
+        const c = String((er && (er.code || er.message)) || er);
+        showLogin(/popup-blocked/.test(c) ? "로그인 창이 막혔어요. 버튼을 한 번 더 눌러 주세요. (계속 막히면 설정 → Safari → ‘팝업 차단’을 잠깐 꺼 주세요)" : "로그인하지 못했어요. 다시 눌러 주세요. (" + c + ")");
+      }
       return;
     }
     if (e.target.closest("[data-ap-logout]")) { try { await DB.signOut(); } catch (er) { /* 무시 */ } U = null; E = null; showLogin(); return; }
