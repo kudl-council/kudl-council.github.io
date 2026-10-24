@@ -80,6 +80,16 @@
       await batch.commit();
       return slotId;
     },
+    // 예전 응답에 수정 열쇠 넣기 (양식 담당자가 명단을 열 때 자동으로) — 예전 열쇠 사본은 지움
+    async prepEdit(formId, sid, key, oldKey, data) {
+      const f = this.fs.collection("forms").doc(formId);
+      const ts = firebase.firestore.FieldValue.serverTimestamp();
+      const batch = this.fs.batch();
+      batch.update(f.collection("responses").doc(sid), { editKey: key });
+      batch.set(f.collection("edits").doc(key), { sid: sid, name: data.name, answers: data.answers, touchedAt: ts });
+      if (oldKey && oldKey !== key) batch.delete(f.collection("edits").doc(oldKey));
+      await batch.commit();
+    },
     // 학생이 수정 링크로 자기 응답 고치기: 사본과 응답을 같은 순간에 함께 고침 (보안 규칙이 이걸로 본인인지 확인)
     async editResponse(formId, key, sid, patch) {
       const f = this.fs.collection("forms").doc(formId);
@@ -333,6 +343,11 @@
       await this.set(path, sid, Object.assign({}, data, withSlot ? { slotId: slotId } : {}, { at: at }));
       if (data.editKey) await this.set("forms/" + formId + "/edits", data.editKey, { sid: sid, name: data.name, answers: data.answers, touchedAt: at });
       return slotId;
+    },
+    async prepEdit(formId, sid, key, oldKey, data) {
+      await this.update("forms/" + formId + "/responses", sid, { editKey: key });
+      await this.set("forms/" + formId + "/edits", key, { sid: sid, name: data.name, answers: data.answers, touchedAt: Date.now() });
+      if (oldKey && oldKey !== key) await this.remove("forms/" + formId + "/edits", oldKey);
     },
     async editResponse(formId, key, sid, patch) {
       const f = (this.store.forms || {})[formId], e = (this.store["forms/" + formId + "/edits"] || {})[key];

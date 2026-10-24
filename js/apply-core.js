@@ -266,5 +266,11 @@
       else els[0].value = v;
     });
   }
-  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, dueText, feeText, PART, has2, partOf, partFee, fillAnswers };
+  // 응답 수정 열쇠 = SHA-256(양식 번호 + 학번 + 전화번호) — 신청 페이지와 사이트(예전 응답 준비)가 똑같이 계산
+  async function editKeyFor(formId, sid, phone) {
+    const raw = "kudl-council|" + formId + "|" + String(sid || "").replace(/\D/g, "") + "|" + String(phone || "").replace(/\D/g, "");
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+    return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, dueText, feeText, PART, has2, partOf, partFee, fillAnswers, editKeyFor };
 })();

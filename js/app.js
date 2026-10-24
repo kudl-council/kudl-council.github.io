@@ -1706,6 +1706,24 @@
       }
     }
     if (f && canSeeRoster(f) && fm.watching !== pid) startWatch(pid);
+    if (f && fm.resp) prepEdits(pid, fm.form || f, fm.resp);
+  }
+  // 학번+전화번호로 고치기 전에 받은 예전 응답: 양식 담당자가 명단을 열면 뒤에서 수정 열쇠를 넣어 줌 (한 번만)
+  async function prepEdits(pid, f, list) {
+    if (!f.open || f.allowEdit === false || !canEditForm(f) || !(window.crypto && crypto.subtle)) return;
+    S.fm.prepped = S.fm.prepped || {};
+    if (S.fm.prepped[pid]) return;
+    S.fm.prepped[pid] = true;
+    const pq = AP.qOf(f, "phone");
+    let n = 0;
+    for (const r of list) {
+      const phone = pq ? (r.answers || {})[pq.id] : "";
+      if (!phone) continue;
+      const key = await AP.editKeyFor(pid, r.sid || r.id, phone);
+      if (r.editKey === key) continue;
+      try { await DB.prepEdit(pid, r.id, key, r.editKey, { name: r.name, answers: r.answers || {} }); r.editKey = key; n++; } catch (e) { console.warn("수정 열쇠 넣기 실패", r.id, e); }
+    }
+    if (n) console.info("예전 응답 " + n + "개를 학번+전화번호로 고칠 수 있게 했어요.");
   }
   // 명단을 보고 있는 동안 새 응답·입금·출석 체크가 바로바로 반영되게 (새로고침 필요 없음)
   function startWatch(pid) {

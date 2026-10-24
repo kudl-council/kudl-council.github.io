@@ -279,6 +279,9 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended', 'attendedAt'])
           || ((isOwner() || (approved() && hasProfile() && me().dept.matches('.*재무.*')))
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paid', 'paidAt', 'duesUnpaid', 'attended', 'attendedAt'])))
+        // 예전 응답도 고칠 수 있게: 양식을 고치는 사람이 수정 열쇠(editKey)만 넣어 줄 수 있음
+          || (formEditor(form()) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['editKey'])
+            && request.resource.data.editKey is string && request.resource.data.editKey.size() >= 20 && request.resource.data.editKey.size() <= 64)
         // 학생이 자기 응답 고치기 (로그인 없음): 제출할 때 받은 '수정 링크'(edits/열쇠)를 같은 순간에 함께 고쳐야만 됨
         //   → 열쇠를 아는 사람(본인)만 고칠 수 있음. 입금·출석·학번·제출 시각은 못 바꿈
           || (form().get('open', false) == true && form().get('allowEdit', true) != false

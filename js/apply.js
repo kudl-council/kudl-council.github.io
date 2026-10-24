@@ -12,22 +12,22 @@
   // 이 기기에서 낸 응답의 수정 열쇠 기억 (다시 들어오면 [내 응답 고치기] 안내)
   const memKey = () => "apEdit:" + id;
   const remember = (k) => { try { localStorage.setItem(memKey(), k); } catch (e) { /* 무시 */ } };
+  const forget = () => { try { localStorage.removeItem(memKey()); } catch (e) { /* 무시 */ } };
+  // 주소창의 &e=… 지우기 (다른 학번으로 찾거나 새로 신청할 때)
+  const clearUrlKey = () => { try { history.replaceState(null, "", location.pathname + "?f=" + encodeURIComponent(id)); } catch (e) { /* 무시 */ } };
   const recall = () => { try { return localStorage.getItem(memKey()) || ""; } catch (e) { return ""; } };
   // 수정 열쇠 = 학번 + 전화번호로 만든 암호(SHA-256). 링크를 따로 받아 둘 필요 없이, 학번·전화번호를 다시 넣으면 내 응답을 찾음
   const canHash = () => !!(window.crypto && window.crypto.subtle && window.TextEncoder);
-  async function keyFor(sid, phone) {
-    const raw = "kudl-council|" + id + "|" + String(sid || "").replace(/\D/g, "") + "|" + String(phone || "").replace(/\D/g, "");
-    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
-    return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
-  }
+  const keyFor = (sid, phone) => A.editKeyFor(id, sid, phone);
   const phoneOf = (answers) => { const q = A.qOf(F, "phone"); return q ? (answers || {})[q.id] : ""; };
 
   function showForm() {
     const mine = !E && canEdit() && recall();
     box.innerHTML = (DB.mode === "demo" ? '<div class="demobar" style="border-radius:10px">데모 모드 — 제출해도 실제로 저장되지 않아요.</div>' : "") +
-      (E ? '<div class="ap-editbar"><b>제출한 응답을 고치는 중이에요</b><span>학번·전화번호는 바꿀 수 없어요. 고친 뒤 [수정하기]를 눌러 주세요.</span></div>' : "") +
+      (E ? '<div class="ap-editbar"><b>제출한 응답을 고치는 중이에요</b><span>학번·전화번호는 바꿀 수 없어요. 고친 뒤 [수정하기]를 눌러 주세요.</span>' +
+        '<span class="ap-eb-acts"><button type="button" class="ap-findbtn sub" data-ap-find>다른 학번으로 찾기</button><button type="button" class="ap-findbtn sub" data-ap-new>새로 신청하기</button></span></div>' : "") +
       (!E && canEdit() && F.open ? '<div class="ap-editbar soft"><span>' + (mine ? "이 기기에서 이미 신청했어요." : "이미 신청했나요?") + "</span>" +
-        (mine ? '<a href="' + esc(editUrl(mine)) + '">내 응답 고치기 →</a>' : '<button type="button" class="ap-findbtn" data-ap-find>내 응답 고치기 →</button>') + "</div>" : "") +
+        (mine ? '<span class="ap-eb-acts"><a href="' + esc(editUrl(mine)) + '">내 응답 고치기 →</a><button type="button" class="ap-findbtn sub" data-ap-find>다른 학번으로 찾기</button></span>' : '<button type="button" class="ap-findbtn" data-ap-find>내 응답 고치기 →</button>') + "</div>" : "") +
       A.formHTML(F, { count: E ? null : count });
     const form = box.querySelector("form");
     if (!form) return;
@@ -107,11 +107,14 @@
       let found = null;
       try { found = await DB.get("forms/" + id + "/edits", key); } catch (er) { found = null; }
       if (!found) return showFind("찾지 못했어요. 신청할 때와 같은 학번·전화번호인지 확인해 주세요. 그래도 안 되면 학생회에 말해 주세요.");
-      E = found; editKey = key; remember(key); showForm(); window.scrollTo(0, 0);
+      E = found; editKey = key; remember(key);
+      try { history.replaceState(null, "", editUrl(key)); } catch (er) { /* 무시 */ }
+      showForm(); window.scrollTo(0, 0);
     });
   }
   document.addEventListener("click", function (e) {
-    if (e.target.closest("[data-ap-find]")) { showFind(); window.scrollTo(0, 0); return; }
+    if (e.target.closest("[data-ap-find]")) { E = null; editKey = ""; clearUrlKey(); showFind(); window.scrollTo(0, 0); return; }
+    if (e.target.closest("[data-ap-new]")) { E = null; editKey = ""; clearUrlKey(); forget(); showForm(); window.scrollTo(0, 0); return; }
     if (e.target.closest("[data-ap-back2]")) { showForm(); return; }
     const b = e.target.closest("[data-copy]");
     if (!b) return;
@@ -132,7 +135,7 @@
       if (!F.open) return fail("지금은 고칠 수 없어요", "신청이 마감돼서 응답을 고칠 수 없어요. 고칠 게 있으면 학생회에 말해 주세요.");
       if (!canEdit()) return fail("이 신청은 고칠 수 없어요", "고칠 게 있으면 학생회에 말해 주세요.");
       try { E = await DB.get("forms/" + id + "/edits", editKey); } catch (e) { E = null; }
-      if (!E) return fail("수정 링크가 맞지 않아요", "신청 완료 화면에서 받은 링크를 다시 확인해 주세요. 이미 명단이 정리됐을 수도 있어요.");
+      if (!E) { forget(); clearUrlKey(); editKey = ""; showFind("저장된 응답을 찾지 못했어요. 학번·전화번호로 다시 찾아 주세요."); return; }
       remember(editKey);
     }
     // 선착순이면 지금까지 몇 명 신청했는지 보여 줌
