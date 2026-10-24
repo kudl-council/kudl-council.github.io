@@ -75,8 +75,19 @@
       let slotId = "";
       if (withSlot) { const sref = f.collection("slots").doc(); slotId = sref.id; batch.set(sref, { at: ts }); }
       batch.set(f.collection("responses").doc(sid), Object.assign({}, data, withSlot ? { slotId: slotId } : {}, { at: ts }));
+      // 수정 링크용 사본 (열쇠 = data.editKey)
+      if (data.editKey) batch.set(f.collection("edits").doc(data.editKey), { sid: sid, name: data.name, answers: data.answers, touchedAt: ts });
       await batch.commit();
       return slotId;
+    },
+    // 학생이 수정 링크로 자기 응답 고치기: 사본과 응답을 같은 순간에 함께 고침 (보안 규칙이 이걸로 본인인지 확인)
+    async editResponse(formId, key, sid, patch) {
+      const f = this.fs.collection("forms").doc(formId);
+      const ts = firebase.firestore.FieldValue.serverTimestamp();
+      const batch = this.fs.batch();
+      batch.update(f.collection("edits").doc(key), { name: patch.name, answers: patch.answers, touchedAt: ts });
+      batch.update(f.collection("responses").doc(sid), Object.assign({}, patch, { editedAt: ts }));
+      await batch.commit();
     },
     // 순서표 개수 세기 (서버에서 숫자만 세서 보내 줌 → 사람이 많아도 가벼움)
     async countSlots(formId, beforeOrAt) {
@@ -320,7 +331,15 @@
       let slotId = "";
       if (withSlot) { slotId = await this.add("forms/" + formId + "/slots", { at: at }); }
       await this.set(path, sid, Object.assign({}, data, withSlot ? { slotId: slotId } : {}, { at: at }));
+      if (data.editKey) await this.set("forms/" + formId + "/edits", data.editKey, { sid: sid, name: data.name, answers: data.answers, touchedAt: at });
       return slotId;
+    },
+    async editResponse(formId, key, sid, patch) {
+      const f = (this.store.forms || {})[formId], e = (this.store["forms/" + formId + "/edits"] || {})[key];
+      if (!f || !f.open || f.allowEdit === false || !e || e.sid !== sid) { const er = new Error("permission-denied"); er.code = "permission-denied"; throw er; }
+      const at = Date.now();
+      await this.update("forms/" + formId + "/edits", key, { name: patch.name, answers: patch.answers, touchedAt: at });
+      await this.update("forms/" + formId + "/responses", sid, Object.assign({}, patch, { editedAt: at }));
     },
     async countSlots(formId, beforeOrAt) {
       return (await this.list("forms/" + formId + "/slots")).filter((x) => !beforeOrAt || x.at <= beforeOrAt).length;

@@ -1729,8 +1729,10 @@
   }
   const curForm = () => S.fm.draft || S.fm.form;
   // 선착순 순서표 지우기
+  // 명단을 지울 때: 선착순 순서표 + 수정 링크용 사본도 함께 지움
   async function clearSlots(pid) {
     try { for (const x of await DB.list("forms/" + pid + "/slots")) await DB.remove("forms/" + pid + "/slots", x.id); } catch (e) { console.warn(e); }
+    try { for (const x of await DB.list("forms/" + pid + "/edits")) await DB.remove("forms/" + pid + "/edits", x.id); } catch (e) { console.warn(e); }
   }
 
   PAGES.form = async function () {
@@ -1964,7 +1966,7 @@
     const rows = list.map((r) => {
       const going = AP.isGoing(f, r), active = going && !r.wait, sid = esc(r.id);
       return '<tr class="' + (active ? "" : "off") + '">' +
-        '<td class="num">' + (r.no ? r.no : "–") + '</td><td class="num">' + esc(AP.stampText(r.at)) + "</td>" +
+        '<td class="num">' + (r.no ? r.no : "–") + '</td><td class="num">' + esc(AP.stampText(r.at)) + (r.editedAt ? '<small class="fm-edited" title="학생이 수정 링크로 고친 시각">수정 ' + esc(AP.stampText(r.editedAt)) + "</small>" : "") + "</td>" +
         qs.map((x) => '<td class="' + (x.type === "phone" || x.type === "sid" || x.type === "name" ? "num" : "ans") + '">' + cell(x, r) + "</td>").join("") +
         (p2 ? "<td>" + (AP.partOf(f, r) ? '<span class="fm-pill' + (/2차/.test(AP.partOf(f, r)) ? " ok" : "") + '">' + esc(AP.partOf(f, r)) + "</span>" : "") + "</td>" : "") +
         (f.mode === "first" ? "<td>" + (!going ? "" : r.wait ? '<span class="fm-pill warn">대기 ' + r.waitNo + "</span>" : '<span class="fm-pill ok">정원 안</span>') + "</td>" : "") +
@@ -2017,6 +2019,8 @@
       inp("title", "신청서 제목") + inp("desc", "안내문 (일시·장소 등)", { area: true }) +
       sel("mode", "모집 방식", [["normal", "일반 (기간 안에 누구나)"], ["first", "선착순 (정원 넘으면 대기)"]], { half: true }) +
       inp("cap", "정원", { half: true, num: true, id: "fmCapWrap", hidden: f.mode !== "first" }) +
+      '<div class="field"><label class="fm-chk" style="margin:4px 0 0"><input type="checkbox" data-act="fmAllowEdit"' + (f.allowEdit !== false ? " checked" : "") + "> 제출한 뒤에도 응답을 고칠 수 있어요</label>" +
+        '<small class="help">신청 완료 화면에 본인만 쓰는 ‘수정 링크’가 나와요. 신청을 받는 동안만 고칠 수 있고, 입금·출석 기록은 그대로예요.</small></div>' +
       // 참가비: 받는 경우에만 펼침. 미납부자·2차 금액은 '금액이 사람마다 달라요' 안에 (비워 두면 없음)
       '<div class="field"><label class="fm-chk" style="margin:4px 0 0"><input type="checkbox" data-act="fmPay"' + (f.payOn ? " checked" : "") + "> 참가비를 받아요</label>" +
         '<small class="help">준비위원 모집, 가수요조사처럼 돈을 안 받는 신청이면 체크하지 마세요</small></div>' +
@@ -2336,6 +2340,7 @@
       Object.assign(r, patch); refreshRoster();
       if (v) toast(r.name + " 출석 확인 (" + patch.attendedAt + ")");
     },
+    fmAllowEdit(el) { const f = S.fm.draft; if (!f) return; f.allowEdit = el.checked; markDirty(); },
     fmPay(el) {
       const f = S.fm.draft; if (!f) return;
       f.payOn = el.checked;
@@ -2388,6 +2393,7 @@
       if (!confirm(r.name + " (" + r.sid + ") 응답을 지울까요? 같은 학번으로 다시 신청할 수 있게 돼요.")) return;
       await DB.remove(respPath(S.fm.pid), r.id);
       if (r.slotId) { try { await DB.remove("forms/" + S.fm.pid + "/slots", r.slotId); } catch (e) { console.warn(e); } }
+      if (r.editKey) { try { await DB.remove("forms/" + S.fm.pid + "/edits", r.editKey); } catch (e) { console.warn(e); } }
       S.fm.resp = ordered(S.fm.form, S.fm.resp.filter((x) => x !== r)); refreshRoster(); toast("지웠어요.");
     },
     fmBank() {

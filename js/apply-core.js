@@ -222,9 +222,10 @@
     opts = opts || {};
     const going = isGoing(f, r), dn = depositName(r.sid, r.name);
     const pay = going && anyFee(f);
-    return headHTML(f, true) + '<div class="ap-done"><span class="ap-pill ok">' + (going ? "신청 완료" : "응답 제출") + "</span>" +
-      "<div>" + esc(r.name) + "님, " + (going ? "신청이 접수됐어요." : "응답해 주셔서 고마워요.") + "</div>" +
-      (r.at ? '<div class="ap-time">접수 시각 ' + esc(stampText(r.at)) + "</div>" : "") +
+    const ed = !!opts.edited;
+    return headHTML(f, true) + '<div class="ap-done"><span class="ap-pill ok">' + (ed ? "수정 완료" : going ? "신청 완료" : "응답 제출") + "</span>" +
+      "<div>" + esc(r.name) + "님, " + (ed ? "응답을 고쳤어요." : going ? "신청이 접수됐어요." : "응답해 주셔서 고마워요.") + "</div>" +
+      (ed ? '<div class="ap-time">수정 시각 ' + esc(stampText(Date.now())) + "</div>" : r.at ? '<div class="ap-time">접수 시각 ' + esc(stampText(r.at)) + "</div>" : "") +
       (f.mode === "first" && going ? (r.rank ? rankHTML(f, r.rank) : '<div class="ap-note">선착순은 접수 시각 순서로 정해져요. 정원 안인지는 학생회가 따로 알려 드려요.</div>') : "") + "</div>" +
       (pay ? '<div class="ap-pay"><b>입금 안내</b><div>' + (dueText(f) ? esc(dueText(f)) + " " : "") + (has2(f) && partOf(f, r) ? esc(partOf(f, r)) + " 참여로 " : "") +
         "<b>" + won(feeOf(f, Object.assign({}, r, { duesUnpaid: false }))) + "</b>을 보내 주세요." +
@@ -233,7 +234,9 @@
         (f.account ? '<div class="ap-copy"><span>' + esc(f.account) + '</span><button type="button" data-copy="' + esc(String(f.account).replace(/[^\d-]/g, "")) + '">복사</button></div>' : "") +
         '<div>입금자명은 꼭 이렇게 적어 주세요</div><div class="ap-copy"><b>' + esc(dn) + '</b><button type="button" data-copy="' + esc(dn) + '">복사</button></div>' +
         '<div class="ap-hint">입학연도 2자리 + 학번 뒤 3자리 + 이름</div></div>' : "") +
-      '<p class="ap-hint ap-c">이 화면을 캡처해 두면 좋아요.' + (opts.preview ? "" : " 같은 학번으로는 한 번만 신청할 수 있어요.") + "</p>" +
+      // 수정 링크 (제출할 때 받은 열쇠로 신청 받는 동안 고칠 수 있음)
+      (opts.editHint ? '<p class="ap-hint ap-c">고칠 게 생기면 이 신청 페이지 맨 위 <b>[내 응답 고치기]</b>에서 학번·전화번호를 넣으면 돼요. (신청을 받는 동안만)</p>' : "") +
+      '<p class="ap-hint ap-c">이 화면을 캡처해 두면 좋아요.' + (opts.preview || ed ? "" : " 같은 학번으로는 한 번만 신청할 수 있어요.") + "</p>" +
       (opts.preview ? '<button type="button" class="ap-link" data-ap-back>처음 화면으로</button>' : "");
   }
 
@@ -251,5 +254,17 @@
     el.value = fmtPhone(el.value);
     if (atEnd) el.setSelectionRange(el.value.length, el.value.length);
   });
-  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, dueText, feeText, PART, has2, partOf, partFee };
+  // 수정할 때: 예전에 낸 답을 양식에 채워 넣기
+  function fillAnswers(f, formEl, answers) {
+    answers = answers || {};
+    (f.qs || []).concat(has2(f) ? [{ id: PART, type: "choice" }] : []).forEach((q) => {
+      const v = answers[q.id], els = Array.from(formEl.querySelectorAll('[name="a_' + q.id + '"]'));
+      if (v == null || !els.length) return;
+      if (q.type === "multi") els.forEach((x) => (x.checked = Array.isArray(v) && v.indexOf(x.value) >= 0));
+      else if (q.type === "agree") els[0].checked = !!v;
+      else if (els[0].type === "radio") els.forEach((x) => (x.checked = x.value === v));
+      else els[0].value = v;
+    });
+  }
+  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, dueText, feeText, PART, has2, partOf, partFee, fillAnswers };
 })();
