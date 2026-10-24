@@ -254,6 +254,7 @@ service cloud.firestore {
       match /slots/{slotId} {
         allow read: if true;
         allow create: if form().get('open', false) == true
+          && request.time.toMillis() >= form().get('startMs', 0)
           && request.resource.data.keys().hasOnly(['at'])
           && request.resource.data.at == request.time;
         allow delete: if formViewer(form());
@@ -264,6 +265,8 @@ service cloud.firestore {
       //   보기·입금·출석 체크·지우기: formViewer (응답 내용 자체는 못 고침)
       match /responses/{sid} {
         allow create: if form().get('open', false) == true
+          // 제출 시작 시각(선착순 6시 정각 등) 전에는 못 냄 — 서버 시계 기준
+          && request.time.toMillis() >= form().get('startMs', 0)
           && sid.matches('^[0-9]{10}$')
           && request.resource.data.keys().hasOnly(['sid', 'name', 'depositName', 'answers', 'at', 'paid', 'attended', 'slotId', 'editKey', 'ownerUid'])
           // 구글 로그인 양식: 로그인한 본인 계정으로만, 계정 하나당 한 번(mine/계정)
@@ -322,12 +325,14 @@ service cloud.firestore {
         allow get: if true;
         allow list, delete: if formViewer(form());
         allow create: if form().get('open', false) == true
-          && request.resource.data.keys().hasOnly(['sid', 'name', 'answers', 'touchedAt'])
+          && request.resource.data.keys().hasOnly(['sid', 'name', 'answers', 'touchedAt', 'slotId'])
           && request.resource.data.touchedAt == request.time
-          && getAfter(/databases/$(database)/documents/forms/$(fid)/responses/$(request.resource.data.sid)).data.editKey == key;
+          && getAfter(/databases/$(database)/documents/forms/$(fid)/responses/$(request.resource.data.sid)).data.editKey == key
+          && request.resource.data.get('slotId', '') == getAfter(/databases/$(database)/documents/forms/$(fid)/responses/$(request.resource.data.sid)).data.get('slotId', '');
         allow update: if form().get('open', false) == true && form().get('allowEdit', true) != false
-          && request.resource.data.keys().hasOnly(['sid', 'name', 'answers', 'touchedAt'])
+          && request.resource.data.keys().hasOnly(['sid', 'name', 'answers', 'touchedAt', 'slotId'])
           && request.resource.data.sid == resource.data.sid
+          && request.resource.data.get('slotId', '') == resource.data.get('slotId', '')
           && request.resource.data.touchedAt == request.time
           && getAfter(/databases/$(database)/documents/forms/$(fid)/responses/$(resource.data.sid)).data.editedAt == request.time;
       }

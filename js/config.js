@@ -18,5 +18,10 @@ window.SITE_CONFIG = {
     authDomain: "kudl-council.firebaseapp.com",
     projectId: "kudl-council",
     appId: "1:263745328241:web:67d60ad34f12b14463f7d0"
-  }
+  },
+
+  // 신청서 '자동 구글 로그인'용 (선택). 비워 두면 [구글로 로그인] 버튼만 나와요.
+  // Firebase 콘솔 → Authentication → 로그인 방법 → Google → '웹 SDK 구성'의 '웹 클라이언트 ID'를 붙여넣기
+  // 예: "263745328241-xxxxxxxx.apps.googleusercontent.com"
+  googleClientId: "263745328241-ie7bc00rbicmnem0dsui0epah17mr3i7.apps.googleusercontent.com"
 };

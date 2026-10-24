@@ -1340,3 +1340,15 @@ input.ap-locked { background: var(--bg); color: var(--muted); }
 .ap-gbtn:disabled { opacity: .6; cursor: default; }
 .ap-who small { color: var(--muted); font-weight: 400; margin-left: 4px; }
 .ap-c { text-align: center; }
+
+/* 제출 시작 시각 (선착순 정각 오픈) · 내 순서 */
+.ap-startnote { padding: 11px 14px; border-radius: 10px; background: var(--accent-soft); color: var(--ink); font-size: 13.5px; line-height: 1.5; text-align: center; }
+.ap-startnote b { color: var(--accent); }
+.ap-submit.ap-wait:disabled { opacity: 1; background: var(--muted); font-variant-numeric: tabular-nums; }
+.ap-myrank { margin-bottom: 12px; }
+.ap-myrank .ap-rank:not(.ok):not(.wait) { border: 1px solid var(--line); background: var(--surface); }
+.ap-login a.ap-submit { display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.2; padding: 0 16px; }
+.ap-gsi { display: flex; justify-content: center; min-height: 0; }
+.ap-gsi:empty { display: none; }
+.ap-gbtn.ap-gbtn-alt { border: 0; background: none; padding: 4px; font-size: 13px; font-weight: 600; color: var(--muted); text-decoration: underline; width: auto; justify-self: center; }
+.ap-gbtn.ap-gbtn-alt svg { display: none; }

@@ -43,9 +43,10 @@
         cb(u ? { uid: u.uid, email: (u.email || "").toLowerCase(), name: u.displayName || "" } : null);
       });
     },
-    async signIn() {
+    // quick: 신청서용 — 구글 계정이 하나만 로그인돼 있으면 고르는 화면 없이 바로 넘어감
+    async signIn(quick) {
       const p = new firebase.auth.GoogleAuthProvider();
-      p.setCustomParameters({ prompt: "select_account" });
+      if (!quick) p.setCustomParameters({ prompt: "select_account" });
       try {
         await this.auth.signInWithPopup(p);
       } catch (e) {
@@ -57,6 +58,8 @@
       }
     },
     signOut() { return this.auth.signOut(); },
+    // 구글 원탭(자동 로그인)에서 받은 토큰으로 로그인
+    signInWithIdToken(tok) { return this.auth.signInWithCredential(firebase.auth.GoogleAuthProvider.credential(tok)); },
     async get(col, id) {
       const d = await this.fs.collection(col).doc(id).get();
       return d.exists ? plain(Object.assign({ id: d.id }, d.data())) : null;
@@ -76,7 +79,7 @@
       if (withSlot) { const sref = f.collection("slots").doc(); slotId = sref.id; batch.set(sref, { at: ts }); }
       batch.set(f.collection("responses").doc(sid), Object.assign({}, data, withSlot ? { slotId: slotId } : {}, { at: ts }));
       // 수정 링크용 사본 (열쇠 = data.editKey)
-      if (data.editKey) batch.set(f.collection("edits").doc(data.editKey), { sid: sid, name: data.name, answers: data.answers, touchedAt: ts });
+      if (data.editKey) batch.set(f.collection("edits").doc(data.editKey), Object.assign({ sid: sid, name: data.name, answers: data.answers, touchedAt: ts }, slotId ? { slotId: slotId } : {}));
       // 구글 로그인 양식: 이 계정이 낸 응답 표시 (계정 하나당 한 번 · 다시 들어오면 내 응답을 찾음)
       if (data.ownerUid) batch.set(f.collection("mine").doc(data.ownerUid), { sid: sid, at: ts });
       await batch.commit();
@@ -100,7 +103,7 @@
       const ts = firebase.firestore.FieldValue.serverTimestamp();
       const batch = this.fs.batch();
       batch.update(f.collection("responses").doc(sid), { editKey: key });
-      batch.set(f.collection("edits").doc(key), { sid: sid, name: data.name, answers: data.answers, touchedAt: ts });
+      batch.set(f.collection("edits").doc(key), Object.assign({ sid: sid, name: data.name, answers: data.answers, touchedAt: ts }, data.slotId ? { slotId: data.slotId } : {}));
       if (oldKey && oldKey !== key) batch.delete(f.collection("edits").doc(oldKey));
       await batch.commit();
     },
@@ -350,12 +353,12 @@
     async submitResponse(formId, sid, data, withSlot) {
       const f = (this.store.forms || {})[formId];
       const path = "forms/" + formId + "/responses";
-      if (!f || !f.open || ((this.store[path] || {})[sid])) { const e = new Error("permission-denied"); e.code = "permission-denied"; throw e; }
+      if (!f || !f.open || Date.now() < (Number(f.startMs) || 0) || ((this.store[path] || {})[sid])) { const e = new Error("permission-denied"); e.code = "permission-denied"; throw e; }
       const at = Date.now();
       let slotId = "";
       if (withSlot) { slotId = await this.add("forms/" + formId + "/slots", { at: at }); }
       await this.set(path, sid, Object.assign({}, data, withSlot ? { slotId: slotId } : {}, { at: at }));
-      if (data.editKey) await this.set("forms/" + formId + "/edits", data.editKey, { sid: sid, name: data.name, answers: data.answers, touchedAt: at });
+      if (data.editKey) await this.set("forms/" + formId + "/edits", data.editKey, Object.assign({ sid: sid, name: data.name, answers: data.answers, touchedAt: at }, slotId ? { slotId: slotId } : {}));
       if (data.ownerUid) {
         if ((this.store["forms/" + formId + "/mine"] || {})[data.ownerUid]) { const e = new Error("permission-denied"); e.code = "permission-denied"; throw e; }
         await this.set("forms/" + formId + "/mine", data.ownerUid, { sid: sid, at: at });
@@ -369,7 +372,7 @@
     async ownerEdit(formId, docId, patch) { await this.update("forms/" + formId + "/responses", docId, Object.assign({}, patch, { editedAt: Date.now() })); },
     async prepEdit(formId, sid, key, oldKey, data) {
       await this.update("forms/" + formId + "/responses", sid, { editKey: key });
-      await this.set("forms/" + formId + "/edits", key, { sid: sid, name: data.name, answers: data.answers, touchedAt: Date.now() });
+      await this.set("forms/" + formId + "/edits", key, Object.assign({ sid: sid, name: data.name, answers: data.answers, touchedAt: Date.now() }, data.slotId ? { slotId: data.slotId } : {}));
       if (oldKey && oldKey !== key) await this.remove("forms/" + formId + "/edits", oldKey);
     },
     async editResponse(formId, key, sid, patch) {

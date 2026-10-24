@@ -1748,10 +1748,11 @@
   const curForm = () => S.fm.draft || S.fm.form;
   // 선착순 순서표 지우기
   // 명단을 지울 때: 선착순 순서표 + 수정 링크용 사본도 함께 지움
+  const localDT = (ms) => { if (!ms) return ""; const d = new Date(ms), p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()); };
   function modeHelp(f) {
-    if (f.mode === "first") return "<b>선착순</b> · 로그인 없이 바로 신청해요. 한 기기에서 여러 번 낼 수 있고(학번은 한 번씩), 제출한 뒤에는 고칠 수 없어요.";
     const old = (S.fm.resp || []).some((r) => !r.ownerUid) && !(S.fm.form && S.fm.form.login);
-    return "<b>일반</b> · 구글 로그인하고 신청해요. 계정 하나당 한 번이고, 같은 계정으로 다시 들어오면 학번·이름·전화번호까지 고칠 수 있어요. 카카오톡에서 열면 크롬·사파리로 넘어가요." +
+    return (f.mode === "first" ? "<b>선착순</b> · 구글 로그인하고 신청해요. 계정 하나당 한 번이고, 다시 들어오면 <b>내 순서(확정·대기)</b>를 보고 답을 고칠 수 있어요. 고쳐도 순서는 그대로예요(참석 여부만 못 바꿔요)."
+      : "<b>일반</b> · 구글 로그인하고 신청해요. 계정 하나당 한 번이고, 같은 계정으로 다시 들어오면 학번·이름·전화번호까지 고칠 수 있어요.") + " 카카오톡에서 열면 크롬·사파리로 넘어가요." +
       (old ? '<br><span style="color:var(--accent)">이미 받은 응답은 로그인 없이 낸 거라서, 저장하면 그 사람들은 직접 고칠 수 없어요.</span>' : "");
   }
 
@@ -2045,6 +2046,9 @@
       inp("title", "신청서 제목") + inp("desc", "안내문 (일시·장소 등)", { area: true }) +
       sel("mode", "모집 방식", [["normal", "일반 (기간 안에 누구나)"], ["first", "선착순 (정원 넘으면 대기)"]], { half: true }) +
       inp("cap", "정원", { half: true, num: true, id: "fmCapWrap", hidden: f.mode !== "first" }) +
+      '<div class="field" id="fmStartWrap"' + (f.mode !== "first" ? " hidden" : "") + '><label>제출 시작 시각 <small class="muted">(비워 두면 바로)</small></label>' +
+        '<input type="datetime-local" data-fm="startLocal" step="60" value="' + esc(f.startLocal !== undefined ? f.startLocal : localDT(f.startMs)) + '">' +
+        '<small class="help">양식은 미리 열어 두고, 이 시각 정각부터 [제출하기]가 눌려요. 학생들이 미리 다 써 두고 기다릴 수 있어요. (서버 시계 기준이라 미리 내는 사람이 없어요)</small></div>' +
       '<div class="field"><small class="help fm-modehelp" id="fmModeHelp">' + modeHelp(f) + "</small></div>" +
       // 참가비: 받는 경우에만 펼침. 미납부자·2차 금액은 '금액이 사람마다 달라요' 안에 (비워 두면 없음)
       '<div class="field"><label class="fm-chk" style="margin:4px 0 0"><input type="checkbox" data-act="fmPay"' + (f.payOn ? " checked" : "") + "> 참가비를 받아요</label>" +
@@ -2168,7 +2172,7 @@
         if (!f.has2) f.only2 = false;
       }
       else f[k] = el.value;
-      if (k === "mode") { const w = document.getElementById("fmCapWrap"); if (w) w.hidden = f.mode !== "first"; const h = document.getElementById("fmModeHelp"); if (h) h.innerHTML = modeHelp(f); }
+      if (k === "mode") { const w = document.getElementById("fmCapWrap"); if (w) w.hidden = f.mode !== "first"; const sw = document.getElementById("fmStartWrap"); if (sw) sw.hidden = f.mode !== "first"; const h = document.getElementById("fmModeHelp"); if (h) h.innerHTML = modeHelp(f); }
       markDirty(); refreshPreview();
     } else if (el.dataset.fmDate) {
       const iso = isoDate(fmtDots(el.value.replace(/\D/g, "").slice(0, 8))); if (iso) { f[el.dataset.fmDate] = iso; markDirty(); dueHint(); refreshPreview(); }
@@ -2275,7 +2279,11 @@
       doc.fee2Unpaid = doc.has2 && doc.feeUnpaid > 0 ? Number(doc.fee2Unpaid) || 0 : 0;
       delete doc.feeSplit; delete doc.payOn;
       // 일반 = 구글 로그인 · 한 사람 한 번 · 본인이 고칠 수 있음 / 선착순 = 로그인 없이 · 여러 번 · 고칠 수 없음
-      doc.login = doc.mode !== "first"; doc.allowEdit = doc.mode !== "first";
+      doc.login = true; doc.allowEdit = true;
+      // 제출 시작 시각 (선착순만) — 숫자(ms)로 저장해서 보안 규칙이 서버 시계와 비교
+      if (doc.startLocal !== undefined) doc.startMs = doc.startLocal ? new Date(doc.startLocal).getTime() || 0 : 0;
+      if (doc.mode !== "first") doc.startMs = 0;
+      delete doc.startLocal;
       // 권한 명단은 [권한 설정]에서만 바뀜 (양식을 고치는 동안 바뀌었을 수도 있으니 최신 값 유지)
       doc.editorUids = (fm.form && fm.form.editorUids) || [];
       doc.viewerUids = (fm.form && fm.form.viewerUids) || [];
