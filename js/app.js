@@ -59,7 +59,7 @@
     admin: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   };
   const navIcon = (k) => NAV_ICON[k] ? '<svg class="nico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + NAV_ICON[k] + "</svg>" : "";
-  const navKey = (r) => (r === "messages" ? "talk" : r === "form" ? "projects" : r === "settle" || r === "audit" ? "room" : r);   // 신청 페이지는 사업 기획안 안에 있음   // 선배들의 한마디는 소통방 탭 안에 있음
+  const navKey = (r) => (r === "messages" ? "talk" : r === "form" ? "projects" : r === "settle" || r === "audit" || r === "collect" ? "room" : r);   // 신청 페이지는 사업 기획안 안에 있음   // 선배들의 한마디는 소통방 탭 안에 있음
   const S = { authUser: null, me: null, settings: Object.assign({}, DEFAULTS), cache: {}, route: "home",
     routeArg: "", calMonth: null, calFilter: "", q: {}, archiveDept: "", projDept: "", minType: "", room: "" };
 
@@ -1311,7 +1311,7 @@
     return '<div class="page-head"><div><h2>' + esc(room) + "방</h2>" +
       '<p class="muted">' + (head ? "국원별로 할 일을 적어 주세요. 끝나면 각자 체크해요." : "내 이름 아래 할 일을 끝내면 체크해 주세요.") +
       (all && room !== myDept ? " · 회장단은 모든 국서 방을 볼 수 있어요" : "") + "</p></div>" +
-      (head ? '<div class="actions"><button class="btn primary" data-act="addRoomTask">+ 할 일 추가</button></div>' : "") + "</div>" + tabs + auditRoomHTML(room) + (await settleRoomHTML(room)) +
+      (head ? '<div class="actions"><button class="btn primary" data-act="addRoomTask">+ 할 일 추가</button></div>' : "") + "</div>" + tabs + (await collectRoomHTML(room)) + auditRoomHTML(room) + (await settleRoomHTML(room)) +
       '<div class="card rsum" style="--c:' + deptColor(room) + '"><b>' + esc(room) + " 진행률</b><span>" + done + " / " + list.length + '</span><div class="pbar"><i style="width:' + (list.length ? Math.round((done / list.length) * 100) : 0) + '%"></i></div></div>' +
       (myProjects.length ? '<section class="card rproj"><div class="card-head"><h3>' + esc(room) + ' 담당 사업</h3><a href="#projects" class="more">사업 기획안 →</a></div><ul class="plist">' +
         myProjects.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span><b>" + esc(p.name) + "</b>" +
@@ -1675,10 +1675,11 @@
     const out = list.map((f) => {
       const label = formLabel(f, list);
       if (f.summary && (opts.archive || opts.readonly)) return formSummaryHTML(f, many ? label : "");
-      return '<a class="btn sm" href="#form/' + encodeURIComponent(f.id) + '">📝 ' + esc(label) + ' <span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "받는 중" : "닫힘") + "</span></a>" + formSummaryHTML(f);
+      return '<a class="btn sm" href="#form/' + encodeURIComponent(f.id) + '">📝 ' + esc(label) + ' <span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.imported ? "구글폼" : f.open ? "받는 중" : "닫힘") + "</span></a>" + formSummaryHTML(f);
     }).join("");
     if (opts.readonly || opts.archive || !canEditForm({ ownerDept: formDeptFor(p) })) return out;
-    return out + '<a class="btn sm ghost" href="#form/' + encodeURIComponent("+" + p.id) + '">+ ' + (list.length ? "양식 추가" : "신청 양식 만들기") + "</a>";
+    return out + '<a class="btn sm ghost" href="#form/' + encodeURIComponent("+" + p.id) + '">+ ' + (list.length ? "양식 추가" : "신청 양식 만들기") + "</a>" +
+      '<button class="btn sm ghost" data-act="gfImport" data-id="' + esc(p.id) + '" title="구글폼 응답 시트(.xlsx·.csv)를 명단으로 가져와요">구글폼 명단 가져오기</button>';
   }
 
   // 명단: 제출 순서대로 정렬하고 번호·선착순 대기 계산
@@ -1783,13 +1784,19 @@
     const editable = canEditForm(f || { ownerDept: formDeptFor(p) });
     const viewer = canSeeRoster(f);
     if (!fm.tab) fm.tab = f ? (viewer ? "resp" : "preview") : "build";
+    const imp = !!(f && f.imported);
+    if (imp) fm.tab = "resp";
     if (fm.tab === "resp" && !viewer) fm.tab = "preview";
     if (fm.tab === "build" && !editable) fm.tab = "preview";
 
     let head = '<div class="fm-head"><a class="fm-back" href="#projects">← 사업 기획안</a>' +
       '<div class="fm-title"><h2>' + esc(p.name) + (curForm() && curForm().name ? ' <span class="fm-fname">· ' + esc(curForm().name) + "</span>" : "") + "</h2>" + deptTag(p.dept) +
-      (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") + "</div>";
-    if (f) {
+      (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.imported ? "구글폼에서 가져옴" : f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") + "</div>";
+    if (f && imp) {
+      head += '<div class="notice info small" style="margin:0">구글폼에서 가져온 명단이에요' + (f.importedAt ? " (" + esc(dotDate(f.importedAt)) + ")" : "") + ". 신청 링크는 없고, 출석 체크와 수합금 확인은 똑같이 할 수 있어요." +
+        (editable ? ' <button class="linkbtn small" data-act="fmImpEdit">이름·참가비 고치기</button>' : "") + "</div>" +
+        (keepOf(f, p) ? '<p class="muted small" style="margin:0">명단 보관 기한 <b>' + esc(dotDate(keepOf(f, p))) + "</b> (지나거나 학생회를 넘기면 삭제)</p>" : "");
+    } else if (f) {
       head += '<div class="fm-link"><code>' + esc(applyUrl(pid)) + "</code>" +
         '<button class="btn sm primary" data-act="fmCopy">링크 복사</button><a class="btn sm" href="' + esc(applyUrl(pid)) + '" target="_blank" rel="noopener">열어 보기 ↗</a>' +
         (editable ? '<button class="btn sm" data-act="fmOpen">' + (f.open ? "신청 닫기" : "신청 받기 시작") + "</button>" : "") + "</div>" +
@@ -1808,7 +1815,7 @@
       fm.tab = "build"; fm.dirty = true;
     }
 
-    const tabs = [["resp", "참여자 명단" + (fm.resp ? " (" + fm.resp.length + ")" : ""), viewer && f], ["build", "양식 만들기", editable], ["preview", "학생 화면 미리보기", !editable]]
+    const tabs = [["resp", "참여자 명단" + (fm.resp ? " (" + fm.resp.length + ")" : ""), viewer && f], ["build", "양식 만들기", editable && !imp], ["preview", "학생 화면 미리보기", !editable && !imp]]
       .filter((t) => t[2]).map((t) => '<a href="#" class="' + (fm.tab === t[0] ? "on" : "") + '" data-act="fmTab" data-tab="' + t[0] + '"' + (t[0] === "resp" ? ' id="fmRespTab"' : "") + ">" + t[1] + "</a>").join("");
     let body = "";
     if (fm.tab === "resp") body = rosterHTML(f);
@@ -1829,7 +1836,7 @@
       k: q.id, label: q.label, opts: q.type === "yesno" ? ["예", "아니오"] : (q.options || []).filter((o) => String(o).trim()),
       get: (r) => (r.answers || {})[q.id] }));
     if (AP.has2(f)) defs.push({ k: AP.PART, label: "참여 (1차·2차)", opts: (f.only2 ? ["1차만", "1차 + 2차", "2차만"] : ["1차만", "1차 + 2차"]), get: (r) => AP.partOf(f, r) });
-    if (AP.anyFee(f) && canMoney()) defs.push({ k: "__paid", label: "입금", opts: ["확인", "입금 전"], get: (r) => (r.paid ? "확인" : "입금 전") });
+    if (AP.anyFee(f)) defs.push({ k: "__paid", label: "수합금", opts: ["납부", "미납"], get: (r) => (r.paid ? "납부" : "미납") });
     if (attendOn(f)) defs.push({ k: "__att", label: "출석", opts: ["출석", "아직"], get: (r) => (r.attended ? "출석" : "아직") });
     return defs;
   }
@@ -1850,29 +1857,26 @@
       '<span class="muted small" id="fmFcount"></span></div>';
   }
   function rosterStats(f, list) {
-    const going = list.filter((r) => AP.isGoing(f, r)), inn = going.filter((r) => !r.wait), fee = AP.anyFee(f) && canMoney();
-    const sum = (arr) => arr.reduce((k, r) => k + AP.feeOf(f, r), 0);
+    const going = list.filter((r) => AP.isGoing(f, r)), inn = going.filter((r) => !r.wait), fee = AP.anyFee(f);
     const stat = (k, v) => '<div class="fm-stat"><span>' + k + "</span><b>" + v + "</b></div>";
     return '<div class="fm-stats">' + stat("응답", list.length) +
       stat(f.mode === "first" ? "정원 안 / 대기" : "참여", f.mode === "first" ? inn.length + " / " + (going.length - inn.length) : going.length) +
       (AP.attendQ(f) ? stat("불참", list.length - going.length) : "") +
       (AP.has2(f) ? stat("2차", inn.filter((r) => /2차/.test(AP.partOf(f, r))).length + "명") : "") +
-      (fee ? stat("입금", inn.filter((r) => r.paid).length + "/" + inn.length) : "") +
-      (attendOn(f) ? stat("출석", inn.filter((r) => r.attended).length + "/" + inn.length) : "") + "</div>" +
-      (fee ? '<p class="muted small" style="margin:0">받을 돈 <b>' + AP.won(sum(inn)) + "</b> · 입금 확인 " + AP.won(sum(inn.filter((r) => r.paid))) +
-        (AP.hasDues(f) ? " · 회비 미납부자 " + inn.filter((r) => r.duesUnpaid).length + "명" : "") + " · 참가비 " + AP.feeText(f) + "</p>" : "");
+      (fee ? stat("수합금 납부", inn.filter((r) => r.paid).length + "/" + inn.length) : "") +
+      (attendOn(f) ? stat("출석", inn.filter((r) => r.attended).length + "/" + inn.length) : "") + "</div>";
   }
   // 엑셀로 받을 표 (지금 화면의 검색·필터가 걸린 그대로)
   //   keep = true: 보관용(넘길 때 받는 전체 명단) — 학생이 폼에 쓴 내용만 (입금·회비·출석 빼고)
   function rosterTable(f0, list0, keep) {
     const f = f0 || S.fm.form, extra = (f.qs || []).filter((x) => x.type !== "name" && x.type !== "sid");
-    const money = !keep && canMoney() && AP.anyFee(f), dues = money && AP.hasDues(f);
+    const money = !keep && AP.anyFee(f);
     const head = ["번호", "이름", "학번"].concat(extra.map((x) => x.label), AP.has2(f) ? ["참여"] : [], f.mode === "first" ? ["선착순"] : [],
-      money ? ["입금자명"] : [], dues ? ["회비"] : [], money ? ["참가비", "입금"] : [], keep || !attendOn(f) ? [] : ["출석"], ["제출 시각"]);
+      money ? ["수합금"] : [], keep || !attendOn(f) ? [] : ["출석"], ["제출 시각"]);
     const rows = (list0 || fmFiltered(f)).map((r) => [r.no || "", r.name, r.sid].concat(
       extra.map((x) => { const v = (r.answers || {})[x.id]; return x.type === "agree" ? (v ? "동의" : "") : Array.isArray(v) ? v.join(", ") : (v == null ? "" : v); }),
       AP.has2(f) ? [AP.partOf(f, r)] : [], f.mode === "first" ? [!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안"] : [],
-      money ? [r.depositName || ""] : [], dues ? [r.duesUnpaid ? "미납" : "납부"] : [], money ? [AP.needPay(f, r) ? AP.feeOf(f, r) : "", r.paid ? "O" : ""] : [],
+      money ? [AP.needPay(f, r) ? (r.paid ? "납부" : "미납") : ""] : [],
       keep || !attendOn(f) ? [] : [r.attended ? "O " + (r.attendedAt || "") : ""], [AP.stampText(r.at)]));
     return { head: head, rows: rows };
   }
@@ -1977,7 +1981,7 @@
     const fm = S.fm, q = (fm.q || "").replace(/\s/g, ""), filtered = Object.values(fm.af || {}).some(Boolean);
     const list = fmFiltered(f);
     const qs = f.qs || [];
-    const editable = canEditForm(f), fee = AP.anyFee(f) && canMoney(), dues = fee && AP.hasDues(f);
+    const editable = canEditForm(f) && !f.imported, fee = AP.anyFee(f);
     const cell = (x, r) => {
       const v = (r.answers || {})[x.id];
       if (x.type === "name") return "<b>" + esc(r.name || v) + "</b>";
@@ -1988,8 +1992,8 @@
     };
     const p2 = AP.has2(f);
     const th = "<tr><th>번호</th><th>제출 시각</th>" + qs.map((x) => "<th>" + esc(x.label) + "</th>").join("") + (p2 ? "<th>참여</th>" : "") +
-      (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? "<th>입금자명</th>" + (dues ? "<th>회비</th>" : "") + "<th>입금</th>" : "") + (attendOn(f) ? "<th>출석</th>" : "") + (editable ? "<th></th>" : "") + "</tr>";
-    const n = 2 + (attendOn(f) ? 1 : 0) + qs.length + (p2 ? 1 : 0) + (fee ? 2 : 0) + (dues ? 1 : 0) + (f.mode === "first" ? 1 : 0) + (editable ? 1 : 0);
+      (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? "<th>수합금</th>" : "") + (attendOn(f) ? "<th>출석</th>" : "") + (editable ? "<th></th>" : "") + "</tr>";
+    const n = 2 + (attendOn(f) ? 1 : 0) + qs.length + (p2 ? 1 : 0) + (fee ? 1 : 0) + (f.mode === "first" ? 1 : 0) + (editable ? 1 : 0);
     const rows = list.map((r) => {
       const going = AP.isGoing(f, r), active = going && !r.wait, sid = esc(r.id);
       return '<tr class="' + (active ? "" : "off") + '">' +
@@ -1997,31 +2001,31 @@
         qs.map((x) => '<td class="' + (x.type === "phone" || x.type === "sid" || x.type === "name" ? "num" : "ans") + '">' + cell(x, r) + "</td>").join("") +
         (p2 ? "<td>" + (AP.partOf(f, r) ? '<span class="fm-pill' + (/2차/.test(AP.partOf(f, r)) ? " ok" : "") + '">' + esc(AP.partOf(f, r)) + "</span>" : "") + "</td>" : "") +
         (f.mode === "first" ? "<td>" + (!going ? "" : r.wait ? '<span class="fm-pill warn">대기 ' + r.waitNo + "</span>" : '<span class="fm-pill ok">정원 안</span>') + "</td>" : "") +
-        (fee ? '<td class="num"><b>' + (active ? esc(r.depositName || AP.depositName(r.sid, r.name)) : "–") + "</b></td>" +
-          (dues ? "<td>" + (active ? '<button class="fm-dues' + (r.duesUnpaid ? " un" : "") + '" data-act="fmDues" data-sid="' + sid + '" title="눌러서 납부/미납 바꾸기">' + (r.duesUnpaid ? "미납" : "납부") + "</button><small class=\"muted\"> " + AP.won(AP.feeOf(f, r)) + "</small>" : "") + "</td>" : "") +
-          "<td>" + (active ? '<label class="fm-paid"><input type="checkbox" data-act="fmPaid" data-sid="' + sid + '"' + (r.paid ? " checked" : "") + "> " + (r.paid ? "확인" : "입금 전") + "</label>" +
-            (p2 && !dues ? '<small class="muted"> ' + AP.won(AP.feeOf(f, r)) + "</small>" : "") : "") + "</td>" : "") +
+        (fee ? "<td>" + (active ? payPill(r) : "") + "</td>" : "") +
         (attendOn(f) ? "<td>" + (active ? '<button class="fm-att' + (r.attended ? " on" : "") + '" data-act="fmAtt" data-sid="' + sid + '">' + (r.attended ? "✓ " + esc(r.attendedAt || "") : "확인") + "</button>" : "") + "</td>" : "") +
         (editable ? '<td><button class="x" data-act="fmDelResp" data-sid="' + sid + '" aria-label="이 응답 지우기" title="이 응답 지우기">×</button></td>' : "") + "</tr>";
     }).join("") || '<tr><td colspan="' + n + '" class="muted" style="text-align:center;padding:28px">' + (q || filtered ? "조건에 맞는 사람이 없어요." : "아직 응답이 없어요. 링크를 단톡방에 올려 보세요.") + "</td></tr>";
     return "<thead>" + th + "</thead><tbody>" + rows + "</tbody>";
   }
   function rosterHTML(f) {
-    const fee = AP.anyFee(f) && canMoney();
+    const fee = AP.anyFee(f);
     return '<div id="fmStats">' + rosterStats(f, S.fm.resp) + "</div>" +
       '<div class="fm-tools"><input type="search" data-fm-search placeholder="이름 · 학번 · 입금자명 찾기" value="' + esc(S.fm.q || "") + '">' +
-      (fee ? '<button class="btn sm" data-act="fmBank">통장 내역으로 입금 확인</button>' : "") +
+      (fee && canSettle() ? '<a class="btn sm" href="#collect/' + encodeURIComponent(S.fm.pid) + '">수합금 확인 →</a>' : "") +
       (canAttendSwitch(f) ? '<button class="btn sm' + (attendOn(f) ? "" : " primary") + '" data-act="fmAttendOn">' + (attendOn(f) ? "출석 체크 끄기" : "✓ 출석 체크 켜기") + "</button>" : "") +
       '<button class="btn sm" data-act="fmXlsx">엑셀 받기</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
       fmFiltersHTML(f) +
       '<div class="fm-tablewrap"><table class="fm-table" id="fmTable">' + rosterRows(f) + "</table></div>" +
-      '<p class="muted small">' + (fee ? "입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 24123이다홍). " + (AP.hasDues(f) ? "회비 미납부자는 [납부]를 눌러 [미납]으로 바꾸면 그 사람 참가비가 미납부자 금액으로 계산돼요. " : "") : "") +
-        (attendOn(f) ? "행사 당일엔 이 화면에서 [확인]을 눌러 출석을 체크해요." : "실수요조사·행사 명단이라 출석을 확인해야 하면 [출석 체크 켜기]를 눌러 주세요.") + (AP.anyFee(f) && !canMoney() ? " 입금·회비 확인은 재무국이 해요." : "") + "</p>";
+      '<p class="muted small">' + (fee ? "수합금 납부 확인은 재무국이 재무국방 → [수합금 확인]에서 해요. " : "") +
+        (attendOn(f) ? "행사 당일엔 이 화면에서 [확인]을 눌러 출석을 체크해요." : "실수요조사·행사 명단이라 출석을 확인해야 하면 [출석 체크 켜기]를 눌러 주세요.") + "</p>";
   }
   function refreshRoster() {
     const f = S.fm.form, t = document.getElementById("fmTable"), s = document.getElementById("fmStats");
     if (t) t.innerHTML = rosterRows(f);
     if (s) s.innerHTML = rosterStats(f, S.fm.resp);
+    const ct = document.getElementById("colTable"), cs = document.getElementById("colStats");
+    if (ct) ct.innerHTML = colRows(f);
+    if (cs) cs.innerHTML = colStats(f);
     const c = document.getElementById("fmFcount");
     if (c) { const n = fmFiltered(f).length; c.textContent = n === S.fm.resp.length ? "" : "· " + n + "명 보는 중"; }
   }
@@ -2220,6 +2224,30 @@
 
   const FORM_ACTS = {
     fmTab(el) { S.fm.tab = el.dataset.tab; S.fm.pv = null; renderPage(); },
+    colOpen(el) { location.hash = "collect/" + encodeURIComponent(el.dataset.id); },
+    colUnpaidCopy() {
+      const f = S.fm.form, un = (S.fm.resp || []).filter((r) => AP.needPay(f, r) && !r.paid);
+      if (!un.length) return toast("미납자가 없어요 👏");
+      const t = un.map((r) => r.name + " (" + (r.depositName || AP.depositName(r.sid, r.name)) + ", " + AP.won(AP.feeOf(f, r)) + ")").join("\n");
+      Promise.resolve(navigator.clipboard && navigator.clipboard.writeText(t)).then(() => toast("미납자 " + un.length + "명을 복사했어요.")).catch(() => infoModal("미납자 " + un.length + "명", "<pre style=\"white-space:pre-wrap\">" + esc(t) + "</pre>"));
+    },
+    gfImport(el) { gfPickFile(el.dataset.id); },
+    fmImpEdit() {
+      const f = S.fm.form; if (!f) return;
+      openForm({ title: "가져온 명단 설정",
+        fields: [
+          { name: "name", label: "명단 이름", required: true },
+          { name: "fee", label: "참가비", type: "money", half: true, placeholder: "안 받았으면 비우기" },
+          { name: "feeUnpaid", label: "학생회비 미납부자 참가비", type: "money", half: true, placeholder: "같으면 비우기" },
+        ],
+        values: { name: f.name || "", fee: f.fee || "", feeUnpaid: f.feeUnpaid || "" },
+        extraButtons: [{ label: "명단 지우기", cls: "danger", onClick: async function () { closeModal(); await FORM_ACTS.fmDelete(); } }],
+        onSubmit: async function (v) {
+          const num = (x) => Number(String(x || "").replace(/\D/g, "")) || 0;
+          const fee = num(v.fee), patch = { name: v.name, fee: fee, feeUnpaid: fee ? num(v.feeUnpaid) : 0, updatedAt: new Date().toISOString() };
+          await DB.update("forms", S.fm.pid, patch); Object.assign(S.fm.form, patch); dirty("forms"); renderPage();
+        } });
+    },
     fmStart() {
       const p = (S.cache.projects || []).find((x) => x.id === S.fm.projId);
       const tpl = (document.querySelector('input[name="fmTpl"]:checked') || {}).value || "basic";
@@ -3177,6 +3205,197 @@
       }).join("") + "</ul>" : '<p class="empty-s">아직 없어요. [+ 새 정산]을 누르면 엑셀 대신 여기서 계산하고 공지 멘트까지 만들어 줘요.</p>') + "</section>";
   }
 
+  /* ----- 재무국방 · 수합금 확인 (입금 체크 · 회비 납부자/미납부자는 여기서만) ----- */
+  //   명단(신청 양식 → 참여자 명단)에는 '납부/미납'만 보이고, 체크는 재무국이 여기서 함
+  async function collectRoomHTML(room) {
+    if (!/재무/.test(room) || !canSettle()) return "";
+    let forms = [];
+    try { forms = await DB.list("forms"); } catch (e) { return ""; }
+    const pn = {}; (await col("projects")).forEach((p) => (pn[p.id] = p));
+    forms = forms.filter((f) => AP.anyFee(f) && !f.summary).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    return '<section class="card st-room"><div class="card-head"><h3>수합금 확인 <small>참가비 입금 · 회비 납부자/미납부자</small></h3></div>' +
+      (forms.length ? '<ul class="tlist">' + forms.map((f) => {
+        const p = pn[f.projectId || f.id] || {};
+        return '<li class="trow" data-act="colOpen" data-id="' + esc(f.id) + '"><span class="tt"><b>' + esc(p.name || f.title || "") + (f.name ? " · " + esc(f.name) : "") + "</b>" +
+          ' <small class="muted">참가비 ' + esc(AP.feeText(f)) + "</small></span>" +
+          '<span class="dd muted small">' + (f.imported ? "구글폼" : f.open ? "받는 중" : "마감") + "</span></li>";
+      }).join("") + "</ul>" : '<p class="empty-s">참가비를 받는 신청 명단이 아직 없어요.</p>') + "</section>";
+  }
+  const payPill = (r) => (r.paid ? '<span class="fm-pill ok">납부</span>' : '<span class="fm-pill warn">미납</span>');
+  function colStats(f) {
+    const due = (S.fm.resp || []).filter((r) => AP.needPay(f, r)), paid = due.filter((r) => r.paid);
+    const sum = (arr) => arr.reduce((k, r) => k + AP.feeOf(f, r), 0);
+    const stat = (k, v) => '<div class="fm-stat"><span>' + k + "</span><b>" + v + "</b></div>";
+    return '<div class="fm-stats">' + stat("납부", paid.length + " / " + due.length) + stat("받을 돈", AP.won(sum(due))) + stat("들어온 돈", AP.won(sum(paid))) +
+      stat("남은 돈", AP.won(sum(due) - sum(paid))) + (AP.hasDues(f) ? stat("회비 미납부자", due.filter((r) => r.duesUnpaid).length + "명") : "") + "</div>";
+  }
+  function colRows(f) {
+    const can = canMoney(), dues = AP.hasDues(f), p2 = AP.has2(f);
+    const list = fmFiltered(f).filter((r) => AP.needPay(f, r));
+    const th = "<tr><th>번호</th><th>이름</th><th>학번</th><th>입금자명</th>" + (p2 ? "<th>참여</th>" : "") + (dues ? "<th>학생회비</th>" : "") + "<th>낼 돈</th><th>입금</th></tr>";
+    const rows = list.map((r) => {
+      const sid = esc(r.id);
+      return "<tr><td class=\"num\">" + (r.no || "–") + "</td><td><b>" + esc(r.name) + '</b></td><td class="num">' + esc(r.sid) + '</td><td class="num"><b>' + esc(r.depositName || AP.depositName(r.sid, r.name)) + "</b></td>" +
+        (p2 ? "<td>" + esc(AP.partOf(f, r)) + "</td>" : "") +
+        (dues ? "<td>" + (can ? '<button class="fm-dues' + (r.duesUnpaid ? " un" : "") + '" data-act="fmDues" data-sid="' + sid + '" title="눌러서 바꾸기">' + (r.duesUnpaid ? "미납부자" : "납부자") + "</button>" : r.duesUnpaid ? "미납부자" : "납부자") + "</td>" : "") +
+        '<td class="num">' + AP.won(AP.feeOf(f, r)) + "</td>" +
+        "<td>" + (can ? '<label class="fm-paid"><input type="checkbox" data-act="fmPaid" data-sid="' + sid + '"' + (r.paid ? " checked" : "") + "> " + (r.paid ? "확인" : "입금 전") + "</label>" : payPill(r)) + "</td></tr>";
+    }).join("") || '<tr><td colspan="8" class="muted" style="text-align:center;padding:28px">' + (S.fm.q ? "조건에 맞는 사람이 없어요." : "아직 낼 사람이 없어요.") + "</td></tr>";
+    return "<thead>" + th + "</thead><tbody>" + rows + "</tbody>";
+  }
+  PAGES.collect = async function () {
+    if (!canSettle()) return '<div class="card empty">재무국과 회장단만 볼 수 있어요.</div>';
+    const fid = S.routeArg;
+    await loadFm(fid);
+    const f = S.fm.form;
+    if (!f) return '<div class="card empty">명단을 찾을 수 없어요. <a href="#room">재무국방으로</a></div>';
+    if (!S.fm.resp) return '<div class="card empty">이 명단을 볼 권한이 없어요. <a href="#room">재무국방으로</a></div>';
+    const p = (await col("projects")).find((x) => x.id === (f.projectId || fid)) || {};
+    return '<div class="fm-head"><a class="fm-back" href="#room">← 재무국방</a><div class="fm-title"><h2>' + esc(p.name || f.title || "") + (f.name ? ' <span class="fm-fname">· ' + esc(f.name) + "</span>" : "") + '</h2><span class="fm-pill">수합금 확인</span></div>' +
+      '<p class="muted small" style="margin:0">참가비 ' + esc(AP.feeText(f)) + (f.account ? " · 계좌 " + esc(f.account) : "") + (f.dueDate ? " · 입금 기한 " + esc(dotDate(f.dueDate)) : "") +
+      ' · <a href="#form/' + encodeURIComponent(fid) + '">참여자 명단 보기</a></p></div>' +
+      '<div id="colStats">' + colStats(f) + "</div>" +
+      '<div class="fm-tools"><input type="search" data-fm-search placeholder="이름 · 학번 · 입금자명 찾기" value="' + esc(S.fm.q || "") + '">' +
+      (canMoney() ? '<button class="btn sm primary" data-act="fmBank">통장 내역으로 입금 확인</button>' : "") +
+      '<button class="btn sm" data-act="colUnpaidCopy">미납자 복사</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
+      '<div class="fm-tablewrap"><table class="fm-table" id="colTable">' + colRows(f) + "</table></div>" +
+      '<p class="muted small">' + (canMoney() ? "입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 24123이다홍). " +
+        (AP.hasDues(f) ? "학생회비 미납부자는 [납부자]를 눌러 [미납부자]로 바꾸면 그 사람 낼 돈이 미납부자 참가비로 바뀌어요. " : "") +
+        "여기서 체크한 결과는 참여자 명단에 <b>납부 / 미납</b>으로만 보여요." : "입금 확인은 재무국만 할 수 있어요. 회장단은 보기만 돼요.") + "</p>";
+  };
+
+  /* ---------- 구글폼 명단 가져오기 ---------- */
+  // 구글폼 응답 시트를 [파일 → 다운로드 → .xlsx 또는 .csv]로 받아 올리면 사업 아래 '가져온 명단'이 생김 (출석 체크·수합금 확인도 똑같이)
+  function parseCsv(text) {
+    text = String(text).replace(/^﻿/, "");
+    const rows = []; let row = [], cur = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+      else if (c === '"') q = true;
+      else if (c === ",") { row.push(cur); cur = ""; }
+      else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cur); rows.push(row); row = []; cur = ""; }
+      else cur += c;
+    }
+    if (cur || row.length) { row.push(cur); rows.push(row); }
+    return rows.filter((r) => r.some((x) => String(x).trim()));
+  }
+  function sheetToRows(sh) {
+    const cells = Object.values(sh.cells || {});
+    if (!cells.length) return [];
+    const r0 = Math.min(...cells.map((c) => c.r)), c0 = Math.min(...cells.map((c) => c.c)), rows = [];
+    cells.forEach((c) => { if (c.v == null || c.v === "") return; (rows[c.r - r0] = rows[c.r - r0] || [])[c.c - c0] = c.v; });
+    return rows.filter((r) => r && r.some((x) => x != null && String(x).trim()));
+  }
+  // 타임스탬프: 엑셀 날짜 숫자 또는 "2026. 10. 20 오후 2:03:04" 같은 글자
+  function gfTime(v) {
+    if (typeof v === "number" && v > 20000 && v < 80000) { const ms = Math.round((v - 25569) * 864e5); return ms + new Date(ms).getTimezoneOffset() * 60000; }
+    const s = String(v || ""), n = s.match(/\d+/g);
+    if (!n || n.length < 3) return 0;
+    let y, mo, d;
+    if (n[0].length === 4) { y = +n[0]; mo = +n[1]; d = +n[2]; } else { mo = +n[0]; d = +n[1]; y = +n[2]; if (y < 100) y += 2000; }
+    let h = +(n[3] || 0); const mi = +(n[4] || 0), se = +(n[5] || 0);
+    if (/오후|PM/i.test(s) && h < 12) h += 12;
+    if (/오전|AM/i.test(s) && h === 12) h = 0;
+    const t = new Date(y, mo - 1, d, h, mi, se).getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  const GF_YES = /^(예|네|yes|y|o|참여|참석|참가|가능)$/i, GF_NO = /^(아니오|아니요|no|n|x|불참|불가|불가능)$/i;
+  function gfAnalyze(rows) {
+    const head = (rows[0] || []).map((h) => String(h == null ? "" : h).replace(/\s+/g, " ").trim()), body = rows.slice(1);
+    const used = {};
+    const find = (re) => { const i = head.findIndex((h, k) => !used[k] && re.test(h)); if (i >= 0) used[i] = 1; return i; };
+    const tCol = find(/타임스탬프|timestamp/i), nameC = find(/이름|성명|name/i), sidC = find(/학번/), phoneC = find(/전화|연락처|휴대폰|핸드폰|phone/i);
+    const qs = []; let attendSet = false;
+    head.forEach((h, i) => {
+      if (i === tCol || !h) return;
+      let type = "text"; const extra = {};
+      if (i === nameC) type = "name"; else if (i === sidC) type = "sid"; else if (i === phoneC) type = "phone";
+      else {
+        const vals = body.map((r) => r[i]).filter((v) => v != null && String(v).trim() !== "").map((v) => String(v).trim()), uniq = Array.from(new Set(vals));
+        const yn = uniq.length > 0 && uniq.every((v) => GF_YES.test(v) || GF_NO.test(v));
+        if (yn && !attendSet && /참여|참석|참가/.test(h)) { type = "yesno"; extra.attend = true; attendSet = true; }
+        else if (yn) type = "yesno";
+        else if (/개인정보|동의/.test(h) && uniq.length <= 2) type = "text";
+        else if (uniq.length && uniq.length <= 8 && uniq.every((v) => v.length <= 30) && vals.length > uniq.length) { type = "choice"; extra.options = uniq; }
+        else if (uniq.some((v) => v.length > 40)) type = "long";
+      }
+      qs.push(Object.assign(AP.Q(type, h, { required: false }), extra, { col: i }));
+    });
+    const qOf = (t) => qs.find((q) => q.type === t);
+    const out = {}; let dup = 0, skip = 0, n = 0;
+    const base = Date.now() - body.length * 1000;
+    body.forEach((r, idx) => {
+      const ans = {};
+      qs.forEach((q) => {
+        let v = r[q.col];
+        if (v == null) return;
+        if (q.type === "phone") { let d = String(v).replace(/\D/g, ""); if (d.length === 10 && d[0] === "1") d = "0" + d; v = d.length === 11 ? d.slice(0, 3) + "-" + d.slice(3, 7) + "-" + d.slice(7) : String(v).trim(); }
+        else if (q.type === "sid") v = String(v).replace(/\D/g, "");
+        else if (q.type === "yesno") { const s = String(v).trim(); v = GF_YES.test(s) ? "예" : GF_NO.test(s) ? "아니오" : s; }
+        else v = String(v).trim();
+        if (v !== "") ans[q.id] = v;
+      });
+      const name = nameC >= 0 ? String(ans[qOf("name").id] || "") : "", sid = sidC >= 0 ? String(ans[qOf("sid").id] || "") : "";
+      if (!name && !sid) { skip++; return; }
+      const at = (tCol >= 0 && gfTime(r[tCol])) || base + idx * 1000;
+      const id = /^\d{10}$/.test(sid) ? sid : "r" + ++n;
+      const doc = { sid: sid, name: name, depositName: AP.depositName(sid, name), answers: ans, at: at, paid: false, attended: false, imported: true };
+      // 같은 학번으로 여러 번 낸 경우 가장 나중 응답만 남김
+      if (out[id]) { dup++; if (at >= out[id].at) out[id] = doc; } else out[id] = doc;
+    });
+    qs.forEach((q) => delete q.col);
+    return { qs: qs, resp: out, dup: dup, skip: skip, hasName: nameC >= 0, hasSid: sidC >= 0, hasTime: tCol >= 0 };
+  }
+  function gfPickFile(pid) {
+    const inp = document.createElement("input");
+    inp.type = "file"; inp.accept = ".xlsx,.csv";
+    inp.addEventListener("change", async function () {
+      const file = inp.files && inp.files[0]; if (!file) return;
+      let rows = [];
+      try {
+        if (/\.csv$/i.test(file.name)) rows = parseCsv(await file.text());
+        else { const wb = await window.AUDIT.read(file); rows = wb.sheets.length ? sheetToRows(wb.sheets[0]) : []; }
+      } catch (e) { return toast("파일을 읽지 못했어요. 구글 시트에서 [파일 → 다운로드 → Microsoft Excel(.xlsx)]로 받은 파일인지 확인해 주세요.", true); }
+      if (rows.length < 2) return toast("응답이 없는 파일이에요.", true);
+      gfConfirm(pid, file.name, gfAnalyze(rows));
+    });
+    inp.click();
+  }
+  async function gfConfirm(pid, fname, a) {
+    const p = (await col("projects")).find((x) => x.id === pid);
+    if (!p) return;
+    const n = Object.keys(a.resp).length;
+    if (!a.hasName && !a.hasSid) return toast("이름이나 학번 열을 찾지 못했어요. 첫 줄에 '이름', '학번' 같은 질문 제목이 있어야 해요.", true);
+    const tname = { name: "이름", sid: "학번", phone: "전화번호", yesno: "예/아니오", choice: "객관식", text: "단답형", long: "장문형" };
+    openForm({ title: "구글폼 명단 가져오기",
+      intro: '<p style="margin:0"><b>' + n + "명</b>을 가져와요." + (a.dup ? ' <span class="muted small">(같은 학번으로 여러 번 낸 ' + a.dup + "건은 가장 나중 응답만 남겨요)</span>" : "") + "</p>" +
+        '<ul class="gf-cols">' + a.qs.map((q) => "<li><span>" + esc(q.label) + "</span><small>" + tname[q.type] + (q.attend ? " · 참여 여부" : "") + "</small></li>").join("") + "</ul>" +
+        '<p class="muted small" style="margin:0">' + (a.hasTime ? "제출 순서는 구글폼 타임스탬프대로예요. " : "") + "‘참여 여부’로 잡힌 질문에 ‘아니오’라고 한 사람은 번호에서 빠져요. 가져온 명단은 학생이 고칠 수 없고, 신청 링크도 없어요.</p>",
+      fields: [
+        { name: "name", label: "명단 이름", required: true, placeholder: "예: 실수요조사 (구글폼)" },
+        { name: "fee", label: "참가비", type: "money", half: true, placeholder: "안 받았으면 비우기", help: "참가비가 있으면 재무국이 수합금을 확인할 수 있어요" },
+        { name: "feeUnpaid", label: "학생회비 미납부자 참가비", type: "money", half: true, placeholder: "같으면 비우기" },
+      ],
+      values: { name: fname.replace(/\.(xlsx|csv)$/i, "").replace(/\s*\(응답\)\s*$/, "").slice(0, 30) },
+      submitLabel: "가져오기",
+      onSubmit: async function (v) {
+        const num = (x) => Number(String(x || "").replace(/\D/g, "")) || 0;
+        const has = ((await formsMap())[pid] || []).some((x) => x.id === pid);
+        const fid = has ? pid + "-" + Date.now().toString(36) : pid;
+        const fee = num(v.fee), un = fee ? num(v.feeUnpaid) : 0;
+        const doc = { name: v.name, title: p.name, desc: "", projectId: pid, projectName: p.name, projectDept: p.dept, ownerDept: formDeptFor(p), mode: "normal", cap: 0,
+          fee: fee, feeUnpaid: un, fee2: 0, fee2Unpaid: 0, has2: false, only2: false, open: false, imported: true, importedAt: today(), login: false, allowEdit: false, attendOn: false,
+          qs: a.qs, keepUntil: keepDefault(p), keepV2: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), updatedBy: S.authUser.uid, editorUids: [], viewerUids: [] };
+        await DB.set("forms", fid, doc);
+        const ids = Object.keys(a.resp); let k = 0;
+        for (const id of ids) { await DB.set(respPath(fid), id, a.resp[id]); if (++k % 25 === 0) toast("가져오는 중… " + k + " / " + ids.length); }
+        dirty("forms"); S.fm = { pid: "" };
+        location.hash = "#form/" + encodeURIComponent(fid);
+        setTimeout(() => toast(ids.length + "명을 가져왔어요."), 400);
+      } });
+  }
+
   /* ----- 재무국방 · 예결산 미리 점검 (파일은 이 기기에서만 읽고 어디에도 저장 안 함) ----- */
   function auditRoomHTML(room) {
     if (!/재무/.test(room) || !canSettle()) return "";
@@ -3504,7 +3723,7 @@
     if (!PAGES[S.route]) S.route = "home";
   }
   window.addEventListener("hashchange", function () {
-    if (!/^#form\//.test(location.hash)) stopWatch();   // 신청 명단 화면을 떠나면 실시간 연결 끊기
+    if (!/^#(form|collect)\//.test(location.hash)) stopWatch();   // 신청 명단 화면을 떠나면 실시간 연결 끊기
     parseRoute();
     if (S.authUser && isApproved()) {
       document.querySelectorAll(".tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + navKey(S.route)));

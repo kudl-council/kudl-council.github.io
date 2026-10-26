@@ -280,6 +280,13 @@ service cloud.firestore {
           && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 30
           && request.resource.data.depositName is string && request.resource.data.depositName.size() <= 40
           && request.resource.data.answers is map && request.resource.data.answers.size() <= 40;
+        // 구글폼에서 가져온 명단: 양식을 고치는 사람이 한 줄씩 넣음 (입금·출석은 '아니오'로만)
+        allow create: if form().get('imported', false) == true && formEditor(form())
+          && (sid.matches('^[0-9]{10}$') || sid.matches('^r[0-9]{1,5}$'))
+          && request.resource.data.keys().hasOnly(['sid', 'name', 'depositName', 'answers', 'at', 'paid', 'attended', 'imported'])
+          && request.resource.data.paid == false && request.resource.data.attended == false
+          && request.resource.data.name is string && request.resource.data.name.size() <= 30
+          && request.resource.data.answers is map && request.resource.data.answers.size() <= 60;
         allow read, delete: if formViewer(form());
         // 구글 로그인 양식: 본인 응답은 본인이 볼 수 있음
         allow get: if signedIn() && resource.data.get('ownerUid', '') == request.auth.uid;
