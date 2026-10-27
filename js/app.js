@@ -1846,15 +1846,21 @@
     return fm.resp.filter((r) => (!q || [r.name, r.sid, r.depositName].some((x) => String(x || "").indexOf(q) >= 0)) &&
       defs.every((d) => { const v = d.get(r); return Array.isArray(v) ? v.indexOf(af[d.k]) >= 0 : v === af[d.k]; }));
   }
-  function fmFiltersHTML(f) {
-    const af = S.fm.af || {}, defs = fmFilterDefs(f);
-    const short = (t) => (String(t).length > 16 ? String(t).slice(0, 15) + "…" : t);
-    const on = defs.some((d) => af[d.k]);
-    return '<div class="fm-filters"><span class="muted small">모아 보기</span>' + defs.map((d) =>
-      '<label class="fm-fsel' + (af[d.k] ? " on" : "") + '" title="' + esc(d.label) + '"><span>' + esc(short(d.label)) + '</span><select data-fm-filter="' + esc(d.k) + '"><option value="">전체</option>' +
-        d.opts.map((o) => '<option value="' + esc(o) + '"' + (af[d.k] === o ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select></label>").join("") +
-      (on ? '<button class="linkbtn small" data-act="fmFilterReset">필터 지우기</button>' : "") +
-      '<span class="muted small" id="fmFcount"></span></div>';
+  // 필터는 표 맨 윗줄(칸 제목) 옆 ▾에서 고름. 위에는 걸린 필터가 있을 때만 '필터 지우기' 줄
+  function fmFiltersHTML(f) { return '<div class="fm-fbar" id="fmFbar">' + fmFbarInner(f) + "</div>"; }
+  function fmFbarInner(f) {
+    const af = S.fm.af || {}, defs = fmFilterDefs(f), on = defs.filter((d) => af[d.k]);
+    if (!on.length) return "";
+    const n = fmFiltered(f).length;
+    return '<span class="muted small">' + on.map((d) => "<b>" + esc(d.label.length > 14 ? d.label.slice(0, 13) + "…" : d.label) + "</b> = " + esc(af[d.k])).join(" · ") + " → <b>" + n + "명</b> 보는 중</span>" +
+      '<button class="linkbtn small" data-act="fmFilterReset">필터 지우기</button>';
+  }
+  // 칸 제목: 길면 줄여서 보여 주고(마우스를 올리면 전체), 고를 수 있는 칸엔 ▾ 필터
+  function thF(f, key, label) {
+    const d = fmFilterDefs(f).find((x) => x.k === key), v = (S.fm.af || {})[key] || "";
+    return '<th title="' + esc(label) + '"><div class="fm-th"><span class="fm-thl">' + esc(label) + "</span>" +
+      (d ? '<select class="fm-thf' + (v ? " on" : "") + '" data-fm-filter="' + esc(key) + '" aria-label="' + esc(label) + ' 골라 보기"><option value="">전체</option>' +
+        d.opts.map((o) => '<option value="' + esc(o) + '"' + (v === o ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select>" : "") + "</div></th>";
   }
   function rosterStats(f, list) {
     const going = list.filter((r) => AP.isGoing(f, r)), inn = going.filter((r) => !r.wait), fee = AP.anyFee(f);
@@ -1991,19 +1997,19 @@
       return esc(Array.isArray(v) ? v.join(", ") : v);
     };
     const p2 = AP.has2(f);
-    const th = "<tr><th>번호</th><th>제출 시각</th>" + qs.map((x) => "<th>" + esc(x.label) + "</th>").join("") + (p2 ? "<th>참여</th>" : "") +
-      (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? "<th>수합금</th>" : "") + (attendOn(f) ? "<th>출석</th>" : "") + (editable ? "<th></th>" : "") + "</tr>";
-    const n = 2 + (attendOn(f) ? 1 : 0) + qs.length + (p2 ? 1 : 0) + (fee ? 1 : 0) + (f.mode === "first" ? 1 : 0) + (editable ? 1 : 0);
+    const th = "<tr><th>번호</th><th>제출 시각</th>" + qs.map((x) => thF(f, x.id, x.label)).join("") + (p2 ? thF(f, AP.PART, "참여") : "") +
+      (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? thF(f, "__paid", "수합금") : "") + (attendOn(f) ? thF(f, "__att", "출석") : "") + "<th></th></tr>";
+    const n = 2 + (attendOn(f) ? 1 : 0) + qs.length + (p2 ? 1 : 0) + (fee ? 1 : 0) + (f.mode === "first" ? 1 : 0) + 1;
     const rows = list.map((r) => {
       const going = AP.isGoing(f, r), active = going && !r.wait, sid = esc(r.id);
       return '<tr class="' + (active ? "" : "off") + '">' +
-        '<td class="num">' + (r.no ? r.no : "–") + '</td><td class="num">' + esc(AP.stampText(r.at)) + (r.editedAt ? '<small class="fm-edited" title="학생이 직접 고친 시각">수정 ' + esc(AP.stampText(r.editedAt)) + "</small>" : "") + "</td>" +
+        '<td class="num">' + (r.no ? r.no : "–") + '</td><td class="num">' + esc(AP.stampText(r.at)) + (r.editedAt ? '<small class="fm-edited" title="학생이 직접 고친 시각">수정 ' + esc(AP.stampText(r.editedAt)) + "</small>" : "") + (r.manual ? '<small class="fm-edited" title="' + esc(r.addedByName || "") + '">직접 추가</small>' : "") + "</td>" +
         qs.map((x) => '<td class="' + (x.type === "phone" || x.type === "sid" || x.type === "name" ? "num" : "ans") + '">' + cell(x, r) + "</td>").join("") +
         (p2 ? "<td>" + (AP.partOf(f, r) ? '<span class="fm-pill' + (/2차/.test(AP.partOf(f, r)) ? " ok" : "") + '">' + esc(AP.partOf(f, r)) + "</span>" : "") + "</td>" : "") +
         (f.mode === "first" ? "<td>" + (!going ? "" : r.wait ? '<span class="fm-pill warn">대기 ' + r.waitNo + "</span>" : '<span class="fm-pill ok">정원 안</span>') + "</td>" : "") +
         (fee ? "<td>" + (active ? payPill(r) : "") + "</td>" : "") +
         (attendOn(f) ? "<td>" + (active ? '<button class="fm-att' + (r.attended ? " on" : "") + '" data-act="fmAtt" data-sid="' + sid + '">' + (r.attended ? "✓ " + esc(r.attendedAt || "") : "확인") + "</button>" : "") + "</td>" : "") +
-        (editable ? '<td><button class="x" data-act="fmDelResp" data-sid="' + sid + '" aria-label="이 응답 지우기" title="이 응답 지우기">×</button></td>' : "") + "</tr>";
+        "<td>" + (editable || r.manual ? '<button class="x" data-act="fmDelResp" data-sid="' + sid + '" aria-label="이 응답 지우기" title="이 응답 지우기">×</button>' : "") + "</td></tr>";
     }).join("") || '<tr><td colspan="' + n + '" class="muted" style="text-align:center;padding:28px">' + (q || filtered ? "조건에 맞는 사람이 없어요." : "아직 응답이 없어요. 링크를 단톡방에 올려 보세요.") + "</td></tr>";
     return "<thead>" + th + "</thead><tbody>" + rows + "</tbody>";
   }
@@ -2013,6 +2019,7 @@
       '<div class="fm-tools"><input type="search" data-fm-search placeholder="이름 · 학번 · 입금자명 찾기" value="' + esc(S.fm.q || "") + '">' +
       (fee && canSettle() ? '<a class="btn sm" href="#collect/' + encodeURIComponent(S.fm.pid) + '">수합금 확인 →</a>' : "") +
       (canAttendSwitch(f) ? '<button class="btn sm' + (attendOn(f) ? "" : " primary") + '" data-act="fmAttendOn">' + (attendOn(f) ? "출석 체크 끄기" : "✓ 출석 체크 켜기") + "</button>" : "") +
+      '<button class="btn sm" data-act="fmAddResp">+ 직접 추가</button>' +
       '<button class="btn sm" data-act="fmXlsx">엑셀 받기</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
       fmFiltersHTML(f) +
       '<div class="fm-tablewrap"><table class="fm-table" id="fmTable">' + rosterRows(f) + "</table></div>" +
@@ -2026,8 +2033,8 @@
     const ct = document.getElementById("colTable"), cs = document.getElementById("colStats");
     if (ct) ct.innerHTML = colRows(f);
     if (cs) cs.innerHTML = colStats(f);
-    const c = document.getElementById("fmFcount");
-    if (c) { const n = fmFiltered(f).length; c.textContent = n === S.fm.resp.length ? "" : "· " + n + "명 보는 중"; }
+    const fb = document.getElementById("fmFbar");
+    if (fb) fb.innerHTML = fmFbarInner(f);
   }
   const hm = () => { const d = new Date(); return z(d.getHours()) + ":" + z(d.getMinutes()); };
 
@@ -2162,7 +2169,6 @@
     }
     if (el.dataset.fmFilter !== undefined) {
       S.fm.af = Object.assign({}, S.fm.af, { [el.dataset.fmFilter]: el.value });
-      const bar = el.closest(".fm-filters"); if (bar) bar.outerHTML = fmFiltersHTML(S.fm.form);
       refreshRoster(); return;
     }
     const f = S.fm.draft;
@@ -2224,6 +2230,44 @@
 
   const FORM_ACTS = {
     fmTab(el) { S.fm.tab = el.dataset.tab; S.fm.pv = null; renderPage(); },
+    // 명단에 사람 직접 추가 (현장 추가 신청 등) — 명단을 볼 수 있는 사람 누구나
+    fmAddResp() {
+      const f = S.fm.form; if (!f) return;
+      const qs = (f.qs || []).filter((q) => q.type !== "agree"), aq = AP.attendQ(f);
+      const fields = qs.map((q) => {
+        const o = { name: "a_" + q.id, label: q.label, required: q.type === "name" || q.type === "sid" };
+        if (q.type === "phone") o.type = "tel";
+        else if (q.type === "yesno") { o.type = "select"; o.options = ["예", "아니오"]; }
+        else if (q.type === "choice") { o.type = "select"; o.options = (q.options || []).slice(); }
+        else if (q.type === "multi") o.help = "여러 개면 쉼표(,)로 구분: " + (q.options || []).join(", ");
+        else if (q.type === "long") o.type = "textarea";
+        return o;
+      });
+      if (AP.has2(f)) fields.push({ name: "a_" + AP.PART, label: "참여 (1차·2차)", type: "select", options: f.only2 ? ["1차만", "1차 + 2차", "2차만"] : ["1차만", "1차 + 2차"] });
+      const values = {}; if (aq) values["a_" + aq.id] = "예";
+      openForm({ title: "명단에 직접 추가",
+        intro: '<p class="muted small" style="margin:0">현장에서 추가로 신청한 사람 등을 넣어요. 명단에 <b>직접 추가</b>로 표시되고' + (f.mode === "first" ? ", 선착순 정원과 상관없이 확정으로 들어가요" : "") + ".</p>",
+        fields: fields, values: values, submitLabel: "추가",
+        onSubmit: async function (v) {
+          const sq = AP.qOf(f, "sid"), nq = AP.qOf(f, "name");
+          const sid = sq ? String(v["a_" + sq.id] || "").replace(/\D/g, "") : "", name = nq ? String(v["a_" + nq.id] || "").trim() : "";
+          if (sq && sid.length !== 10) throw new Error("학번 10자리를 넣어 주세요.");
+          if (sid && S.fm.resp.some((r) => r.sid === sid || r.id === sid)) throw new Error("이미 명단에 있는 학번이에요.");
+          const answers = {};
+          qs.forEach((q) => {
+            let x = v["a_" + q.id]; if (x == null || x === "") return;
+            if (q.type === "sid") x = sid;
+            if (q.type === "multi") x = String(x).split(",").map((t) => t.trim()).filter(Boolean);
+            answers[q.id] = x;
+          });
+          if (AP.has2(f) && v["a_" + AP.PART]) answers[AP.PART] = v["a_" + AP.PART];
+          const id = sid || "m" + Date.now().toString(36);
+          const doc = { sid: sid, name: name, depositName: AP.depositName(sid, name), answers: answers, at: Date.now(), paid: false, attended: false, manual: true, addedBy: myUid(), addedByName: (S.me && S.me.name) || "" };
+          await DB.set(respPath(S.fm.pid), id, doc);
+          if (!S.fm.resp.some((r) => r.id === id)) { S.fm.resp = ordered(f, S.fm.resp.concat([Object.assign({ id: id }, doc)])); refreshRoster(); }
+          toast(name + " 님을 명단에 추가했어요.");
+        } });
+    },
     colOpen(el) { location.hash = "collect/" + encodeURIComponent(el.dataset.id); },
     colUnpaidCopy() {
       const f = S.fm.form, un = (S.fm.resp || []).filter((r) => AP.needPay(f, r) && !r.paid);
@@ -2479,7 +2523,7 @@
           }, 0);
         } });
     },
-    fmFilterReset() { S.fm.af = {}; const bar = document.querySelector(".fm-filters"); if (bar) bar.outerHTML = fmFiltersHTML(S.fm.form); refreshRoster(); },
+    fmFilterReset() { S.fm.af = {}; refreshRoster(); },
     // 모든 신청 명단을 엑셀 하나로 (요약 시트 + 행사마다 시트 하나)
     async allRostersXlsx() {
       const n = await exportAllRosters();

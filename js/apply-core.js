@@ -58,12 +58,15 @@
   const isGoing = (f, r) => { const a = attendQ(f); return !a || (r.answers || {})[a.id] === "예"; };
   // 선착순: 제출 시각 순서로 정원 안 / 대기 (참여 '아니오'는 세지 않음). list는 제출 순서대로 정렬된 상태여야 함
   function place(f, list) {
-    let k = 0;
+    let k = 0, c = 0;
     list.forEach((r) => {
       r.no = 0; r.wait = false; r.waitNo = 0;
       if (!isGoing(f, r)) return;
       k++; r.no = k;
-      if (f.mode === "first" && k > Number(f.cap || 0)) { r.wait = true; r.waitNo = k - Number(f.cap || 0); }
+      // 학생회가 직접 추가한 사람(현장 추가 등)은 선착순 정원과 상관없이 확정
+      if (r.manual) return;
+      c++;
+      if (f.mode === "first" && c > Number(f.cap || 0)) { r.wait = true; r.waitNo = c - Number(f.cap || 0); }
     });
     return list;
   }
