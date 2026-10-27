@@ -1291,11 +1291,11 @@
       (uidsOf(x).length > 1 ? '<small class="muted">함께: ' + esc((x.assignee || x.assigneeName || "")) + "</small>" : "") +
       (x.memo ? '<small class="muted">' + esc(x.memo) + "</small>" : "") + assignSel(x) + "</span>" +
       '<span class="dd">' + (x.done ? "완료" : x.dueDate ? dday(x.dueDate) : "") + "</span></li>";
-    const block = (title, sub, arr, isMe) => {
+    const block = (title, sub, arr, isMe, note) => {
       const open = arr.filter((x) => !x.done).sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9"));
       const fin = arr.filter((x) => x.done).sort((a, b) => (b.doneAt || "").localeCompare(a.doneAt || ""));
       return '<section class="card rblock' + (isMe ? " myblock" : "") + '"><div class="card-head"><h3>' + esc(title) + (sub ? " <small>" + esc(sub) + "</small>" : "") + "</h3>" +
-        '<span class="muted small">' + fin.length + "/" + arr.length + " 완료</span></div>" +
+        '<span class="muted small rb-cnt">' + fin.length + "/" + arr.length + " 완료</span></div>" + (note ? '<p class="rb-note">' + note + "</p>" : "") +
         (open.length ? '<ul class="rlist">' + open.map(row).join("") + "</ul>" : '<p class="empty-s">' + (arr.length ? "다 끝냈어요 👏" : "맡은 일이 없어요.") + "</p>") +
         (fin.length ? '<details class="rdone"><summary>끝낸 일 ' + fin.length + "개</summary><ul class=\"rlist\">" + fin.map(row).join("") + "</ul></details>" : "") + "</section>";
     };
@@ -1303,8 +1303,9 @@
     const known = {};
     members.forEach((u) => (known[u.id] = true));
     const orphan = list.filter((x) => uidsOf(x).length && !uidsOf(x).some((u) => known[u]));
-    const ownLabel = (u) => { const ps = myProjects.filter((p) => p.ownerUid === u.id).map((p) => p.name); return u.position + (ps.length ? " · 담당 사업: " + ps.join(", ") : ""); };
-    const blocks = members.map((u) => block(u.name + (u.id === me ? " (나)" : ""), ownLabel(u), list.filter((x) => uidsOf(x).indexOf(u.id) >= 0), u.id === me))
+    // 담당 사업은 이름 옆이 아니라 아래 줄에
+    const ownNote = (u) => { const ps = myProjects.filter((p) => p.ownerUid === u.id).map((p) => esc(p.name)); return ps.length ? "담당 사업 · " + ps.join(", ") : ""; };
+    const blocks = members.map((u) => block(u.name + (u.id === me ? " (나)" : ""), u.position, list.filter((x) => uidsOf(x).indexOf(u.id) >= 0), u.id === me, ownNote(u)))
       .concat(common.length || head ? [block(room + " 전체", "누구나 체크", common)] : [])
       .concat(orphan.length ? [block("예전 담당자", "지금은 이 국서에 없음", orphan)] : []);
     const tabs = all ? '<div class="filters">' + S.settings.depts.map((d) => '<button class="fchip' + (room === d ? " on" : "") + '" style="--c:' + deptColor(d) + '" data-act="roomTab" data-dept="' + esc(d) + '"><i></i>' + esc(d) + "방</button>").join("") + "</div>" : "";
@@ -1313,11 +1314,12 @@
       (all && room !== myDept ? " · 회장단은 모든 국서 방을 볼 수 있어요" : "") + "</p></div>" +
       (head ? '<div class="actions"><button class="btn primary" data-act="addRoomTask">+ 할 일 추가</button></div>' : "") + "</div>" + tabs +
       '<div class="card rsum" style="--c:' + deptColor(room) + '"><b>' + esc(room) + " 진행률</b><span>" + done + " / " + list.length + '</span><div class="pbar"><i style="width:' + (list.length ? Math.round((done / list.length) * 100) : 0) + '%"></i></div></div>' +
+      (await collectRoomHTML(room)) +
       (myProjects.length ? '<section class="card rproj"><div class="card-head"><h3>' + esc(room) + ' 담당 사업</h3><a href="#projects" class="more">사업 기획안 →</a></div><ul class="plist">' +
         myProjects.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span><b>" + esc(p.name) + "</b>" +
           (p.owner ? '<span class="muted small">담당 ' + esc(p.owner) + "</span>" : "") + '<span class="dt">' + (p.startDate ? fmtDate(p.startDate) + (p.startDate >= t ? " · " + dday(p.startDate) : "") : "") + "</span></li>").join("") + "</ul></section>" : "") +
       '<div class="rgrid">' + blocks.join("") + "</div>" +
-      (await collectRoomHTML(room)) + auditRoomHTML(room) + (await settleRoomHTML(room)) +
+      (/재무/.test(room) && canSettle() ? '<div class="fin-grid">' + auditRoomHTML(room) + (await settleRoomHTML(room)) + "</div>" : "") +
       '<p class="muted small center">국서방은 ' + (all ? "회장단과 " : "") + "같은 국서 사람만 볼 수 있어요. 📅 표시는 업무 캘린더에서 이 국서에 분배된 업무예요 (캘린더에서도 같이 체크돼요).</p>";
   };
   const roomFields = (room) => {
@@ -2304,21 +2306,49 @@
     },
     atShow(el) { S.at.show = el.dataset.k || ""; refreshRoster(); },
     // 공개용 명단: 이름 가운데를 *로 가리고 학번과 함께 (단톡방·공지 올리기용)
+    //   한 양식에서 여러 행사(합동응원전 · 1차 · 2차 등)를 물었으면 행사(예/아니오 질문)를 골라 행사별로 나눠 만듦
     fmPublic() {
       const f = S.fm.form; if (!f) return;
       const mask = (n) => { const a = Array.from(String(n || "").replace(/\s/g, "")); return a.length <= 1 ? a.join("") : a.length === 2 ? a[0] + "*" : a[0] + "*".repeat(a.length - 2) + a[a.length - 1]; };
-      const going = fmSorted(S.fm.resp.filter((r) => AP.isGoing(f, r))), inn = going.filter((r) => !r.wait), wait = going.filter((r) => r.wait);
-      const line = (r, i) => (i + 1) + ". " + mask(r.name) + " " + (r.sid || "");
+      const all = fmSorted(S.fm.resp.slice());
+      const short = (t) => { t = String(t || "").replace(/\s+/g, " ").trim(); return t.length > 30 ? t.slice(0, 29) + "…" : t; };
+      // 고를 수 있는 '행사': 예/아니오 질문 + (2차가 있으면) 1차 · 2차
+      const evs = (f.qs || []).filter((q) => q.type === "yesno").map((q) => ({ k: q.id, label: q.label, attend: !!q.attend,
+        who: (r) => (r.answers || {})[q.id] === "예" && (!q.attend || AP.isGoing(f, r)) }));
+      if (AP.has2(f)) {
+        evs.push({ k: "__p1", label: "1차", who: (r) => AP.isGoing(f, r) && /1차/.test(AP.partOf(f, r)) });
+        evs.push({ k: "__p2", label: "2차", who: (r) => AP.isGoing(f, r) && /2차/.test(AP.partOf(f, r)) });
+      }
+      if (!evs.length) evs.push({ k: "__all", label: "참여자", attend: true, who: (r) => AP.isGoing(f, r) });
       const p = (S.cache.projects || []).find((x) => x.id === (f.projectId || S.fm.pid));
-      const title = "[" + ((p && p.name) || f.title || "") + (f.name ? " " + f.name : "") + " 명단]";
-      const txt = title + "\n" + inn.map(line).join("\n") + (wait.length ? "\n\n[대기]\n" + wait.map(line).join("\n") : "");
+      const pname = ((p && p.name) || f.title || "") + (f.name ? " " + f.name : "");
+      const line = (r, i) => (i + 1) + ". " + mask(r.name) + " " + (r.sid || "");
+      const build = (keys) => {
+        const pick = evs.filter((e) => keys.indexOf(e.k) >= 0), sections = [];
+        pick.forEach((e) => {
+          const list = all.filter(e.who), inn = list.filter((r) => !(e.attend && r.wait)), wait = list.filter((r) => e.attend && r.wait);
+          sections.push({ title: pick.length > 1 ? short(e.label) : pname + " 명단", inn: inn, wait: wait });
+        });
+        return sections;
+      };
+      const toText = (secs) => (secs.length > 1 ? "[" + pname + " 명단]\n\n" : "") + secs.map((x) => "[" + x.title + "] " + x.inn.length + "명\n" + x.inn.map(line).join("\n") +
+        (x.wait.length ? "\n\n[" + x.title + " 대기]\n" + x.wait.map(line).join("\n") : "")).join("\n\n");
+      let keys = [(evs.find((e) => e.attend) || evs[0]).k];
       openForm({ title: "공개용 명단",
-        intro: '<p class="muted small" style="margin:0 0 8px">참여하는 ' + inn.length + "명" + (wait.length ? " (+ 대기 " + wait.length + "명)" : "") + "을 <b>이름 가운데 *</b> + 학번으로 만들었어요. 순서는 지금 명단 순서(이름순으로 정렬했으면 이름순)예요. 고쳐서 복사해도 돼요.</p>" +
-          '<textarea class="copybox" id="pubText" rows="14">' + esc(txt) + "</textarea>",
+        intro: (evs.length > 1 ? '<p class="small" style="margin:0 0 6px"><b>어떤 행사 명단인가요?</b> <span class="muted">여러 개 고르면 행사별로 나눠서 만들어요</span></p>' +
+            '<div class="pub-evs">' + evs.map((e) => '<label class="fm-chk"><input type="checkbox" class="pub-ev" value="' + esc(e.k) + '"' + (keys.indexOf(e.k) >= 0 ? " checked" : "") + "> " + esc(short(e.label)) + "</label>").join("") + "</div>" : "") +
+          '<p class="muted small" style="margin:8px 0">‘예’라고 한 사람만 <b>이름 가운데 *</b> + 학번으로 넣어요. 순서는 지금 명단 순서(이름순으로 정렬했으면 이름순)예요. 고쳐서 복사해도 돼요.</p>' +
+          '<textarea class="copybox" id="pubText" rows="14">' + esc(toText(build(keys))) + "</textarea>",
         fields: [],
         extraButtons: [{ label: "엑셀로 받기", onClick: function () {
-          const rows = [["번호", "이름", "학번"]].concat(inn.map((r, i) => [i + 1, mask(r.name), r.sid || ""]), wait.length ? [["", "", ""], ["대기", "", ""]].concat(wait.map((r, i) => [i + 1, mask(r.name), r.sid || ""])) : []);
-          downloadBlob(makeXlsx(rows, "공개용 명단"), title.replace(/[\[\]\/\\:*?"<>|]/g, "").trim() + "_공개용.xlsx");
+          // 행사마다 시트 하나 (같은 파일)
+          const secs = build(keys);
+          const sheets = secs.map((x) => {
+            let rows = [["번호", "이름", "학번"]].concat(x.inn.map((r, k) => [k + 1, mask(r.name), r.sid || ""]));
+            if (x.wait.length) rows = rows.concat([["", "", ""], ["대기", "", ""]], x.wait.map((r, k) => [k + 1, mask(r.name), r.sid || ""]));
+            return { name: secs.length > 1 ? x.title.replace(/…$/, "") : "공개용 명단", table: rows };
+          });
+          downloadBlob(makeXlsxBook(sheets), pname.replace(/[\[\]\/\\:*?"<>|]/g, "").trim() + "_공개용.xlsx");
         } }],
         submitLabel: "복사",
         onSubmit: async function () {
@@ -2326,6 +2356,10 @@
           await Promise.resolve(navigator.clipboard && navigator.clipboard.writeText(t)).catch(() => { throw new Error("복사가 안 됐어요. 글을 길게 눌러 직접 복사해 주세요."); });
           toast("공개용 명단을 복사했어요.");
         } });
+      modalRoot.querySelectorAll(".pub-ev").forEach((c) => c.addEventListener("change", function () {
+        keys = Array.from(modalRoot.querySelectorAll(".pub-ev:checked")).map((x) => x.value);
+        document.getElementById("pubText").value = keys.length ? toText(build(keys)) : "";
+      }));
     },
     colOpen(el) { location.hash = "collect/" + encodeURIComponent(el.dataset.id); },
     colUnpaidCopy() {
@@ -3360,13 +3394,22 @@
     try { forms = await DB.list("forms"); } catch (e) { return ""; }
     const pn = {}; (await col("projects")).forEach((p) => (pn[p.id] = p));
     forms = forms.filter((f) => AP.anyFee(f) && !f.summary).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-    return '<section class="card st-room"><div class="card-head"><h3>수합금 확인 <small>참가비 입금 · 회비 납부자/미납부자</small></h3></div>' +
-      (forms.length ? '<ul class="tlist">' + forms.map((f) => {
-        const p = pn[f.projectId || f.id] || {};
-        return '<li class="trow" data-act="colOpen" data-id="' + esc(f.id) + '"><span class="tt"><b>' + esc(p.name || f.title || "") + (f.name ? " · " + esc(f.name) : "") + "</b>" +
-          ' <small class="muted">참가비 ' + esc(AP.feeText(f)) + "</small></span>" +
-          '<span class="dd muted small">' + (f.imported ? "구글폼" : f.open ? "받는 중" : "마감") + "</span></li>";
-      }).join("") + "</ul>" : '<p class="empty-s">참가비를 받는 신청 명단이 아직 없어요.</p>') + "</section>";
+    // 수합금 확인 = 재무국 할 일 하나. 사업이 완료(·취소)되거나 아카이브로 가면 사라짐 (명단의 [수합금 확인 →]으로는 계속 볼 수 있음)
+    const items = [];
+    for (const f of forms) {
+      const p = pn[f.projectId || f.id] || {};
+      if (p.archived || p.status === "완료" || p.status === "취소") continue;
+      let due = 0, paid = 0;
+      try { const list = AP.place(f, (await DB.list(respPath(f.id))).sort((a, b) => (a.at || 0) - (b.at || 0))); list.forEach((r) => { if (AP.needPay(f, r)) { due++; if (r.paid) paid++; } }); } catch (e) { continue; }
+      items.push({ f: f, p: p, due: due, paid: paid });
+    }
+    if (!items.length) return "";
+    const card = (x) => '<button class="col-item" data-act="colOpen" data-id="' + esc(x.f.id) + '"><span class="ci-name">' + esc(x.p.name || x.f.title || "") + "</span>" +
+      (x.f.name ? '<span class="ci-sub">' + esc(x.f.name) + "</span>" : "") +
+      '<span class="ci-row"><span class="pbar"><i style="width:' + (x.due ? Math.round((x.paid / x.due) * 100) : 0) + '%"></i></span><b>' + x.paid + "/" + x.due + "</b></span>" +
+      '<span class="ci-sub">' + (x.due > x.paid ? "미납 " + (x.due - x.paid) + "명" : x.due ? "모두 납부 ✓" : "아직 신청 없음") + "</span></button>";
+    return '<section class="card col-room"><div class="card-head"><h3>💰 수합금 확인</h3><span class="muted small">참가비를 받는 행사 · 사업이 끝나면 사라져요</span></div>' +
+      '<div class="col-items">' + items.map(card).join("") + "</div></section>";
   }
   const payPill = (r) => (r.paid ? '<span class="fm-pill ok">납부</span>' : '<span class="fm-pill warn">미납</span>');
   function colStats(f) {
