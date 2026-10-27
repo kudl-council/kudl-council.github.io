@@ -1379,8 +1379,8 @@
       .filter((l) => safeUrl(l[1])).map((l) => '<a class="btn sm" href="' + esc(safeUrl(l[1])) + '" target="_blank" rel="noopener">' + l[0] + " ↗</a>").join("");
     const period = eventDateText(p);
     return '<article class="card pcard" style="--c:' + deptColor(p.dept) + '">' +
-      '<div class="ptop">' + deptTag(p.dept) + '<span class="st st-' + esc(p.status) + '">' + esc(p.status || "") + "</span>" + (opts.showYear ? '<span class="yr">' + esc(p.year) + "</span>" : "") + "</div>" +
-      "<h4>" + kindTag(p) + semTag(p) + esc(p.name) + "</h4>" +
+      '<div class="ptop">' + (isSchool(p) ? '<span class="tag" style="--c:#0e7490">학교 행사</span>' : deptTag(p.dept)) + '<span class="st st-' + esc(p.status) + '">' + esc(p.status || "") + "</span>" + (opts.showYear ? '<span class="yr">' + esc(p.year) + "</span>" : "") + "</div>" +
+      "<h4>" + semTag(p) + esc(p.name) + "</h4>" +
       (hasLinks(p) ? '<p class="plinks-rel">' + linkHTML(p) + "</p>" : "") +
       '<dl class="meta">' + (period ? "<dt>사업일</dt><dd>" + period + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
       (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
@@ -1420,7 +1420,7 @@
       '<div class="pbar"><i style="width:' + Math.round((done / ts.length) * 100) + '%"></i></div>' +
       "<ul>" + ts.map((x) => '<li class="' + (x.done ? "done" : x.dueDate < t ? "late" : "") + '"' + (opts.readonly ? "" : ' data-act="editTask" data-id="' + esc(x.id) + '"') + ">" +
         deptTag(x.dept) + '<span class="tt">' + esc(x.title) + "</span>" +
-        '<span class="dt">' + (x.done ? "완료" : opts.archive ? fmtDate(x.dueDate) : dday(x.dueDate)) + "</span></li>").join("") + "</ul></div>";
+        '<span class="dt">' + (x.dueDate ? "~" + fmtDate(x.dueDate) + " · " : "") + (x.done ? "완료" : opts.archive ? "미완료" : dday(x.dueDate)) + "</span></li>").join("") + "</ul></div>";
   }
   function deptFilterChips(key, act) {
     return '<button class="fchip' + (!S[key] ? " on" : "") + '" data-act="' + act + '" data-dept="">전체</button>' +
