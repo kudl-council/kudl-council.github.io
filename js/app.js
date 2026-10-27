@@ -2037,6 +2037,7 @@
       (fee && canSettle() ? '<a class="btn sm" href="#collect/' + encodeURIComponent(S.fm.pid) + '">수합금 확인 →</a>' : "") +
       (canAttend(f) ? '<a class="btn sm primary" href="#attend/' + encodeURIComponent(S.fm.pid) + '">✓ 출석 체크하기</a>' : "") +
       '<button class="btn sm" data-act="fmAddResp">+ 직접 추가</button>' +
+      '<button class="btn sm" data-act="fmPublic">공개용 명단</button>' +
       '<button class="btn sm" data-act="fmXlsx">엑셀 받기</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
       fmFiltersHTML(f) +
       '<div class="fm-tablewrap"><table class="fm-table" id="fmTable">' + rosterRows(f) + "</table></div>" +
@@ -2302,6 +2303,30 @@
       if (v) toast(r.name + " 출석 ✓");
     },
     atShow(el) { S.at.show = el.dataset.k || ""; refreshRoster(); },
+    // 공개용 명단: 이름 가운데를 *로 가리고 학번과 함께 (단톡방·공지 올리기용)
+    fmPublic() {
+      const f = S.fm.form; if (!f) return;
+      const mask = (n) => { const a = Array.from(String(n || "").replace(/\s/g, "")); return a.length <= 1 ? a.join("") : a.length === 2 ? a[0] + "*" : a[0] + "*".repeat(a.length - 2) + a[a.length - 1]; };
+      const going = fmSorted(S.fm.resp.filter((r) => AP.isGoing(f, r))), inn = going.filter((r) => !r.wait), wait = going.filter((r) => r.wait);
+      const line = (r, i) => (i + 1) + ". " + mask(r.name) + " " + (r.sid || "");
+      const p = (S.cache.projects || []).find((x) => x.id === (f.projectId || S.fm.pid));
+      const title = "[" + ((p && p.name) || f.title || "") + (f.name ? " " + f.name : "") + " 명단]";
+      const txt = title + "\n" + inn.map(line).join("\n") + (wait.length ? "\n\n[대기]\n" + wait.map(line).join("\n") : "");
+      openForm({ title: "공개용 명단",
+        intro: '<p class="muted small" style="margin:0 0 8px">참여하는 ' + inn.length + "명" + (wait.length ? " (+ 대기 " + wait.length + "명)" : "") + "을 <b>이름 가운데 *</b> + 학번으로 만들었어요. 순서는 지금 명단 순서(이름순으로 정렬했으면 이름순)예요. 고쳐서 복사해도 돼요.</p>" +
+          '<textarea class="copybox" id="pubText" rows="14">' + esc(txt) + "</textarea>",
+        fields: [],
+        extraButtons: [{ label: "엑셀로 받기", onClick: function () {
+          const rows = [["번호", "이름", "학번"]].concat(inn.map((r, i) => [i + 1, mask(r.name), r.sid || ""]), wait.length ? [["", "", ""], ["대기", "", ""]].concat(wait.map((r, i) => [i + 1, mask(r.name), r.sid || ""])) : []);
+          downloadBlob(makeXlsx(rows, "공개용 명단"), title.replace(/[\[\]\/\\:*?"<>|]/g, "").trim() + "_공개용.xlsx");
+        } }],
+        submitLabel: "복사",
+        onSubmit: async function () {
+          const t = document.getElementById("pubText").value;
+          await Promise.resolve(navigator.clipboard && navigator.clipboard.writeText(t)).catch(() => { throw new Error("복사가 안 됐어요. 글을 길게 눌러 직접 복사해 주세요."); });
+          toast("공개용 명단을 복사했어요.");
+        } });
+    },
     colOpen(el) { location.hash = "collect/" + encodeURIComponent(el.dataset.id); },
     colUnpaidCopy() {
       const f = S.fm.form, un = (S.fm.resp || []).filter((r) => AP.needPay(f, r) && !r.paid);
