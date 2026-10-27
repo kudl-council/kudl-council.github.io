@@ -59,7 +59,7 @@
     admin: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   };
   const navIcon = (k) => NAV_ICON[k] ? '<svg class="nico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + NAV_ICON[k] + "</svg>" : "";
-  const navKey = (r) => (r === "messages" ? "talk" : r === "form" ? "projects" : r === "settle" || r === "audit" || r === "collect" ? "room" : r);   // 신청 페이지는 사업 기획안 안에 있음   // 선배들의 한마디는 소통방 탭 안에 있음
+  const navKey = (r) => (r === "messages" ? "talk" : r === "form" || r === "attend" ? "projects" : r === "settle" || r === "audit" || r === "collect" ? "room" : r);   // 신청 페이지는 사업 기획안 안에 있음   // 선배들의 한마디는 소통방 탭 안에 있음
   const S = { authUser: null, me: null, settings: Object.assign({}, DEFAULTS), cache: {}, route: "home",
     routeArg: "", calMonth: null, calFilter: "", q: {}, archiveDept: "", projDept: "", minType: "", room: "" };
 
@@ -1311,12 +1311,13 @@
     return '<div class="page-head"><div><h2>' + esc(room) + "방</h2>" +
       '<p class="muted">' + (head ? "국원별로 할 일을 적어 주세요. 끝나면 각자 체크해요." : "내 이름 아래 할 일을 끝내면 체크해 주세요.") +
       (all && room !== myDept ? " · 회장단은 모든 국서 방을 볼 수 있어요" : "") + "</p></div>" +
-      (head ? '<div class="actions"><button class="btn primary" data-act="addRoomTask">+ 할 일 추가</button></div>' : "") + "</div>" + tabs + (await collectRoomHTML(room)) + auditRoomHTML(room) + (await settleRoomHTML(room)) +
+      (head ? '<div class="actions"><button class="btn primary" data-act="addRoomTask">+ 할 일 추가</button></div>' : "") + "</div>" + tabs +
       '<div class="card rsum" style="--c:' + deptColor(room) + '"><b>' + esc(room) + " 진행률</b><span>" + done + " / " + list.length + '</span><div class="pbar"><i style="width:' + (list.length ? Math.round((done / list.length) * 100) : 0) + '%"></i></div></div>' +
       (myProjects.length ? '<section class="card rproj"><div class="card-head"><h3>' + esc(room) + ' 담당 사업</h3><a href="#projects" class="more">사업 기획안 →</a></div><ul class="plist">' +
         myProjects.map((p) => '<li data-act="viewProject" data-id="' + esc(p.id) + '"><span class="st st-' + esc(p.status) + '">' + esc(p.status) + "</span><b>" + esc(p.name) + "</b>" +
           (p.owner ? '<span class="muted small">담당 ' + esc(p.owner) + "</span>" : "") + '<span class="dt">' + (p.startDate ? fmtDate(p.startDate) + (p.startDate >= t ? " · " + dday(p.startDate) : "") : "") + "</span></li>").join("") + "</ul></section>" : "") +
       '<div class="rgrid">' + blocks.join("") + "</div>" +
+      (await collectRoomHTML(room)) + auditRoomHTML(room) + (await settleRoomHTML(room)) +
       '<p class="muted small center">국서방은 ' + (all ? "회장단과 " : "") + "같은 국서 사람만 볼 수 있어요. 📅 표시는 업무 캘린더에서 이 국서에 분배된 업무예요 (캘린더에서도 같이 체크돼요).</p>";
   };
   const roomFields = (room) => {
@@ -1631,7 +1632,7 @@
   // 양식 고치기: 회장단 + 양식 담당 국서(소통국, 대협국 사업은 대협국) + 따로 지정한 담당자
   // 명단 보기: 위 사람들 + 참가비를 받는 양식이면 재무국 + 회장단이 따로 추가한 사람
   const canEditForm = (f) => !!f && (isExecMember() || (meOK() && (S.me.dept === f.ownerDept || (f.editorUids || []).indexOf(myUid()) >= 0)));
-  const canSeeRoster = (f) => !!f && (canEditForm(f) || (isFinance() && AP.anyFee(f)) || (meOK() && (f.viewerUids || []).indexOf(myUid()) >= 0));
+  const canSeeRoster = (f) => !!f && (canEditForm(f) || (isFinance() && AP.anyFee(f)) || (meOK() && ((f.viewerUids || []).indexOf(myUid()) >= 0 || (f.attendUids || []).indexOf(myUid()) >= 0)));
   // 입금 확인 · 회비 납부/미납 · 받을 돈은 재무국만 (공용계정은 관리용으로 같이)
   const canMoney = () => isFinance() || (isOwner() && !S.me);
   const canSetEditors = (f) => !!f && (isExecMember() || (meOK() && S.me.dept === f.ownerDept && isMyHead()));
@@ -1794,7 +1795,7 @@
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.imported ? "구글폼에서 가져옴" : f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") + "</div>";
     if (f && imp) {
       head += '<div class="notice info small" style="margin:0">구글폼에서 가져온 명단이에요' + (f.importedAt ? " (" + esc(dotDate(f.importedAt)) + ")" : "") + ". 신청 링크는 없고, 출석 체크와 수합금 확인은 똑같이 할 수 있어요." +
-        (editable ? ' <button class="linkbtn small" data-act="fmImpEdit">이름·참가비 고치기</button>' : "") + "</div>" +
+        (editable ? ' <button class="linkbtn small" data-act="fmImpEdit">이름·참가비 고치기</button>' : "") + (canSetEditors(f) ? ' <button class="linkbtn small" data-act="fmPerm">권한 설정</button>' : "") + "</div>" +
         (keepOf(f, p) ? '<p class="muted small" style="margin:0">명단 보관 기한 <b>' + esc(dotDate(keepOf(f, p))) + "</b> (지나거나 학생회를 넘기면 삭제)</p>" : "");
     } else if (f) {
       head += '<div class="fm-link"><code>' + esc(applyUrl(pid)) + "</code>" +
@@ -1802,6 +1803,7 @@
         (editable ? '<button class="btn sm" data-act="fmOpen">' + (f.open ? "신청 닫기" : "신청 받기 시작") + "</button>" : "") + "</div>" +
         '<p class="muted small" style="margin:0">양식 고치기: 회장단 · <b>' + esc(f.ownerDept) + "</b>" + ((f.editorUids || []).length ? " · 담당자 " + (f.editorUids || []).length + "명" : "") +
         " / 명단 보기: 위 사람들" + (AP.anyFee(f) ? " + 재무국 (참가비 양식)" : "") + ((f.viewerUids || []).length ? " · 추가 " + (f.viewerUids || []).length + "명" : "") +
+        " / 출석 체크: 회장단 · 재무국장" + ((f.attendUids || []).length ? " · 추가 " + (f.attendUids || []).length + "명" : "") +
         (canSetEditors(f) ? ' <button class="linkbtn small" data-act="fmPerm">권한 설정</button>' : "") +
         (keepOf(f, p) ? " · 명단 보관 기한 <b>" + esc(dotDate(keepOf(f, p))) + "</b> (지나거나 학생회를 넘기면 삭제)" : "") + "</p>" +
         (f.summary ? '<div class="notice info small" style="margin:8px 0 0">명단은 정리돼서 지워졌어요 (' + esc(dotDate(f.summary.at)) + "). 남은 기록: <b>" + esc(summaryText(f.summary)) + "</b></div>" : "");
@@ -1830,9 +1832,12 @@
   //   예전 양식은 이미 출석을 체크한 사람이 있으면 켜진 것으로 봄
   // 출석 체크 켜기/끄기: 회장단 + 재무국장
   const canAttendSwitch = (f) => !!f && (isExecMember() || (isFinance() && isMyHead()));
-  const attendOn = (f) => !!(f && (f.attendOn || (f.attendOn === undefined && (S.fm.resp || []).some((r) => r.attended))));
+  // 출석 체크: 회장단 + 재무국장 + 회장단이 양식별로 지정한 사람 · 명단의 출석 칸은 누가 한 명이라도 체크되면 보임
+  const canAttend = (f) => !!f && (canAttendSwitch(f) || (meOK() && (f.attendUids || []).indexOf(myUid()) >= 0));
+  const attendOn = (f) => !!(f && (f.attendOn === true || (S.fm.resp || []).some((r) => r.attended)));
   function fmFilterDefs(f) {
-    const defs = (f.qs || []).filter((q) => q.type === "yesno" || q.type === "choice" || q.type === "multi").map((q) => ({
+    // 필터는 참여 여부 질문 · 1·2차 참여 · 수합금 · 출석에만
+    const defs = (f.qs || []).filter((q) => q.attend && q.type === "yesno").map((q) => ({
       k: q.id, label: q.label, opts: q.type === "yesno" ? ["예", "아니오"] : (q.options || []).filter((o) => String(o).trim()),
       get: (r) => (r.answers || {})[q.id] }));
     if (AP.has2(f)) defs.push({ k: AP.PART, label: "참여 (1차·2차)", opts: (f.only2 ? ["1차만", "1차 + 2차", "2차만"] : ["1차만", "1차 + 2차"]), get: (r) => AP.partOf(f, r) });
@@ -1854,6 +1859,18 @@
     const n = fmFiltered(f).length;
     return '<span class="muted small">' + on.map((d) => "<b>" + esc(d.label.length > 14 ? d.label.slice(0, 13) + "…" : d.label) + "</b> = " + esc(af[d.k])).join(" · ") + " → <b>" + n + "명</b> 보는 중</span>" +
       '<button class="linkbtn small" data-act="fmFilterReset">필터 지우기</button>';
+  }
+  // 이름 정렬: 제출순(기본) → 가나다순 → 가나다 역순
+  function fmSorted(list) {
+    const o = S.fm.sort;
+    if (!o) return list;
+    const c = new Intl.Collator("ko");
+    return list.slice().sort((a, b) => (o === "desc" ? -1 : 1) * c.compare(String(a.name || ""), String(b.name || "")));
+  }
+  function thName(label) {
+    const o = S.fm.sort || "";
+    return '<th title="' + esc(label) + '"><div class="fm-th"><span class="fm-thl">' + esc(label) + '</span><button class="fm-sort' + (o ? " on" : "") + '" data-act="fmSort" title="이름순으로 정렬">' +
+      (o === "asc" ? "가나다 ↑" : o === "desc" ? "가나다 ↓" : "↕") + "</button></div></th>";
   }
   // 칸 제목: 길면 줄여서 보여 주고(마우스를 올리면 전체), 고를 수 있는 칸엔 ▾ 필터
   function thF(f, key, label) {
@@ -1879,7 +1896,7 @@
     const money = !keep && AP.anyFee(f);
     const head = ["번호", "이름", "학번"].concat(extra.map((x) => x.label), AP.has2(f) ? ["참여"] : [], f.mode === "first" ? ["선착순"] : [],
       money ? ["수합금"] : [], keep || !attendOn(f) ? [] : ["출석"], ["제출 시각"]);
-    const rows = (list0 || fmFiltered(f)).map((r) => [r.no || "", r.name, r.sid].concat(
+    const rows = (list0 || fmSorted(fmFiltered(f))).map((r) => [r.no || "", r.name, r.sid].concat(
       extra.map((x) => { const v = (r.answers || {})[x.id]; return x.type === "agree" ? (v ? "동의" : "") : Array.isArray(v) ? v.join(", ") : (v == null ? "" : v); }),
       AP.has2(f) ? [AP.partOf(f, r)] : [], f.mode === "first" ? [!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안"] : [],
       money ? [AP.needPay(f, r) ? (r.paid ? "납부" : "미납") : ""] : [],
@@ -1985,7 +2002,7 @@
   }
   function rosterRows(f) {
     const fm = S.fm, q = (fm.q || "").replace(/\s/g, ""), filtered = Object.values(fm.af || {}).some(Boolean);
-    const list = fmFiltered(f);
+    const list = fmSorted(fmFiltered(f));
     const qs = f.qs || [];
     const editable = canEditForm(f) && !f.imported, fee = AP.anyFee(f);
     const cell = (x, r) => {
@@ -1997,7 +2014,7 @@
       return esc(Array.isArray(v) ? v.join(", ") : v);
     };
     const p2 = AP.has2(f);
-    const th = "<tr><th>번호</th><th>제출 시각</th>" + qs.map((x) => thF(f, x.id, x.label)).join("") + (p2 ? thF(f, AP.PART, "참여") : "") +
+    const th = "<tr><th>번호</th><th>제출 시각</th>" + qs.map((x) => (x.type === "name" ? thName(x.label) : thF(f, x.id, x.label))).join("") + (p2 ? thF(f, AP.PART, "참여") : "") +
       (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? thF(f, "__paid", "수합금") : "") + (attendOn(f) ? thF(f, "__att", "출석") : "") + "<th></th></tr>";
     const n = 2 + (attendOn(f) ? 1 : 0) + qs.length + (p2 ? 1 : 0) + (fee ? 1 : 0) + (f.mode === "first" ? 1 : 0) + 1;
     const rows = list.map((r) => {
@@ -2008,7 +2025,7 @@
         (p2 ? "<td>" + (AP.partOf(f, r) ? '<span class="fm-pill' + (/2차/.test(AP.partOf(f, r)) ? " ok" : "") + '">' + esc(AP.partOf(f, r)) + "</span>" : "") + "</td>" : "") +
         (f.mode === "first" ? "<td>" + (!going ? "" : r.wait ? '<span class="fm-pill warn">대기 ' + r.waitNo + "</span>" : '<span class="fm-pill ok">정원 안</span>') + "</td>" : "") +
         (fee ? "<td>" + (active ? payPill(r) : "") + "</td>" : "") +
-        (attendOn(f) ? "<td>" + (active ? '<button class="fm-att' + (r.attended ? " on" : "") + '" data-act="fmAtt" data-sid="' + sid + '">' + (r.attended ? "✓ " + esc(r.attendedAt || "") : "확인") + "</button>" : "") + "</td>" : "") +
+        (attendOn(f) ? "<td>" + (active && r.attended ? '<span class="fm-pill ok">✓ ' + esc(r.attendedAt || "출석") + "</span>" : "") + "</td>" : "") +
         "<td>" + (editable || r.manual ? '<button class="x" data-act="fmDelResp" data-sid="' + sid + '" aria-label="이 응답 지우기" title="이 응답 지우기">×</button>' : "") + "</td></tr>";
     }).join("") || '<tr><td colspan="' + n + '" class="muted" style="text-align:center;padding:28px">' + (q || filtered ? "조건에 맞는 사람이 없어요." : "아직 응답이 없어요. 링크를 단톡방에 올려 보세요.") + "</td></tr>";
     return "<thead>" + th + "</thead><tbody>" + rows + "</tbody>";
@@ -2018,18 +2035,21 @@
     return '<div id="fmStats">' + rosterStats(f, S.fm.resp) + "</div>" +
       '<div class="fm-tools"><input type="search" data-fm-search placeholder="이름 · 학번 · 입금자명 찾기" value="' + esc(S.fm.q || "") + '">' +
       (fee && canSettle() ? '<a class="btn sm" href="#collect/' + encodeURIComponent(S.fm.pid) + '">수합금 확인 →</a>' : "") +
-      (canAttendSwitch(f) ? '<button class="btn sm' + (attendOn(f) ? "" : " primary") + '" data-act="fmAttendOn">' + (attendOn(f) ? "출석 체크 끄기" : "✓ 출석 체크 켜기") + "</button>" : "") +
+      (canAttend(f) ? '<a class="btn sm primary" href="#attend/' + encodeURIComponent(S.fm.pid) + '">✓ 출석 체크하기</a>' : "") +
       '<button class="btn sm" data-act="fmAddResp">+ 직접 추가</button>' +
       '<button class="btn sm" data-act="fmXlsx">엑셀 받기</button><span class="fm-live" title="새 응답이 들어오면 자동으로 바뀌어요"><i></i>실시간</span></div>' +
       fmFiltersHTML(f) +
       '<div class="fm-tablewrap"><table class="fm-table" id="fmTable">' + rosterRows(f) + "</table></div>" +
       '<p class="muted small">' + (fee ? "수합금 납부 확인은 재무국이 재무국방 → [수합금 확인]에서 해요. " : "") +
-        (attendOn(f) ? "행사 당일엔 이 화면에서 [확인]을 눌러 출석을 체크해요." : "실수요조사·행사 명단이라 출석을 확인해야 하면 [출석 체크 켜기]를 눌러 주세요.") + "</p>";
+        (canAttend(f) ? "행사 당일엔 [✓ 출석 체크하기]를 눌러 휴대폰으로 체크해요. 여기 명단에도 바로 반영돼요." : attendOn(f) ? "출석은 회장단·재무국장·지정된 사람이 체크해요." : "") + "</p>";
   }
   function refreshRoster() {
     const f = S.fm.form, t = document.getElementById("fmTable"), s = document.getElementById("fmStats");
     if (t) t.innerHTML = rosterRows(f);
     if (s) s.innerHTML = rosterStats(f, S.fm.resp);
+    const al = document.getElementById("atList"), ah = document.getElementById("atHead");
+    if (al) al.innerHTML = atRows(f);
+    if (ah) ah.innerHTML = atHeadHTML(f);
     const ct = document.getElementById("colTable"), cs = document.getElementById("colStats");
     if (ct) ct.innerHTML = colRows(f);
     if (cs) cs.innerHTML = colStats(f);
@@ -2164,6 +2184,7 @@
   document.addEventListener("input", function (e) {
     const el = e.target;
     if (!el.dataset) return;
+    if (el.dataset.atSearch !== undefined) { S.at.q = el.value; refreshRoster(); return; }
     if (el.dataset.fmSearch !== undefined) {
       S.fm.q = el.value; refreshRoster(); return;
     }
@@ -2268,6 +2289,19 @@
           toast(name + " 님을 명단에 추가했어요.");
         } });
     },
+    async atTap(el) {
+      const r = S.fm.resp.find((x) => x.id === el.dataset.sid); if (!r) return;
+      if (r.attended && !confirm(r.name + " 님 출석을 취소할까요?")) return;
+      const v = !r.attended, patch = { attended: v, attendedAt: v ? hm() : "" };
+      el.disabled = true;
+      try { await DB.update(respPath(S.fm.pid), r.id, patch); Object.assign(r, patch); }
+      catch (e) { el.disabled = false; throw e; }
+      // 찾아서 체크했으면 검색창 비우고 다음 사람 찾기 쉽게
+      if (v && S.at && S.at.q) { S.at.q = ""; const i = document.querySelector("[data-at-search]"); if (i) { i.value = ""; i.focus(); } }
+      refreshRoster();
+      if (v) toast(r.name + " 출석 ✓");
+    },
+    atShow(el) { S.at.show = el.dataset.k || ""; refreshRoster(); },
     colOpen(el) { location.hash = "collect/" + encodeURIComponent(el.dataset.id); },
     colUnpaidCopy() {
       const f = S.fm.form, un = (S.fm.resp || []).filter((r) => AP.needPay(f, r) && !r.paid);
@@ -2359,6 +2393,7 @@
       // 권한 명단은 [권한 설정]에서만 바뀜 (양식을 고치는 동안 바뀌었을 수도 있으니 최신 값 유지)
       doc.editorUids = (fm.form && fm.form.editorUids) || [];
       doc.viewerUids = (fm.form && fm.form.viewerUids) || [];
+      doc.attendUids = (fm.form && fm.form.attendUids) || [];
       if (!canEditForm(doc)) return toast("양식 담당 국서를 우리 국서가 아닌 곳으로 바꾸면 저장할 수 없어요.", true);
       el.disabled = true;
       try { await DB.set("forms", fm.pid, doc); } catch (e) { el.disabled = false; throw e; }
@@ -2398,7 +2433,9 @@
       const isHeadU = (u) => u.position === "국장" || u.position === deptPositions()[0];
       const autoEdit = (u) => execPositions().indexOf(u.position) >= 0 || u.dept === execDept() || u.isAdmin || u.dept === f.ownerDept;
       const autoView = (u) => autoEdit(u) || (/재무/.test(u.dept || "") && AP.anyFee(f));
-      const ed = f.editorUids || [], vw = f.viewerUids || [];
+      const ed = f.editorUids || [], vw = f.viewerUids || [], au = f.attendUids || [];
+      const autoAtt = (u) => execPositions().indexOf(u.position) >= 0 || u.dept === execDept() || u.isAdmin || (/재무/.test(u.dept || "") && isHeadU(u));
+      const attCands = users.filter((u) => !autoAtt(u)).sort((a, b) => deptRank(a.dept) - deptRank(b.dept) || a.name.localeCompare(b.name));
       const box = (cls, u, on, dis) => '<label class="pm-row"><input type="checkbox" class="' + cls + '" value="' + esc(u.id) + '"' + (on ? " checked" : "") + (dis ? " disabled" : "") + "> <b>" + esc(u.name) + "</b> " + deptTag(u.dept) + '<span class="muted small">' + esc([u.position, u.grade].filter(Boolean).join(" · ")) + "</span></label>";
       const editCands = users.filter((u) => !autoEdit(u)).sort((a, b) => (a.dept === f.ownerDept ? 0 : 1) - (b.dept === f.ownerDept ? 0 : 1) || deptRank(a.dept) - deptRank(b.dept) || a.name.localeCompare(b.name));
       const viewCands = users.filter((u) => !autoView(u)).sort((a, b) => deptRank(a.dept) - deptRank(b.dept) || a.name.localeCompare(b.name));
@@ -2409,12 +2446,15 @@
           '<div class="pm-list">' + (editCands.map((u) => box("pm-ed", u, ed.indexOf(u.id) >= 0, false)).join("") || '<p class="muted small">추가할 사람이 없어요.</p>') + "</div>" +
           '<p class="small" style="margin:14px 0 6px"><b>참여자 명단 보기</b> (입금·출석 체크 포함) — 자동: 위 사람들' + (AP.anyFee(f) ? ", 재무국 (참가비를 받는 양식)" : "") + "</p>" +
           '<p class="muted small" style="margin:0 0 6px">' + (exec ? "이 사업만 명단을 따로 볼 사람을 체크하세요. (회장단만 정할 수 있어요)" : "명단을 볼 사람 추가는 회장단만 할 수 있어요.") + "</p>" +
-          '<div class="pm-list">' + (viewCands.map((u) => box("pm-vw", u, vw.indexOf(u.id) >= 0, !exec)).join("") || '<p class="muted small">추가할 사람이 없어요.</p>') + "</div>",
+          '<div class="pm-list">' + (viewCands.map((u) => box("pm-vw", u, vw.indexOf(u.id) >= 0, !exec)).join("") || '<p class="muted small">추가할 사람이 없어요.</p>') + "</div>" +
+          '<p class="small" style="margin:14px 0 6px"><b>출석 체크</b> — 자동: 회장단, 재무국장</p>' +
+          '<p class="muted small" style="margin:0 0 6px">' + (exec ? "행사 당일 출석을 같이 체크할 사람을 고르세요. 이 사람은 명단도 볼 수 있어요. (회장단만 정할 수 있어요)" : "출석 체크할 사람 추가는 회장단만 할 수 있어요.") + "</p>" +
+          '<div class="pm-list">' + (attCands.map((u) => box("pm-at", u, au.indexOf(u.id) >= 0, !exec)).join("") || '<p class="muted small">추가할 사람이 없어요.</p>') + "</div>",
         fields: [],
         onSubmit: async () => {
           const pick = (c) => Array.from(modalRoot.querySelectorAll("." + c + ":checked")).map((x) => x.value);
           const patch = { editorUids: pick("pm-ed") };
-          if (exec) patch.viewerUids = pick("pm-vw");
+          if (exec) { patch.viewerUids = pick("pm-vw"); patch.attendUids = pick("pm-at"); }
           await DB.update("forms", S.fm.pid, patch);
           dirty("forms"); await loadFm(S.fm.pid, true); await renderPage(); toast("권한을 저장했어요.");
         } });
@@ -2523,6 +2563,7 @@
           }, 0);
         } });
     },
+    fmSort() { const o = S.fm.sort || ""; S.fm.sort = o === "" ? "asc" : o === "asc" ? "desc" : ""; refreshRoster(); },
     fmFilterReset() { S.fm.af = {}; refreshRoster(); },
     // 모든 신청 명단을 엑셀 하나로 (요약 시트 + 행사마다 시트 하나)
     async allRostersXlsx() {
@@ -3249,6 +3290,43 @@
       }).join("") + "</ul>" : '<p class="empty-s">아직 없어요. [+ 새 정산]을 누르면 엑셀 대신 여기서 계산하고 공지 멘트까지 만들어 줘요.</p>') + "</section>";
   }
 
+  /* ----- 출석 체크 (휴대폰용) : 이름 · 학번 · 수합금만, 오른쪽에 큰 출석 버튼 ----- */
+  function atList(f) {
+    const at = S.at || {}, q = (at.q || "").replace(/\s/g, ""), c = new Intl.Collator("ko");
+    return (S.fm.resp || []).filter((r) => AP.isGoing(f, r) && !r.wait)
+      .filter((r) => (at.show === "no" ? !r.attended : at.show === "yes" ? r.attended : true))
+      .filter((r) => !q || [r.name, r.sid, String(r.sid || "").slice(-4)].some((x) => String(x || "").indexOf(q) >= 0))
+      .sort((a, b) => c.compare(String(a.name || ""), String(b.name || "")));
+  }
+  function atHeadHTML(f) {
+    const all = (S.fm.resp || []).filter((r) => AP.isGoing(f, r) && !r.wait), done = all.filter((r) => r.attended).length, show = (S.at || {}).show || "";
+    const seg = (k, t) => '<button class="' + (show === k ? "on" : "") + '" data-act="atShow" data-k="' + k + '">' + t + "</button>";
+    return '<div class="at-count"><b>' + done + "</b> / " + all.length + '명 출석<div class="pbar"><i style="width:' + (all.length ? Math.round((done / all.length) * 100) : 0) + '%"></i></div></div>' +
+      '<div class="at-seg">' + seg("", "전체") + seg("no", "아직 " + (all.length - done)) + seg("yes", "출석 " + done) + "</div>";
+  }
+  function atRows(f) {
+    const fee = AP.anyFee(f), list = atList(f);
+    return list.map((r) => '<li class="at-row' + (r.attended ? " on" : "") + '"><div class="at-who"><b>' + esc(r.name) + "</b><span>" + esc(r.sid || "") +
+      (fee ? " · " + (r.paid ? '<em class="ok">납부</em>' : '<em class="no">미납</em>') : "") + (r.manual ? " · 직접 추가" : "") + "</span></div>" +
+      '<button class="at-btn' + (r.attended ? " on" : "") + '" data-act="atTap" data-sid="' + esc(r.id) + '">' + (r.attended ? "✓ " + esc(r.attendedAt || "출석") : "출석") + "</button></li>").join("") ||
+      '<li class="at-empty">' + ((S.at || {}).q ? "찾는 사람이 없어요." : (S.at || {}).show === "no" ? "모두 출석했어요 👏" : "아직 아무도 없어요.") + "</li>";
+  }
+  PAGES.attend = async function () {
+    const fid = S.routeArg;
+    if (!S.at || S.at.fid !== fid) S.at = { fid: fid, q: "", show: "" };
+    await loadFm(fid);
+    const f = S.fm.form;
+    if (!f) return '<div class="card empty">명단을 찾을 수 없어요.</div>';
+    if (!S.fm.resp) return '<div class="card empty">이 명단을 볼 권한이 없어요.</div>';
+    const p = (await col("projects")).find((x) => x.id === (f.projectId || fid)) || {};
+    return '<div class="at-page"><div class="at-top"><a class="fm-back" href="#form/' + encodeURIComponent(fid) + '">← 명단</a><h2>' + esc(p.name || f.title || "") + (f.name ? ' <small>' + esc(f.name) + "</small>" : "") + "</h2>" +
+      (canAttend(f) ? "" : '<div class="notice warn small">출석 체크는 회장단 · 재무국장 · 회장단이 지정한 사람만 할 수 있어요.</div>') +
+      '<div id="atHead">' + atHeadHTML(f) + "</div>" +
+      '<input type="search" class="at-search" data-at-search placeholder="이름 또는 학번 뒤 4자리" value="' + esc(S.at.q) + '" autocomplete="off"></div>' +
+      '<ul class="at-list" id="atList">' + atRows(f) + "</ul>" +
+      '<p class="muted small center">출석을 누르면 시각이 같이 기록되고, 명단에도 바로 반영돼요. 실수로 눌렀으면 한 번 더 눌러 취소해요.</p></div>';
+  };
+
   /* ----- 재무국방 · 수합금 확인 (입금 체크 · 회비 납부자/미납부자는 여기서만) ----- */
   //   명단(신청 양식 → 참여자 명단)에는 '납부/미납'만 보이고, 체크는 재무국이 여기서 함
   async function collectRoomHTML(room) {
@@ -3767,7 +3845,7 @@
     if (!PAGES[S.route]) S.route = "home";
   }
   window.addEventListener("hashchange", function () {
-    if (!/^#(form|collect)\//.test(location.hash)) stopWatch();   // 신청 명단 화면을 떠나면 실시간 연결 끊기
+    if (!/^#(form|collect|attend)\//.test(location.hash)) stopWatch();   // 신청 명단 화면을 떠나면 실시간 연결 끊기
     parseRoute();
     if (S.authUser && isApproved()) {
       document.querySelectorAll(".tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + navKey(S.route)));

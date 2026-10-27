@@ -229,7 +229,12 @@ service cloud.firestore {
     function formViewer(f) {
       return formEditor(f) || (approved() && hasProfile() && (
         (me().dept.matches('.*재무.*') && formHasFee(f))
-        || request.auth.uid in f.get('viewerUids', [])));
+        || request.auth.uid in f.get('viewerUids', [])
+        || request.auth.uid in f.get('attendUids', [])));
+    }
+    // 출석 체크: 회장단 + 재무국장 + 회장단이 양식별로 지정한 사람(attendUids)
+    function attendUser(f) {
+      return attendSwitch(f) || (approved() && hasProfile() && request.auth.uid in f.get('attendUids', []));
     }
     function attendSwitch(f) {
       return execMember() || (approved() && hasProfile() && me().dept.matches('.*재무.*') && isDeptHeadPos());
@@ -238,10 +243,11 @@ service cloud.firestore {
     match /forms/{fid} {
       allow read: if true;
       allow create: if formEditor(request.resource.data)
-        && (execMember() || (request.resource.data.get('editorUids', []).size() == 0 && request.resource.data.get('viewerUids', []).size() == 0));
+        && (execMember() || (request.resource.data.get('editorUids', []).size() == 0 && request.resource.data.get('viewerUids', []).size() == 0 && request.resource.data.get('attendUids', []).size() == 0));
       allow update: if formEditor(resource.data) && formEditor(request.resource.data)
         && (!formChanged('editorUids') || formHead(resource.data))
         && (!formChanged('viewerUids') || execMember())
+        && (!formChanged('attendUids') || execMember())
         && (!formChanged('ownerDept') || execMember())
         && (!formChanged('attendOn') || attendSwitch(resource.data))
         // 출석 체크 켜기/끄기만 바꾸는 경우: 회장단 + 재무국장
@@ -299,10 +305,9 @@ service cloud.firestore {
         // 구글 로그인 양식: 본인 응답은 본인이 볼 수 있음
         allow get: if signedIn() && resource.data.get('ownerUid', '') == request.auth.uid;
         // 출석 체크는 명단을 보는 사람 누구나, 입금·회비 납부 여부는 재무국만
-        allow update: if formViewer(form()) && (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended', 'attendedAt'])
-          || ((isOwner() || (approved() && hasProfile() && me().dept.matches('.*재무.*')))
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paid', 'paidAt', 'duesUnpaid', 'attended', 'attendedAt'])))
+        allow update: if (attendUser(form()) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended', 'attendedAt']))
+          || (formViewer(form()) && (isOwner() || (approved() && hasProfile() && me().dept.matches('.*재무.*')))
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paid', 'paidAt', 'duesUnpaid']))
         // 예전 응답도 고칠 수 있게: 양식을 고치는 사람이 수정 열쇠(editKey)만 넣어 줄 수 있음
           || (formEditor(form()) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['editKey'])
             && request.resource.data.editKey is string && request.resource.data.editKey.size() >= 20 && request.resource.data.editKey.size() <= 64)
