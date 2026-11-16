@@ -1634,7 +1634,7 @@
   // 양식 고치기: 회장단 + 양식 담당 국서(소통국, 대협국 사업은 대협국) + 따로 지정한 담당자
   // 명단 보기: 위 사람들 + 참가비를 받는 양식이면 재무국 + 회장단이 따로 추가한 사람
   const canEditForm = (f) => !!f && (isExecMember() || (meOK() && (S.me.dept === f.ownerDept || (f.editorUids || []).indexOf(myUid()) >= 0)));
-  const canSeeRoster = (f) => !!f && (canEditForm(f) || (isFinance() && AP.anyFee(f)) || (meOK() && ((f.viewerUids || []).indexOf(myUid()) >= 0 || (f.attendUids || []).indexOf(myUid()) >= 0)));
+  const canSeeRoster = (f) => !!f && (canEditForm(f) || (isFinance() && AP.hasPay(f)) || (meOK() && ((f.viewerUids || []).indexOf(myUid()) >= 0 || (f.attendUids || []).indexOf(myUid()) >= 0)));
   // 입금 확인 · 회비 납부/미납 · 받을 돈은 재무국만 (공용계정은 관리용으로 같이)
   const canMoney = () => isFinance() || (isOwner() && !S.me);
   const canSetEditors = (f) => !!f && (isExecMember() || (meOK() && S.me.dept === f.ownerDept && isMyHead()));
@@ -1805,7 +1805,7 @@
         (editable ? '<button class="btn sm" data-act="fmOpen">' + (f.open ? "신청 닫기" : "신청 받기 시작") + "</button>" : "") + "</div>" +
         '<p class="muted small" style="margin:0">양식 고치기: 회장단 · <b>' + esc(f.ownerDept) + "</b>" + ((f.editorUids || []).length ? " · 담당자 " + (f.editorUids || []).length + "명" : "") +
         " / 명단 보기: 위 사람들" + (AP.anyFee(f) ? " + 재무국 (참가비 양식)" : "") + ((f.viewerUids || []).length ? " · 추가 " + (f.viewerUids || []).length + "명" : "") +
-        " / 출석 체크: 회장단 · 재무국장" + ((f.attendUids || []).length ? " · 추가 " + (f.attendUids || []).length + "명" : "") +
+        " / 출석 체크: 회장단" + (AP.hasPay(f) ? " · 재무국" : "") + ((f.attendUids || []).length ? " · 추가 " + (f.attendUids || []).length + "명" : "") +
         (canSetEditors(f) ? ' <button class="linkbtn small" data-act="fmPerm">권한 설정</button>' : "") +
         (keepOf(f, p) ? " · 명단 보관 기한 <b>" + esc(dotDate(keepOf(f, p))) + "</b> (지나거나 학생회를 넘기면 삭제)" : "") + "</p>" +
         (f.summary ? '<div class="notice info small" style="margin:8px 0 0">명단은 정리돼서 지워졌어요 (' + esc(dotDate(f.summary.at)) + "). 남은 기록: <b>" + esc(summaryText(f.summary)) + "</b></div>" : "");
@@ -1835,11 +1835,12 @@
   // 출석 체크 켜기/끄기: 회장단 + 재무국장
   const canAttendSwitch = (f) => !!f && (isExecMember() || (isFinance() && isMyHead()));
   // 출석 체크: 회장단 + 재무국장 + 회장단이 양식별로 지정한 사람 · 명단의 출석 칸은 누가 한 명이라도 체크되면 보임
-  const canAttend = (f) => !!f && (canAttendSwitch(f) || (meOK() && (f.attendUids || []).indexOf(myUid()) >= 0));
+  // 출석 체크: 회장단 + (입금 안내가 있는 양식이면) 재무국 전체 + 회장단이 지정한 사람
+  const canAttend = (f) => !!f && (isExecMember() || (isFinance() && AP.hasPay(f)) || (meOK() && (f.attendUids || []).indexOf(myUid()) >= 0));
   const attendOn = (f) => !!(f && (f.attendOn === true || (S.fm.resp || []).some((r) => r.attended)));
   function fmFilterDefs(f) {
-    // 필터는 참여 여부 질문 · 1·2차 참여 · 수합금 · 출석에만
-    const defs = (f.qs || []).filter((q) => q.attend && q.type === "yesno").map((q) => ({
+    // 필터: 참여 관련 예/아니오 질문(입금 안내 필요 · 제목에 참여/참석/참가/신청) · 1·2차 · 수합금 · 출석
+    const defs = (f.qs || []).filter((q) => q.type === "yesno" && (q.attend || /참여|참석|참가|신청/.test(q.label || ""))).map((q) => ({
       k: q.id, label: q.label, opts: q.type === "yesno" ? ["예", "아니오"] : (q.options || []).filter((o) => String(o).trim()),
       get: (r) => (r.answers || {})[q.id] }));
     if (AP.has2(f)) defs.push({ k: AP.PART, label: "참여 (1차·2차)", opts: (f.only2 ? ["1차만", "1차 + 2차", "2차만"] : ["1차만", "1차 + 2차"]), get: (r) => AP.partOf(f, r) });
@@ -2138,9 +2139,9 @@
         (q.type === "agree" ? "" : q.desc || q.showDesc ? '<div class="field"><label>설명 <small class="muted">· 질문 아래 작은 글씨로 보여요</small> <button class="linkbtn small fm-ddel" data-act="fmDelDesc" data-q="' + esc(q.id) + '">설명 삭제</button></label>' +
           '<textarea rows="2" data-fq="desc" data-q="' + esc(q.id) + '">' + esc(q.desc || "") + "</textarea></div>" : "") +
         (optEditor ? '<div class="field">' + optEditor + "</div>" : "") +
-        (q.type === "agree" ? '<div class="field"><label>동의 안내문</label><textarea rows="4" data-fq="text" data-q="' + esc(q.id) + '">' + esc(q.text || "") + "</textarea></div>" : "") + "</div>" +
+        (q.type === "agree" ? '<div class="field"><label>동의 안내문' + (q.textAuto ? ' <small class="muted">· 양식 제목에 맞춰 자동으로 바뀌어요 (고치면 고친 글로)</small>' : ' <button class="linkbtn small" data-act="fmAgreeAuto" data-q="' + esc(q.id) + '">기본 문구로</button>') + '</label><textarea rows="4" data-fq="text" data-q="' + esc(q.id) + '">' + esc(AP.agreeOf(S.fm.draft, q)) + "</textarea></div>" : "") + "</div>" +
         "<div>" + (t.fixed ? '<span class="muted small">항상 필수</span>' : '<label class="fm-chk"><input type="checkbox" data-fq="required" data-q="' + esc(q.id) + '"' + (q.required ? " checked" : "") + "> 필수</label>") +
-        (q.type === "yesno" ? '<label class="fm-chk"><input type="checkbox" data-fq="attend" data-q="' + esc(q.id) + '"' + (q.attend ? " checked" : "") + "> 참여 여부 질문 (‘아니오’면 입금 안내·명단 번호에서 빠짐)</label>" : "") + "</div></div>";
+        (q.type === "yesno" ? '<label class="fm-chk"><input type="checkbox" data-fq="attend" data-q="' + esc(q.id) + '"' + (q.attend ? " checked" : "") + "> 입금 안내 필요</label>" : "") + "</div></div>";
     });
     return cards.join("");
   }
@@ -2206,6 +2207,8 @@
         if (!f.has2) f.only2 = false;
       }
       else f[k] = el.value;
+      // 제목을 바꾸면 자동 동의 안내문도 같이
+      if (k === "title") (f.qs || []).forEach((q) => { if (q.type === "agree" && q.textAuto) { const ta = document.querySelector('textarea[data-fq="text"][data-q="' + q.id + '"]'); if (ta) ta.value = AP.agreeOf(f, q); } });
       if (k === "mode") { const w = document.getElementById("fmCapWrap"); if (w) w.hidden = f.mode !== "first"; const sw = document.getElementById("fmStartWrap"); if (sw) sw.hidden = f.mode !== "first"; const h = document.getElementById("fmModeHelp"); if (h) h.innerHTML = modeHelp(f); }
       markDirty(); refreshPreview();
     } else if (el.dataset.fmDate) {
@@ -2219,10 +2222,11 @@
       if (k === "options") q.options = el.value.split("\n").map((s) => s.trim()).filter(Boolean);
       else if (k === "required" || k === "attend") q[k] = el.checked;
       else q[k] = el.value;
+      if (k === "text" && q.type === "agree") q.textAuto = false; // 직접 고치면 그때부터 고친 글
       // 참여 여부 질문은 하나만: 새로 체크하면 다른 질문의 체크는 자동으로 풀림
       if (k === "attend" && el.checked) {
         const others = S.fm.draft.qs.filter((x) => x !== q && x.attend);
-        if (others.length) { others.forEach((x) => (x.attend = false)); redrawQs(); toast("참여 여부 질문은 하나만 돼요. ‘" + others[0].label + "’의 체크를 풀었어요."); return; }
+        if (others.length) { others.forEach((x) => (x.attend = false)); redrawQs(); toast("입금 안내 필요는 질문 하나에만 돼요. ‘" + others[0].label + "’의 체크를 풀었어요."); return; }
       }
       markDirty(); refreshPreview();
     }
@@ -2443,6 +2447,7 @@
       doc.has2 = doc.fee2 > 0; doc.only2 = doc.has2 && !!doc.only2;
       doc.fee2Unpaid = doc.has2 && doc.feeUnpaid > 0 ? Number(doc.fee2Unpaid) || 0 : 0;
       delete doc.feeSplit; delete doc.payOn;
+      doc.hasPay = AP.hasPay(doc);
       // 일반 = 구글 로그인 · 한 사람 한 번 · 본인이 고칠 수 있음 / 선착순 = 로그인 없이 · 여러 번 · 고칠 수 없음
       doc.login = true; doc.allowEdit = true;
       // 제출 시작 시각 (선착순만) — 숫자(ms)로 저장해서 보안 규칙이 서버 시계와 비교
@@ -2493,7 +2498,7 @@
       const autoEdit = (u) => execPositions().indexOf(u.position) >= 0 || u.dept === execDept() || u.isAdmin || u.dept === f.ownerDept;
       const autoView = (u) => autoEdit(u) || (/재무/.test(u.dept || "") && AP.anyFee(f));
       const ed = f.editorUids || [], vw = f.viewerUids || [], au = f.attendUids || [];
-      const autoAtt = (u) => execPositions().indexOf(u.position) >= 0 || u.dept === execDept() || u.isAdmin || (/재무/.test(u.dept || "") && isHeadU(u));
+      const autoAtt = (u) => execPositions().indexOf(u.position) >= 0 || u.dept === execDept() || u.isAdmin || (/재무/.test(u.dept || "") && AP.hasPay(f));
       const attCands = users.filter((u) => !autoAtt(u)).sort((a, b) => deptRank(a.dept) - deptRank(b.dept) || a.name.localeCompare(b.name));
       const box = (cls, u, on, dis) => '<label class="pm-row"><input type="checkbox" class="' + cls + '" value="' + esc(u.id) + '"' + (on ? " checked" : "") + (dis ? " disabled" : "") + "> <b>" + esc(u.name) + "</b> " + deptTag(u.dept) + '<span class="muted small">' + esc([u.position, u.grade].filter(Boolean).join(" · ")) + "</span></label>";
       const editCands = users.filter((u) => !autoEdit(u)).sort((a, b) => (a.dept === f.ownerDept ? 0 : 1) - (b.dept === f.ownerDept ? 0 : 1) || deptRank(a.dept) - deptRank(b.dept) || a.name.localeCompare(b.name));
@@ -2506,7 +2511,7 @@
           '<p class="small" style="margin:14px 0 6px"><b>참여자 명단 보기</b> (입금·출석 체크 포함) — 자동: 위 사람들' + (AP.anyFee(f) ? ", 재무국 (참가비를 받는 양식)" : "") + "</p>" +
           '<p class="muted small" style="margin:0 0 6px">' + (exec ? "이 사업만 명단을 따로 볼 사람을 체크하세요. (회장단만 정할 수 있어요)" : "명단을 볼 사람 추가는 회장단만 할 수 있어요.") + "</p>" +
           '<div class="pm-list">' + (viewCands.map((u) => box("pm-vw", u, vw.indexOf(u.id) >= 0, !exec)).join("") || '<p class="muted small">추가할 사람이 없어요.</p>') + "</div>" +
-          '<p class="small" style="margin:14px 0 6px"><b>출석 체크</b> — 자동: 회장단, 재무국장</p>' +
+          '<p class="small" style="margin:14px 0 6px"><b>출석 체크</b> — 자동: 회장단' + (AP.hasPay(f) ? ", 재무국" : "") + "</p>" +
           '<p class="muted small" style="margin:0 0 6px">' + (exec ? "행사 당일 출석을 같이 체크할 사람을 고르세요. 이 사람은 명단도 볼 수 있어요. (회장단만 정할 수 있어요)" : "출석 체크할 사람 추가는 회장단만 할 수 있어요.") + "</p>" +
           '<div class="pm-list">' + (attCands.map((u) => box("pm-at", u, au.indexOf(u.id) >= 0, !exec)).join("") || '<p class="muted small">추가할 사람이 없어요.</p>') + "</div>",
         fields: [],
@@ -2622,6 +2627,7 @@
           }, 0);
         } });
     },
+    fmAgreeAuto(el) { const q = (S.fm.draft.qs || []).find((x) => x.id === el.dataset.q); if (!q) return; q.textAuto = true; delete q.text; markDirty(); redrawQs(); refreshPreview(); },
     fmSort() { const o = S.fm.sort || ""; S.fm.sort = o === "" ? "asc" : o === "asc" ? "desc" : ""; refreshRoster(); },
     fmFilterReset() { S.fm.af = {}; refreshRoster(); },
     // 모든 신청 명단을 엑셀 하나로 (요약 시트 + 행사마다 시트 하나)

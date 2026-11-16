@@ -22,13 +22,19 @@
   };
   const rid = () => "q" + Math.random().toString(36).slice(2, 8);
   const Q = (type, label, extra) => Object.assign({ id: rid(), type: type, label: label, required: true, options: [], attend: false, text: "" }, extra || {});
-  const agreeText = (what) => "수집 항목: 이름, 학번, 전화번호\n목적: " + what + " 참여 확인과 연락\n보관: 행사가 끝나고 최대 1년 (학생회가 바뀔 때 삭제)\n학생회 안에서만 봐요.";
+  // 동의 안내문 기본 문구: 양식 제목(예: 2026년 생명과학인의 밤 및 뒤풀이 실수요 조사)을 넣어 자동으로 만듦
+  const josa = (w, a, b) => { const c = String(w || "").trim().slice(-1).charCodeAt(0); return c >= 0xac00 && c <= 0xd7a3 ? ((c - 0xac00) % 28 ? a : b) : a + "(" + b + ")"; };
+  const agreeText = (title) => { const t = String(title || "본 행사").trim(); return "본 수요조사에서 수집된 개인정보는 " + t + josa(t, "을", "를") + " 위해서만 사용되며, 이후 폐기됨을 알려드립니다."; };
+  // 자동 문구(textAuto)면 지금 양식 제목으로, 직접 고쳤으면 고친 글 그대로
+  const agreeOf = (f, q) => (q.textAuto ? agreeText(f && f.title) : q.text || "");
+  // 입금 안내가 있는 양식: 참가비를 넣었거나, 어떤 질문에 '입금 안내 필요'를 체크함 → 재무국이 명단을 보고 출석도 체크
+  const hasPay = (f) => !!f && (anyFee(f) || (f.qs || []).some((q) => q.attend));
 
   // 처음 만들 때 고르는 틀
   const TEMPLATES = {
     basic: { label: "기본 (이름·학번·전화번호·참여 여부·동의)", make: (ev) => ({ mode: "normal", qs: [
       Q("name", "이름"), Q("sid", "학번"), Q("phone", "전화번호"),
-      Q("yesno", "행사에 참여하시나요?", { attend: true }),
+      Q("yesno", "행사에 참여하시나요?"),
       Q("agree", "개인정보 수집·이용에 동의합니다", { text: agreeText(ev) })] }) },
     snack: { label: "간식행사 (기본 + 간식 고르기)", make: (ev) => ({ mode: "normal", fee: 3000, qs: [
       Q("name", "이름"), Q("sid", "학번"), Q("phone", "전화번호"),
@@ -47,6 +53,8 @@
   };
   function newForm(tpl, eventName) {
     const t = (TEMPLATES[tpl] || TEMPLATES.basic).make(eventName || "행사");
+    // 동의 안내문은 양식 제목을 따라 자동으로 바뀌게 (직접 고치면 그때부터는 고친 글)
+    (t.qs || []).forEach((q) => { if (q.type === "agree") { q.textAuto = true; delete q.text; } });
     return Object.assign({ title: (eventName || "행사") + " 신청", desc: "", mode: "normal", cap: 30, fee: 0, due: "", account: "", open: false }, t);
   }
 
@@ -180,7 +188,7 @@
       (f.mode === "first" ? '<p class="ap-note">제출한 시각 순서대로 정원 ' + esc(f.cap) + "명까지 확정되고, 그 뒤는 대기로 접수돼요.</p>" +
         (opts.count != null ? '<div class="ap-seat ' + (opts.count >= Number(f.cap) ? "full" : "") + '">' + (opts.count >= Number(f.cap) ? "정원이 다 찼어요 · 지금 신청하면 <b>대기 " + (opts.count - Number(f.cap) + 1) + "번</b>쯤이에요" : "지금 <b>" + opts.count + "명</b> 신청 · 남은 자리 <b>" + (Number(f.cap) - opts.count) + "</b>") + "</div>" : "") : "") +
       '<form class="ap-form" novalidate>' + (function () {
-        const parts = f.qs.map(qHTML);
+        const parts = f.qs.map((q) => qHTML(q.type === "agree" && q.textAuto ? Object.assign({}, q, { text: agreeOf(f, q) }) : q));
         if (has2(f)) {
           // 참여 여부 질문 바로 뒤, 없으면 동의 질문 앞, 그것도 없으면 맨 끝
           let at = f.qs.findIndex((q) => q.type === "yesno" && q.attend);
@@ -276,5 +284,5 @@
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
     return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
   }
-  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, dueText, feeText, PART, has2, partOf, partFee, fillAnswers, editKeyFor };
+  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, hasPay, agreeText, agreeOf, dueText, feeText, PART, has2, partOf, partFee, fillAnswers, editKeyFor };
 })();

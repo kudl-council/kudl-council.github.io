@@ -222,7 +222,8 @@ service cloud.firestore {
         me().dept == f.get('ownerDept', '')
         || request.auth.uid in f.get('editorUids', [])));
     }
-    function formHasFee(f) { return f.get('fee', 0) > 0 || f.get('feeUnpaid', 0) > 0 || f.get('fee2', 0) > 0; }
+    // 입금 안내가 있는 양식: 참가비가 있거나 '입금 안내 필요' 질문이 있음(hasPay)
+    function formHasFee(f) { return f.get('fee', 0) > 0 || f.get('feeUnpaid', 0) > 0 || f.get('fee2', 0) > 0 || f.get('hasPay', false) == true; }
     // 담당자 지정: 회장단 + 양식 담당 국서의 국장
     function formHead(f) { return execMember() || (approved() && hasProfile() && me().dept == f.get('ownerDept', '') && isDeptHeadPos()); }
     // 명단 보기·출석 체크: 위 사람들 + (참가비를 받는 양식만) 재무국 + 회장단이 양식별로 추가한 사람(viewerUids)
@@ -233,8 +234,11 @@ service cloud.firestore {
         || request.auth.uid in f.get('attendUids', [])));
     }
     // 출석 체크: 회장단 + 재무국장 + 회장단이 양식별로 지정한 사람(attendUids)
+    // 출석 체크: 회장단 + (입금 안내가 있는 양식이면) 재무국 전체 + 회장단이 지정한 사람
     function attendUser(f) {
-      return attendSwitch(f) || (approved() && hasProfile() && request.auth.uid in f.get('attendUids', []));
+      return execMember() || (approved() && hasProfile() && (
+        (me().dept.matches('.*재무.*') && formHasFee(f))
+        || request.auth.uid in f.get('attendUids', [])));
     }
     function attendSwitch(f) {
       return execMember() || (approved() && hasProfile() && me().dept.matches('.*재무.*') && isDeptHeadPos());
