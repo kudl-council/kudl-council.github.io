@@ -1416,3 +1416,48 @@ input.ap-locked { background: var(--bg); color: var(--muted); }
 .col-room { margin-bottom: 14px; border-left: 4px solid var(--accent); }
 .rb-note { margin: -4px 0 8px; font-size: 12.5px; color: var(--muted); }
 .rblock .rb-cnt { white-space: nowrap; flex: none; }
+
+/* ===== 사업 펼친 내용: 왼쪽 정보·신청 양식 / 오른쪽 세부 일정·업무 분배 ===== */
+.pr-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 32px; align-items: start; }
+.pr-info, .pr-side { min-width: 0; }
+.pr-meta2 { grid-template-columns: 44px 1fr; gap: 6px 12px; font-size: 14px; margin: 4px 0 4px; }
+.pr-meta2 dd { white-space: pre-wrap; }
+.pr-link { display: inline-block; margin: 6px 0 0; font-size: 13px; font-weight: 600; }
+.pr-side .ptasks:first-child, .pr-info .plinks-rel + .meta { margin-top: 0; }
+.pr-side .ptasks:first-child { padding-top: 0; border-top: 0; }
+.ptasks-head { gap: 10px; }
+.ptasks-head b { font-size: 14px; }
+.ptasks-head .linkbtn { color: var(--accent); text-decoration: none; font-size: 13px; }
+.ptasks-head > .linkbtn, .ptasks-head .pt-acts { margin-left: auto; }
+.pt-acts { display: inline-flex; gap: 12px; }
+.pt-empty { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.pforms .pf-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pr-body .pfoot { border-top: 0; padding-top: 0; margin-top: 14px; }
+@media (max-width: 760px) {
+  .pr-grid { grid-template-columns: 1fr; }
+  .pr-side .ptasks:first-child { padding-top: 10px; border-top: 1px dashed var(--line); margin-top: 10px; }
+}
+.prow > .pr-body { flex: 1 1 100%; width: 100%; }
+.pr-grid { max-width: 1100px; }
+
+/* ===== 사업 펼친 내용 (A안): 칸마다 박스로 위아래 ===== */
+.pr-stack { display: grid; gap: 10px; max-width: 1100px; }
+.pr-stack > div { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 0; background: var(--surface); }
+.pr-stack .ptasks-head { margin-bottom: 4px; }
+.pr-stack .ptasks-head b { font-size: 14.5px; }
+.pr-stack .pinfo .ptasks-head b::before { content: "📌 "; }
+.pr-stack .pforms .ptasks-head b::before { content: "📝 "; }
+.pr-stack .psched .ptasks-head b::before { content: "📅 "; }
+.pr-stack .ptasks:not(.psched):not(.pforms) .ptasks-head b::before { content: "✅ "; }
+.pr-stack .plinks-rel { margin: 4px 0 6px; }
+.pr-stack .pr-meta2 { margin: 2px 0 0; }
+.pr-stack .pr-link { margin: 0; }
+.pr-stack .psched li { display: flex; align-items: baseline; gap: 10px; }
+.pr-stack .psched li .dt { margin-left: auto; text-align: right; }
+.pr-stack .ptasks li { font-size: 13.5px; }
+.pr-stack .pbar { margin: 4px 0 6px; }
+@media (max-width: 760px) {
+  .pr-stack > div { padding: 10px 12px; }
+  .pr-stack .psched li { flex-wrap: wrap; gap: 2px 10px; }
+  .pr-stack .psched li .dt { margin-left: 0; text-align: left; }
+}

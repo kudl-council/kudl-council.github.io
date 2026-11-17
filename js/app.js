@@ -569,7 +569,7 @@
         const xe = x.endDate && x.endDate > x.startDate ? x.endDate : x.startDate; return x.startDate <= (e0 > s0 ? e0 : s0) && xe >= s0; });
       if (cur && !ok.some((o) => o.id === cur)) { const keep = all.find((o) => o.id === cur); if (keep) ok.unshift(keep); }
       sel.innerHTML = '<option value="">선택 안 함</option>' + ok.map((o) => '<option value="' + esc(o.id) + '"' + (o.id === cur ? " selected" : "") + ">" + esc(o.label) + "</option>").join("");
-      if (help) help.textContent = !s0 ? "사업 날짜를 넣으면 같은 날 행사가 나와요." : ok.length ? "같은 날 행사만 나와요. 예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’." : "같은 날 연결할 수 있는 행사가 없어요.";
+      if (help) help.textContent = !s0 ? "날짜를 넣으면 같은 날 행사가 나와요." : ok.length ? "같은 날 행사만 나와요." : "같은 날 행사가 없어요.";
     }, 0);
     [a, b].filter(Boolean).forEach((el) => { el.addEventListener("input", sync); el.closest(".dwrap").addEventListener("change", sync); });
     sync();
@@ -619,23 +619,23 @@
     const ls = linkOptions(o && o.selfId), labels = {};
     ls.forEach((x) => (labels[x.id] = (isSchool(x) ? "[학교 행사] " : "") + x.name + (x.startDate ? " · " + fmtDate(x.startDate) : "")));
     return { name: "linkId", label: "연결된 행사 (선택)", type: "select", options: ls.map((x) => x.id), labels: labels,
-      help: "같은 날 행사만 나와요. 예: ‘합동응원전 뒤풀이’라면 ‘합동응원전’." };
+      help: "같은 날 행사만 나와요." };
   })()]).concat(o && o.council ? [
-    { name: "generation", label: "진행한 학생회 기수", required: !!o.past, half: true, placeholder: "예: 제28대", help: "아카이브에서 학생회별로 묶이는 기준이에요." },
+    { name: "generation", label: "진행한 학생회 기수", required: !!o.past, half: true, placeholder: "예: 제28대" },
     { name: "councilName", label: "학생회 이름", half: true, placeholder: "예: 하루" },
   ] : []).concat([
     { name: "year", label: "연도", type: "number", required: true, half: true },
     { name: "dept", label: "담당 국서", type: "select", options: S.settings.depts, required: true, half: true },
-    o && o.past ? { name: "semester", label: "학기 (날짜를 모를 때만)", type: "select", options: ["1학기", "2학기"], half: true, help: "사업 날짜를 넣으면 날짜로 자동 표시돼요." } : null,
-    { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true, help: "사업 날짜가 되면 자동으로 '진행중', 끝나면 '완료'가 돼요." },
-    o && o.past ? { name: "owner", label: "담당자", half: true } : { name: "ownerSel", label: "담당자", type: "member", deptField: "dept", half: true, help: "담당 국서를 고르면 그 국서 사람이 나와요." },
-    { name: "startDate", label: "사업 날짜 (시행일)", type: "date", half: true, help: "캘린더에 사업 일정으로 표시돼요." },
-    { name: "endDate", label: "끝나는 날 (여러 날일 때만)", type: "date", half: true, help: "1박 2일 등일 때만 넣으세요." },
-    { name: "place", label: "장소 (있을 때만)", placeholder: "예: 하나스퀘어 B104 · 안암 ○○호프", help: "장소가 없는 사업(메이트 사업, 지원금 사업 등)은 비워 두세요." },
-    { name: "budget", label: "예산", type: "money", placeholder: "숫자만 입력 (예: 1200000)" },
-    { name: "summary", label: "비고", type: "textarea", rows: 3, placeholder: "예: 장소가 좁았음 → 내년엔 더 큰 곳 추천" },
+    o && o.past ? { name: "semester", label: "학기 (날짜를 모를 때만)", type: "select", options: ["1학기", "2학기"], half: true } : null,
+    { name: "status", label: "진행 상태", type: "select", options: STATUSES, required: true, half: true, help: "날짜에 맞춰 자동으로 바뀌어요." },
+    o && o.past ? { name: "owner", label: "담당자", half: true } : { name: "ownerSel", label: "담당자", type: "member", deptField: "dept", half: true },
+    { name: "startDate", label: "사업 날짜 (시행일)", type: "date", half: true },
+    { name: "endDate", label: "끝나는 날 (여러 날일 때만)", type: "date", half: true },
+    { name: "place", label: "장소 (있을 때만)", placeholder: "예: 하나스퀘어 B104" },
+    { name: "budget", label: "예산", type: "money" },
+    { name: "summary", label: "비고", type: "textarea", rows: 3 },
     { name: "planUrl", label: "기획안 링크", type: "url", placeholder: "https://docs.google.com/…" },
-    { name: "extraUrl", label: "기타 자료 (드라이브 폴더 등)", type: "url", placeholder: "https://drive.google.com/…" },
+    { name: "extraUrl", label: "기타 자료", type: "url", placeholder: "드라이브 폴더 등 링크" },
   ]).filter(Boolean).reduce((out, f, i, arr) => {
     // '연결된 행사'는 날짜로 거르니 날짜 칸 바로 뒤에
     if (f.name === "linkId") return out;
@@ -1400,7 +1400,7 @@
   function projectSchedHTML(p, opts) {
     const list = schedOf(p).slice().sort((a, b) => (a.start || "9").localeCompare(b.start || "9"));
     const canEdit = !opts.readonly && !opts.archive && isHead();
-    if (!list.length) return canEdit ? '<button class="btn sm ptask-add" data-act="editSchedule" data-id="' + esc(p.id) + '">+ 세부 일정 (조사 기간 등)</button> ' : "";
+    if (!list.length) return canEdit ? '<div class="ptasks psched"><div class="ptasks-head"><b>세부 일정</b><button class="linkbtn small" data-act="editSchedule" data-id="' + esc(p.id) + '">+ 추가</button></div><p class="pt-empty">조사 기간 · 공지일 등</p></div>' : "";
     return '<div class="ptasks psched"><div class="ptasks-head"><b>세부 일정</b>' +
       (canEdit ? '<button class="linkbtn small" data-act="editSchedule" data-id="' + esc(p.id) + '">수정</button>' : "") + "</div>" +
       "<ul>" + list.map((x) => { const st = opts.archive ? "" : schedState(x);
@@ -1411,7 +1411,7 @@
   function projectTasksHTML(p, opts) {
     const ts = opts.tasks || [];
     const canAdd = !opts.readonly && !opts.archive && isHead();
-    if (!ts.length) return canAdd ? '<button class="btn sm ptask-add" data-act="distribute" data-id="' + esc(p.id) + '">+ 국서별 업무 분배하기</button>' : "";
+    if (!ts.length) return canAdd ? '<div class="ptasks"><div class="ptasks-head"><b>업무 분배</b><button class="linkbtn small" data-act="distribute" data-id="' + esc(p.id) + '">+ 추가</button></div><p class="pt-empty">국서별로 할 일 나누기</p></div>' : "";
     const t = today(), done = ts.filter((x) => x.done).length;
     const depts = [];
     ts.forEach((x) => { if (depts.indexOf(x.dept) < 0) depts.push(x.dept); });
@@ -1434,16 +1434,14 @@
     const f = opts.forms && opts.forms[p.id];
     const when = p.startDate ? fmtDate(p.startDate) + (p.endDate && p.endDate > p.startDate ? " ~ " + fmtDate(p.endDate) : "") : "날짜 미정";
     const dd = p.startDate && p.startDate >= t && (p.status === "예정" || p.status === "기획중") ? '<span class="pr-dd">' + dday(p.startDate) + "</span>" : "";
-    const links = [["기타 자료", p.extraUrl]]
-      .filter((l) => safeUrl(l[1])).map((l) => '<a class="btn sm" href="' + esc(safeUrl(l[1])) + '" target="_blank" rel="noopener">' + l[0] + " ↗</a>").join("");
-    const formBtn = opts.forms ? projectFormBtn(p, f, opts) : "";
-    // 세부 일정·업무 분배가 비어 있으면 '+ 추가' 버튼만 나오는데, 이걸 신청 양식 버튼과 한 줄에 같은 크기로
+    // 펼친 내용: 왼쪽 = 정보·신청 양식 / 오른쪽 = 세부 일정·업무 분배
+    const extra = safeUrl(p.extraUrl) ? '<a class="pr-link" href="' + esc(safeUrl(p.extraUrl)) + '" target="_blank" rel="noopener">기타 자료 ↗</a>' : "";
+    const canForm = opts.forms && !opts.readonly && !opts.archive && canEditForm({ ownerDept: formDeptFor(p) });
+    const fl = opts.forms ? projectFormBtn(p, f, Object.assign({}, opts, { readonly: true })) : "";
+    const formSec = opts.forms && (fl || canForm) ? '<div class="ptasks pforms"><div class="ptasks-head"><b>신청 양식</b>' +
+      (canForm ? '<span class="pt-acts"><a class="linkbtn small" href="#form/' + encodeURIComponent("+" + p.id) + '">+ 새 양식</a><button class="linkbtn small" data-act="gfImport" data-id="' + esc(p.id) + '">구글폼 가져오기</button></span>' : "") + "</div>" +
+      (fl ? '<div class="pf-list">' + fl + "</div>" : '<p class="pt-empty">아직 없어요</p>') + "</div>" : "";
     const sch = projectSchedHTML(p, opts), tsk = projectTasksHTML(p, opts);
-    const isBtn = (h) => /^<button/.test(h);
-    // 세부 일정·업무가 이미 있어도 '+ 세부 일정', '+ 업무 분배' 버튼은 항상 같은 줄에
-    const addBtns = isHead() && !opts.readonly && !opts.archive ? '<button class="btn sm" data-act="editSchedule" data-id="' + esc(p.id) + '">+ 세부 일정 (조사 기간 등)</button>' +
-      '<button class="btn sm" data-act="distribute" data-id="' + esc(p.id) + '">+ 국서별 업무 분배</button>' : "";
-    const blocks = [sch, tsk].filter((h) => h && !isBtn(h)).join("");
     const open = !!S.openProj[p.id];
     return '<div class="prow' + (open ? " open" : "") + (opts.child ? " pchild" : "") + '" style="--c:' + deptColor(p.dept) + '">' +
       '<button class="pr-head" data-act="toggleProj" data-id="' + esc(p.id) + '" aria-expanded="' + open + '">' +
@@ -1453,13 +1451,14 @@
       (ts.length ? '<span class="pr-prog" title="업무 분배 ' + done + "/" + ts.length + ' 완료"><i style="width:' + Math.round((done / ts.length) * 100) + '%"></i></span><span class="pr-cnt">업무 ' + done + "/" + ts.length + "</span>" : "") +
       (f && f.length ? '<span class="fm-pill ' + (f.some((x) => x.open) ? "ok" : "") + '">' + (f.some((x) => x.open) ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") +
       '<span class="pr-when">' + when + "</span>" + dd + "</span></button>" +
-      '<div class="pr-body">' +
+      // 펼친 내용: 정보 · 신청 양식 · 세부 일정 · 업무 분배를 칸(박스)으로 나눠 위아래로
+      '<div class="pr-body"><div class="pr-stack">' +
+      '<div class="pinfo"><div class="ptasks-head"><b>정보</b></div>' +
       (hasLinks(p) ? '<p class="plinks-rel">' + linkHTML(p) + "</p>" : "") +
-      '<dl class="meta">' + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") + "</dl>" +
-      (p.summary ? '<p class="summary">' + esc(p.summary) + "</p>" : "") +
+      '<dl class="meta pr-meta2">' + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") +
+        (p.summary ? "<dt>비고</dt><dd>" + esc(p.summary) + "</dd>" : "") + (extra ? "<dt>자료</dt><dd>" + extra + "</dd>" : "") + "</dl>" +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
-      (links || formBtn || addBtns ? '<div class="plinks">' + links + formBtn + addBtns + "</div>" : "") +
-      (blocks ? '<div class="pr-cols">' + blocks + "</div>" : "") +
+      "</div>" + formSec + sch + tsk + "</div>" +
       (isHead() ? '<div class="pfoot">' + (p.status === "완료" || p.status === "취소" ? '<button class="btn sm" data-act="archiveProject" data-id="' + esc(p.id) + '">아카이브로 보내기</button>' : "") +
         '<button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button></div>' : "") +
       "</div></div>";
@@ -1494,12 +1493,12 @@
       return '<section class="pgroup"><h3><span class="st st-' + st + '">' + st + "</span> <small>" + items.length + "</small>" + allBtn + "</h3>" +
         (items.length ? '<div class="prows">' + items.map((p) => projectRow(p, { tasks: tmap[p.id], forms: forms, child: !!(linkUp(p) && items.some((x) => x.id === linkUp(p).id)) })).join("") + "</div>" : '<p class="empty-s">없음</p>') + "</section>";
     }).join("");
-    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " 학생회가 진행하는 사업 " + list.length + "개 · 사업 날짜가 되면 '진행중', 끝나면 '완료'로 바뀌어요 · 완료된 사업은 [아카이브로 보내기]로 정리할 수 있어요 (다음 학생회로 넘길 때는 자동으로 옮겨져요)</p></div>" +
+    return '<div class="page-head"><div><h2>사업 기획안</h2><p class="muted">' + esc(curCouncil()) + " · 사업 " + list.length + "개</p></div>" +
       '<div class="actions"><a class="btn" href="#archive">지난 학생회 사업 참고하기</a>' + (isHead() ? '<button class="btn primary" data-act="addProject">+ 사업 추가</button>' : "") + "</div></div>" +
       '<div class="kindseg" role="tablist">' + [["", "전체"], ["council", "학생회 사업"], ["school", "학교 행사"]].map((k) =>
         '<button role="tab" class="' + ((S.projKind || "") === k[0] ? "on" : "") + '" data-act="projKind" data-k="' + k[0] + '">' + k[1] +
         ' <small>' + allCur.filter((p) => !k[0] || (k[0] === "school") === isSchool(p)).length + "</small></button>").join("") + "</div>" +
-      (!hasSemDates(String(S.settings.currentYear)) ? '<span class="muted small sem-hint">학기 표시는 <b>관리 → 사이트 설정</b>에 올해 개강·종강일을 넣으면 붙어요</span>' :
+      (!hasSemDates(String(S.settings.currentYear)) ? '<span class="muted small sem-hint">학기 표시: <b>관리 → 사이트 설정</b>에 개강·종강일 입력</span>' :
       '<div class="kindseg semseg" role="tablist">' + [["", "모든 학기"], ["1학기", "1학기"], ["2학기", "2학기"]].map((k) => {
         const n = allCur.filter((p) => semOk(p, k[0])).length;
         return k[0] === "etc" && !n ? "" : '<button role="tab" class="' + ((S.projSem || "") === k[0] ? "on" : "") + '" data-act="projSem" data-k="' + k[0] + '">' + k[1] + " <small>" + n + "</small></button>";
