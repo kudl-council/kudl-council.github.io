@@ -1458,7 +1458,7 @@
       '<dl class="meta pr-meta2">' + (p.owner ? "<dt>담당</dt><dd>" + esc(p.owner) + "</dd>" : "") + (p.place ? "<dt>장소</dt><dd>" + esc(p.place) + "</dd>" : "") + (p.budget ? "<dt>예산</dt><dd>" + esc(p.budget) + "</dd>" : "") +
         (p.summary ? "<dt>비고</dt><dd>" + esc(p.summary) + "</dd>" : "") + (extra ? "<dt>자료</dt><dd>" + extra + "</dd>" : "") + "</dl>" +
       (p.prevNote ? '<p class="prev">참고: ' + esc(p.prevNote) + (safeUrl(p.prevPlanUrl) ? ' <a href="' + esc(safeUrl(p.prevPlanUrl)) + '" target="_blank" rel="noopener">이전 기획안 ↗</a>' : "") + "</p>" : "") +
-      "</div>" + formSec + sch + tsk + "</div>" +
+      "</div>" + sch + tsk + formSec + "</div>" +
       (isHead() ? '<div class="pfoot">' + (p.status === "완료" || p.status === "취소" ? '<button class="btn sm" data-act="archiveProject" data-id="' + esc(p.id) + '">아카이브로 보내기</button>' : "") +
         '<button class="btn sm ghost" data-act="editProject" data-id="' + esc(p.id) + '">수정</button></div>' : "") +
       "</div></div>";
