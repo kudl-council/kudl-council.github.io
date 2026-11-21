@@ -77,17 +77,17 @@
     if (E && mode === "owner") {
       A.fillAnswers(F, form, E.answers);
       const sq = A.qOf(F, "sid"); if (sq) { const el = form.querySelector('[name="a_' + sq.id + '"]'); if (el) el.value = E.sid || E.id; }
-      const aq = A.attendQ(F);
-      if (F.mode === "first" && aq) form.querySelectorAll('[name="a_' + aq.id + '"]').forEach((x) => (x.disabled = true));
+      const aq = A.capQ(F);
+      if (aq) form.querySelectorAll('[name="a_' + aq.id + '"]').forEach((x) => (x.disabled = true));
       const b = form.querySelector('[type="submit"]');
       if (b) { b.textContent = "수정하기"; if (F.allowEdit === false) { b.disabled = true; form.querySelectorAll("input, textarea").forEach((x) => (x.disabled = true)); } }
     } else if (E) {
       A.fillAnswers(F, form, E.answers);
       // 학번·전화번호는 내 응답을 찾는 열쇠라서 못 바꿈
       ["sid", "phone"].forEach((t) => { const q = A.qOf(F, t); if (!q) return; const el = form.querySelector('[name="a_' + q.id + '"]'); if (el) { if (t === "sid") el.value = E.sid; el.readOnly = true; el.classList.add("ap-locked"); } });
-      // 선착순: 참여 여부를 바꾸면 순번이 꼬이니 고정
-      const aq = A.attendQ(F);
-      if (F.mode === "first" && aq) form.querySelectorAll('[name="a_' + aq.id + '"]').forEach((x) => (x.disabled = true));
+      // 선착순: 기준 질문 답을 바꾸면 순번이 꼬이니 고정
+      const aq = A.capQ(F);
+      if (aq) form.querySelectorAll('[name="a_' + aq.id + '"]').forEach((x) => (x.disabled = true));
       const b = form.querySelector('[type="submit"]'); if (b) b.textContent = "수정하기";
     }
   }
@@ -135,7 +135,7 @@
     const key = canEdit() ? await keyFor(r.sid, phoneOf(r.answers)) : "";
     if (key) data.editKey = key;
     if (LOGIN()) { if (!U) return showLogin(); data.ownerUid = U.uid; }
-    const first = F.mode === "first" && A.isGoing(F, data);
+    const first = F.mode === "first" && A.capYes(F, data);
     try {
       const slotId = await DB.submitResponse(id, r.sid, data, first);
       if (key) remember(key);

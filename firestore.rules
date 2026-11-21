@@ -120,17 +120,33 @@ service cloud.firestore {
     }
 
     // ---- 소통방 자유게시판 · 댓글: 활동 중인 회원끼리
+    // 자유게시판: 이름으로 쓰거나 익명으로 쓰기
+    //   익명 글·댓글엔 쓴 사람 정보를 안 넣고, 누가 썼는지는 talkOwners/글번호 에만 (본인만 읽을 수 있음)
+    function anonOwner(id) {
+      return request.resource.data.get('anon', false) == true && !('authorUid' in request.resource.data)
+        && getAfter(/databases/$(database)/documents/talkOwners/$(id)).data.uid == request.auth.uid;
+    }
+    function isAnonMine(id) {
+      return exists(/databases/$(database)/documents/talkOwners/$(id))
+        && get(/databases/$(database)/documents/talkOwners/$(id)).data.uid == request.auth.uid;
+    }
     match /talk/{id} {
       allow read: if admin() || canSeeGen(resource.data.generation);
-      allow create: if approved() && request.resource.data.authorUid == request.auth.uid;
-      allow update: if approved() && resource.data.authorUid == request.auth.uid
+      allow create: if approved() && (request.resource.data.get('authorUid', '') == request.auth.uid || anonOwner(id));
+      allow update: if approved() && resource.data.get('authorUid', '') == request.auth.uid
         && request.resource.data.authorUid == request.auth.uid;
-      allow delete: if admin() || (approved() && resource.data.authorUid == request.auth.uid);
+      allow delete: if admin() || (approved() && (resource.data.get('authorUid', '') == request.auth.uid || isAnonMine(id)));
     }
     match /talkComments/{id} {
       allow read: if admin() || canSeeGen(resource.data.generation);
-      allow create: if approved() && request.resource.data.authorUid == request.auth.uid;
-      allow delete: if admin() || (approved() && resource.data.authorUid == request.auth.uid);
+      allow create: if approved() && (request.resource.data.get('authorUid', '') == request.auth.uid || anonOwner(id));
+      allow delete: if admin() || (approved() && (resource.data.get('authorUid', '') == request.auth.uid || isAnonMine(id)));
+    }
+    match /talkOwners/{id} {
+      allow get, list: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if approved() && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid
+        && (existsAfter(/databases/$(database)/documents/talk/$(id)) || existsAfter(/databases/$(database)/documents/talkComments/$(id)));
+      allow delete: if admin() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
     // ---- 국서방 할 일: 같은 국서 사람만 보고, 회장단(국서 목록 맨 위)은 모든 국서 방을 봄
@@ -310,7 +326,8 @@ service cloud.firestore {
         allow get: if signedIn() && resource.data.get('ownerUid', '') == request.auth.uid;
         // 출석 체크는 명단을 보는 사람 누구나, 입금·회비 납부 여부는 재무국만
         allow update: if (attendUser(form()) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attended', 'attendedAt']))
-          || (formViewer(form()) && (isOwner() || (approved() && hasProfile() && me().dept.matches('.*재무.*')))
+          // 입금·회비 체크: 재무국 누구나 (국장·국원 모두) · 공용계정
+          || ((isOwner() || (approved() && hasProfile() && me().dept.matches('.*재무.*')))
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paid', 'paidAt', 'duesUnpaid']))
         // 예전 응답도 고칠 수 있게: 양식을 고치는 사람이 수정 열쇠(editKey)만 넣어 줄 수 있음
           || (formEditor(form()) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['editKey'])

@@ -955,18 +955,23 @@
   };
 
   /* ----- 소통방: 자유게시판 (활동 중인 회원끼리) ----- */
+  // 익명 글·댓글: 이름·국서 없이 '익명' (내가 쓴 건 나만 '내 글'로 알아봄)
+  const isMineTalk = (x) => !!S.authUser && (x.authorUid === S.authUser.uid || !!(S.myAnon || {})[x.id]);
+  const whoTalk = (x) => (x.anon ? "익명" + (isMineTalk(x) ? " (나)" : "") : x.authorName || "");
   function postHTML(p, comments) {
-    const mine = S.authUser && p.authorUid === S.authUser.uid;
-    return '<article class="card post"><div class="phead">' + deptTag(p.authorDept) + "<b>" + esc(p.authorName) + '</b><span class="muted small">' + esc(p.authorPosition || "") + " · " + ago(p.createdAt) + "</span>" +
+    const mine = isMineTalk(p);
+    return '<article class="card post"><div class="phead">' + (p.anon ? "" : deptTag(p.authorDept)) + "<b>" + esc(whoTalk(p)) + '</b><span class="muted small">' + (p.anon ? "" : esc(p.authorPosition || "") + " · ") + ago(p.createdAt) + "</span>" +
       (mine || isAdmin() ? '<button class="linkbtn small del" data-act="delPost" data-id="' + esc(p.id) + '">삭제</button>' : "") + "</div>" +
       '<p class="ptext">' + esc(p.text) + "</p>" +
-      '<div class="comments">' + comments.map((c) => '<div class="cmt"><b>' + esc(c.authorName) + "</b> " + esc(c.text) + ' <span class="muted small">' + ago(c.createdAt) + "</span>" +
-        ((S.authUser && c.authorUid === S.authUser.uid) || isAdmin() ? ' <button class="linkbtn small" data-act="delComment" data-id="' + esc(c.id) + '">×</button>' : "") + "</div>").join("") +
-      '<form class="cform" data-post="' + esc(p.id) + '"><input name="c" placeholder="댓글 달기" autocomplete="off" maxlength="500"><button class="btn sm">등록</button></form></div></article>';
+      '<div class="comments">' + comments.map((c) => '<div class="cmt"><b>' + esc(whoTalk(c)) + "</b> " + esc(c.text) + ' <span class="muted small">' + ago(c.createdAt) + "</span>" +
+        (isMineTalk(c) || isAdmin() ? ' <button class="linkbtn small" data-act="delComment" data-id="' + esc(c.id) + '">×</button>' : "") + "</div>").join("") +
+      '<form class="cform" data-post="' + esc(p.id) + '"><input name="c" placeholder="댓글 달기" autocomplete="off" maxlength="500"><label class="anonchk"><input type="checkbox" name="anon"> 익명</label><button class="btn sm">등록</button></form></div></article>';
   }
   PAGES.talk = async function () {
     if (!S.me) return talkTabs("talk") + '<div class="card empty">자유게시판은 개인 계정으로 가입한 학생회원끼리 쓰는 곳이에요.</div>';
     const [posts, comments] = await Promise.all([col("talk"), col("talkComments")]);
+    // 내가 익명으로 쓴 글·댓글 (나만 볼 수 있는 기록)
+    try { S.myAnon = {}; (await DB.queryEq("talkOwners", "uid", S.authUser.uid)).forEach((x) => (S.myAnon[x.id] = 1)); } catch (e) { S.myAnon = S.myAnon || {}; }
     const byPost = {};
     comments.slice().sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || "")).forEach((c) => (byPost[c.postId] = byPost[c.postId] || []).push(c));
     const sorted = posts.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -976,7 +981,7 @@
     return '<div class="page-head"><div><h2>소통방</h2><p class="muted">학생회끼리 자유롭게 떠드는 곳 + 선배들이 후배에게 남기는 한마디</p></div></div>' +
       talkTabs("talk") +
       '<form class="card compose" id="composeForm"><textarea name="t" rows="3" maxlength="2000" placeholder="' + esc(S.me.name) + '님, 학생회 사람들에게 하고 싶은 말을 자유롭게 써 보세요 :)"></textarea>' +
-      '<div class="compose-foot"><span class="muted small">지금 활동 중인 학생회원만 볼 수 있어요.</span><button class="btn primary sm">올리기</button></div></form>' +
+      '<div class="compose-foot"><label class="anonchk"><input type="checkbox" name="anon"> 익명으로 쓰기</label><span class="muted small">활동 중인 학생회원만 봐요</span><button class="btn primary sm">올리기</button></div></form>' +
       (cur.map((p) => postHTML(p, byPost[p.id] || [])).join("") || '<div class="card empty">아직 글이 없어요. 첫 글을 남겨 보세요!</div>') +
       Object.keys(pastG).sort((a, b) => genNum(b) - genNum(a)).map((g) =>
         '<details class="year"><summary><b>' + esc(councilLabel(g, (pastG[g][0] || {}).councilName)) + " 자유게시판</b> <small>" + pastG[g].length + "개</small></summary>" +
@@ -1644,7 +1649,7 @@
   const keepOf = (f, p) => (f.keepV2 ? f.keepUntil : [f.keepUntil || "", keepDefault(p || (S.cache.projects || []).find((x) => x.id === f.id))].sort().pop());
   // 명단을 지울 때 남겨 둘 숫자: 신청 · 참여(정원 안) · 출석
   function rosterSummary(f, list) {
-    const going = list.filter((r) => AP.isGoing(f, r) && !r.wait);
+    const going = list.filter((r) => AP.isIn(f, r));
     return { applied: list.length, going: going.length, attended: going.filter((r) => r.attended).length, at: today() };
   }
   async function wipeRoster(pid, f, list) {
@@ -1882,11 +1887,12 @@
         d.opts.map((o) => '<option value="' + esc(o) + '"' + (v === o ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select>" : "") + "</div></th>";
   }
   function rosterStats(f, list) {
-    const going = list.filter((r) => AP.isGoing(f, r)), inn = going.filter((r) => !r.wait), fee = AP.anyFee(f);
+    // 선착순: 기준 질문에 '예'인 사람 중 정원 안 / 대기 · 입금 안내 질문이 있으면 그 질문에 '예'인 사람(입금 대상)
+    const capIn = list.filter((r) => AP.capYes(f, r)), inn = list.filter((r) => AP.isIn(f, r)), fee = AP.anyFee(f), pq = AP.attendQ(f);
     const stat = (k, v) => '<div class="fm-stat"><span>' + k + "</span><b>" + v + "</b></div>";
     return '<div class="fm-stats">' + stat("응답", list.length) +
-      stat(f.mode === "first" ? "정원 안 / 대기" : "참여", f.mode === "first" ? inn.length + " / " + (going.length - inn.length) : going.length) +
-      (AP.attendQ(f) ? stat("불참", list.length - going.length) : "") +
+      (f.mode === "first" ? stat("정원 안 / 대기", capIn.filter((r) => !r.wait).length + " / " + capIn.filter((r) => r.wait).length) : "") +
+      (pq ? stat("입금 대상", inn.length + "명") : "") +
       (AP.has2(f) ? stat("2차", inn.filter((r) => /2차/.test(AP.partOf(f, r))).length + "명") : "") +
       (fee ? stat("수합금 납부", inn.filter((r) => r.paid).length + "/" + inn.length) : "") +
       (attendOn(f) ? stat("출석", inn.filter((r) => r.attended).length + "/" + inn.length) : "") + "</div>";
@@ -1900,7 +1906,7 @@
       money ? ["수합금"] : [], keep || !attendOn(f) ? [] : ["출석"], ["제출 시각"]);
     const rows = (list0 || fmSorted(fmFiltered(f))).map((r) => [r.no || "", r.name, r.sid].concat(
       extra.map((x) => { const v = (r.answers || {})[x.id]; return x.type === "agree" ? (v ? "동의" : "") : Array.isArray(v) ? v.join(", ") : (v == null ? "" : v); }),
-      AP.has2(f) ? [AP.partOf(f, r)] : [], f.mode === "first" ? [!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안"] : [],
+      AP.has2(f) ? [AP.partOf(f, r)] : [], f.mode === "first" ? [!AP.capYes(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안"] : [],
       money ? [AP.needPay(f, r) ? (r.paid ? "납부" : "미납") : ""] : [],
       keep || !attendOn(f) ? [] : [r.attended ? "O " + (r.attendedAt || "") : ""], [AP.stampText(r.at)]));
     return { head: head, rows: rows };
@@ -2020,12 +2026,12 @@
       (f.mode === "first" ? "<th>선착순</th>" : "") + (fee ? thF(f, "__paid", "수합금") : "") + (attendOn(f) ? thF(f, "__att", "출석") : "") + "<th></th></tr>";
     const n = 2 + (attendOn(f) ? 1 : 0) + qs.length + (p2 ? 1 : 0) + (fee ? 1 : 0) + (f.mode === "first" ? 1 : 0) + 1;
     const rows = list.map((r) => {
-      const going = AP.isGoing(f, r), active = going && !r.wait, sid = esc(r.id);
-      return '<tr class="' + (active ? "" : "off") + '">' +
+      const inCap = AP.capYes(f, r), active = AP.isIn(f, r), sid = esc(r.id);
+      return '<tr class="' + (r.wait ? "off" : "") + '">' +
         '<td class="num">' + (r.no ? r.no : "–") + '</td><td class="num">' + esc(AP.stampText(r.at)) + (r.editedAt ? '<small class="fm-edited" title="학생이 직접 고친 시각">수정 ' + esc(AP.stampText(r.editedAt)) + "</small>" : "") + (r.manual ? '<small class="fm-edited" title="' + esc(r.addedByName || "") + '">직접 추가</small>' : "") + "</td>" +
         qs.map((x) => '<td class="' + (x.type === "phone" || x.type === "sid" || x.type === "name" ? "num" : "ans") + '">' + cell(x, r) + "</td>").join("") +
         (p2 ? "<td>" + (AP.partOf(f, r) ? '<span class="fm-pill' + (/2차/.test(AP.partOf(f, r)) ? " ok" : "") + '">' + esc(AP.partOf(f, r)) + "</span>" : "") + "</td>" : "") +
-        (f.mode === "first" ? "<td>" + (!going ? "" : r.wait ? '<span class="fm-pill warn">대기 ' + r.waitNo + "</span>" : '<span class="fm-pill ok">정원 안</span>') + "</td>" : "") +
+        (f.mode === "first" ? "<td>" + (!inCap ? "" : r.wait ? '<span class="fm-pill warn">대기 ' + r.waitNo + "</span>" : '<span class="fm-pill ok">정원 안</span>') + "</td>" : "") +
         (fee ? "<td>" + (active ? payPill(r) : "") + "</td>" : "") +
         (attendOn(f) ? "<td>" + (active && r.attended ? '<span class="fm-pill ok">✓ ' + esc(r.attendedAt || "출석") + "</span>" : "") + "</td>" : "") +
         "<td>" + (editable || r.manual ? '<button class="x" data-act="fmDelResp" data-sid="' + sid + '" aria-label="이 응답 지우기" title="이 응답 지우기">×</button>' : "") + "</td></tr>";
@@ -2079,7 +2085,7 @@
       inp("name", "양식 이름 <small class=\"muted\">(학생에게는 안 보여요)</small>", { ph: "예: 가수요조사, 실수요조사, 준비위원 모집", help: "한 사업에 양식을 여러 개 만들 때 구분하는 이름이에요" }) +
       inp("title", "신청서 제목") + inp("desc", "안내문 (일시·장소 등)", { area: true }) +
       sel("mode", "모집 방식", [["normal", "일반 (기간 안에 누구나)"], ["first", "선착순 (정원 넘으면 대기)"]], { half: true }) +
-      inp("cap", "정원", { half: true, num: true, id: "fmCapWrap", hidden: f.mode !== "first" }) +
+      inp("cap", "정원", { half: true, num: true, id: "fmCapWrap", hidden: f.mode !== "first" }) + capSelHTML(f) +
       '<div class="field" id="fmStartWrap"' + (f.mode !== "first" ? " hidden" : "") + '><label>제출 시작 시각 <small class="muted">(비워 두면 바로)</small></label>' +
         '<input type="datetime-local" data-fm="startLocal" step="60" value="' + esc(f.startLocal !== undefined ? f.startLocal : localDT(f.startMs)) + '">' +
         '<small class="help">양식은 미리 열어 두고, 이 시각 정각부터 [제출하기]가 눌려요. 학생들이 미리 다 써 두고 기다릴 수 있어요. (서버 시계 기준이라 미리 내는 사람이 없어요)</small></div>' +
@@ -2167,7 +2173,20 @@
   }
   function dueHint() { const h = document.getElementById("fmDueText"); if (h && S.fm.draft) h.textContent = AP.dueText(S.fm.draft) ? "학생 화면: " + AP.dueText(S.fm.draft) : "날짜를 고르면 ‘10월 23일(금)까지’로 보여요"; }
   function markDirty() { setTimeout(placeTool, 0); S.fm.dirty = true; const d = document.getElementById("fmDirty"); if (d) { d.hidden = false; d.textContent = "저장 안 한 변경이 있어요"; } }
-  function redrawQs() { const b = document.getElementById("fmQs"); if (b) b.innerHTML = qsHTML(); markDirty(); refreshPreview(true); placeTool(); }
+  function redrawQs() { const b = document.getElementById("fmQs"); if (b) b.innerHTML = qsHTML(); markDirty(); refreshPreview(true); placeTool(); refreshCapSel(); }
+  // 선착순 기준 질문: 어떤 예/아니오 질문에 '예'한 사람끼리 정원·대기를 셀지 (예: 합동응원전 참가 여부)
+  function capDefault(f) {
+    const c = AP.capQ(Object.assign({}, f, { mode: "first" }));
+    return f.capQ === "__all" || !c ? "__all" : c.id;
+  }
+  function capSelHTML(f) {
+    const cur = capDefault(f), yn = (f.qs || []).filter((q) => q.type === "yesno");
+    const short = (t) => { t = String(t || "").replace(/\s+/g, " ").trim() || "(제목 없는 질문)"; return t.length > 34 ? t.slice(0, 33) + "…" : t; };
+    return '<div class="field half" id="fmCapQWrap"' + (f.mode !== "first" ? " hidden" : "") + '><label>선착순 기준 질문</label><select data-fm="capQ">' +
+      '<option value="__all"' + (cur === "__all" ? " selected" : "") + ">신청한 사람 모두</option>" +
+      yn.map((q) => '<option value="' + esc(q.id) + '"' + (cur === q.id ? " selected" : "") + ">‘예’: " + esc(short(q.label)) + "</option>").join("") + "</select></div>";
+  }
+  function refreshCapSel() { const w = document.getElementById("fmCapQWrap"); if (w && S.fm.draft) w.outerHTML = capSelHTML(S.fm.draft); }
   // 구글폼처럼: 고른(누른) 질문 카드에 표시하고, 오른쪽 도구 막대를 그 카드 옆으로 옮김
   function placeTool() {
     const box = document.getElementById("fmQs"), rail = document.getElementById("fmRail"), tool = document.getElementById("fmTool");
@@ -2208,7 +2227,7 @@
       else f[k] = el.value;
       // 제목을 바꾸면 자동 동의 안내문도 같이
       if (k === "title") (f.qs || []).forEach((q) => { if (q.type === "agree" && q.textAuto) { const ta = document.querySelector('textarea[data-fq="text"][data-q="' + q.id + '"]'); if (ta) ta.value = AP.agreeOf(f, q); } });
-      if (k === "mode") { const w = document.getElementById("fmCapWrap"); if (w) w.hidden = f.mode !== "first"; const sw = document.getElementById("fmStartWrap"); if (sw) sw.hidden = f.mode !== "first"; const h = document.getElementById("fmModeHelp"); if (h) h.innerHTML = modeHelp(f); }
+      if (k === "mode") { const cw = document.getElementById("fmCapQWrap"); if (cw) cw.hidden = f.mode !== "first"; const w = document.getElementById("fmCapWrap"); if (w) w.hidden = f.mode !== "first"; const sw = document.getElementById("fmStartWrap"); if (sw) sw.hidden = f.mode !== "first"; const h = document.getElementById("fmModeHelp"); if (h) h.innerHTML = modeHelp(f); }
       markDirty(); refreshPreview();
     } else if (el.dataset.fmDate) {
       const iso = isoDate(fmtDots(el.value.replace(/\D/g, "").slice(0, 8))); if (iso) { f[el.dataset.fmDate] = iso; markDirty(); dueHint(); refreshPreview(); }
@@ -2222,6 +2241,7 @@
       else if (k === "required" || k === "attend") q[k] = el.checked;
       else q[k] = el.value;
       if (k === "text" && q.type === "agree") q.textAuto = false; // 직접 고치면 그때부터 고친 글
+      if (k === "label" && q.type === "yesno") refreshCapSel();
       // 참여 여부 질문은 하나만: 새로 체크하면 다른 질문의 체크는 자동으로 풀림
       if (k === "attend" && el.checked) {
         const others = S.fm.draft.qs.filter((x) => x !== q && x.attend);
@@ -2233,7 +2253,7 @@
   document.addEventListener("change", function (e) {
     const el = e.target;
     if (!el.dataset || !S.fm.draft) return;
-    if (el.dataset.fm === "mode" || el.dataset.fm === "ownerDept") el.dispatchEvent(new Event("input", { bubbles: true }));
+    if (el.dataset.fm === "mode" || el.dataset.fm === "ownerDept" || el.dataset.fm === "capQ") el.dispatchEvent(new Event("input", { bubbles: true }));
     else if (el.dataset.fq === "required" || el.dataset.fq === "attend") el.dispatchEvent(new Event("input", { bubbles: true }));
     else if (el.classList.contains("dnative") && el.closest(".dwrap") && el.closest(".dwrap").querySelector("[data-fm-date]")) {
       S.fm.draft[el.closest(".dwrap").querySelector("[data-fm-date]").dataset.fmDate] = el.value; markDirty(); dueHint(); refreshPreview();
@@ -2316,27 +2336,28 @@
       const all = fmSorted(S.fm.resp.slice());
       const short = (t) => { t = String(t || "").replace(/\s+/g, " ").trim(); return t.length > 30 ? t.slice(0, 29) + "…" : t; };
       // 고를 수 있는 '행사': 예/아니오 질문 + (2차가 있으면) 1차 · 2차
-      const evs = (f.qs || []).filter((q) => q.type === "yesno").map((q) => ({ k: q.id, label: q.label, attend: !!q.attend,
-        who: (r) => (r.answers || {})[q.id] === "예" && (!q.attend || AP.isGoing(f, r)) }));
+      const cq = AP.capQ(f);
+      const evs = (f.qs || []).filter((q) => q.type === "yesno").map((q) => ({ k: q.id, label: q.label, cap: !!(cq && cq.id === q.id), pay: !!q.attend,
+        who: (r) => (r.answers || {})[q.id] === "예" }));
       if (AP.has2(f)) {
-        evs.push({ k: "__p1", label: "1차", who: (r) => AP.isGoing(f, r) && /1차/.test(AP.partOf(f, r)) });
-        evs.push({ k: "__p2", label: "2차", who: (r) => AP.isGoing(f, r) && /2차/.test(AP.partOf(f, r)) });
+        evs.push({ k: "__p1", label: "1차", who: (r) => AP.isIn(f, r) && /1차/.test(AP.partOf(f, r)) });
+        evs.push({ k: "__p2", label: "2차", who: (r) => AP.isIn(f, r) && /2차/.test(AP.partOf(f, r)) });
       }
-      if (!evs.length) evs.push({ k: "__all", label: "참여자", attend: true, who: (r) => AP.isGoing(f, r) });
+      if (!evs.length) evs.push({ k: "__all", label: "참여자", cap: true, who: (r) => AP.capYes(f, r) });
       const p = (S.cache.projects || []).find((x) => x.id === (f.projectId || S.fm.pid));
       const pname = ((p && p.name) || f.title || "") + (f.name ? " " + f.name : "");
       const line = (r, i) => (i + 1) + ". " + mask(r.name) + " " + (r.sid || "");
       const build = (keys) => {
         const pick = evs.filter((e) => keys.indexOf(e.k) >= 0), sections = [];
         pick.forEach((e) => {
-          const list = all.filter(e.who), inn = list.filter((r) => !(e.attend && r.wait)), wait = list.filter((r) => e.attend && r.wait);
+          const list = all.filter(e.who), inn = list.filter((r) => !(e.cap && r.wait)), wait = list.filter((r) => e.cap && r.wait);
           sections.push({ title: pick.length > 1 ? short(e.label) : pname + " 명단", inn: inn, wait: wait });
         });
         return sections;
       };
       const toText = (secs) => (secs.length > 1 ? "[" + pname + " 명단]\n\n" : "") + secs.map((x) => "[" + x.title + "] " + x.inn.length + "명\n" + x.inn.map(line).join("\n") +
         (x.wait.length ? "\n\n[" + x.title + " 대기]\n" + x.wait.map(line).join("\n") : "")).join("\n\n");
-      let keys = [(evs.find((e) => e.attend) || evs[0]).k];
+      let keys = [(evs.find((e) => e.cap) || evs.find((e) => e.pay) || evs[0]).k];
       openForm({ title: "공개용 명단",
         intro: (evs.length > 1 ? '<p class="small" style="margin:0 0 6px"><b>어떤 행사 명단인가요?</b> <span class="muted">여러 개 고르면 행사별로 나눠서 만들어요</span></p>' +
             '<div class="pub-evs">' + evs.map((e) => '<label class="fm-chk"><input type="checkbox" class="pub-ev" value="' + esc(e.k) + '"' + (keys.indexOf(e.k) >= 0 ? " checked" : "") + "> " + esc(short(e.label)) + "</label>").join("") + "</div>" : "") +
@@ -2447,6 +2468,7 @@
       doc.fee2Unpaid = doc.has2 && doc.feeUnpaid > 0 ? Number(doc.fee2Unpaid) || 0 : 0;
       delete doc.feeSplit; delete doc.payOn;
       doc.hasPay = AP.hasPay(doc);
+      doc.capQ = doc.mode === "first" ? capDefault(doc) : "";
       // 일반 = 구글 로그인 · 한 사람 한 번 · 본인이 고칠 수 있음 / 선착순 = 로그인 없이 · 여러 번 · 고칠 수 없음
       doc.login = true; doc.allowEdit = true;
       // 제출 시작 시각 (선착순만) — 숫자(ms)로 저장해서 보안 규칙이 서버 시계와 비교
@@ -2650,7 +2672,7 @@
       const f = S.fm.form, extra = (f.qs || []).filter((x) => x.type !== "name" && x.type !== "sid");
       const money = canMoney() && AP.anyFee(f), dues = money && AP.hasDues(f);
       const head = ["번호", "이름", "학번", AP.has2(f) ? "참여" : "", money ? "입금자명" : "", f.mode === "first" ? "선착순" : "", dues ? "회비" : "", money ? "참가비" : "", money ? "입금" : "", "출석", "제출 시각"].filter(Boolean).concat(extra.map((x) => x.label));
-      const rows = S.fm.resp.map((r) => [r.no || "", r.name, r.sid, AP.has2(f) ? AP.partOf(f, r) : null, money ? r.depositName : null, f.mode === "first" ? (!AP.isGoing(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안") : null,
+      const rows = S.fm.resp.map((r) => [r.no || "", r.name, r.sid, AP.has2(f) ? AP.partOf(f, r) : null, money ? r.depositName : null, f.mode === "first" ? (!AP.capYes(f, r) ? "" : r.wait ? "대기 " + r.waitNo : "정원 안") : null,
         dues ? (r.duesUnpaid ? "미납" : "납부") : null, money ? AP.feeOf(f, r) : null, money ? (r.paid ? "O" : "") : null, r.attended ? "O " + (r.attendedAt || "") : "", AP.stampText(r.at)].filter((x) => x !== null)
         .concat(extra.map((x) => { const v = (r.answers || {})[x.id]; return x.type === "agree" ? (v ? "동의" : "") : Array.isArray(v) ? v.join(", ") : (v == null ? "" : v); })));
       const csv = "﻿" + [head].concat(rows).map((row) => row.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
@@ -2762,11 +2784,15 @@
       if (!confirm("이 글을 삭제할까요? 달린 댓글도 함께 지워져요.")) return;
       const id = el.dataset.id;
       for (const c of (await col("talkComments")).filter((x) => x.postId === id)) { try { await DB.remove("talkComments", c.id); } catch (e) { /* 남의 댓글은 회장단만 */ } }
-      await DB.remove("talk", id); await after("talk", "talkComments"); toast("삭제했어요.");
+      await DB.remove("talk", id);
+      if ((S.myAnon || {})[id]) { try { await DB.remove("talkOwners", id); } catch (e) { /* 무시 */ } }
+      await after("talk", "talkComments"); toast("삭제했어요.");
     },
     async delComment(el) {
       if (!confirm("댓글을 삭제할까요?")) return;
-      await DB.remove("talkComments", el.dataset.id); await after("talkComments");
+      await DB.remove("talkComments", el.dataset.id);
+      if ((S.myAnon || {})[el.dataset.id]) { try { await DB.remove("talkOwners", el.dataset.id); } catch (e) { /* 무시 */ } }
+      await after("talkComments");
     },
     msgTo(el) { S.msgTo = el.dataset.dept; renderPage(); },
     async login() { try { await DB.signIn(); } catch (e) { toast(errMsg(e), true); } },
@@ -3357,13 +3383,13 @@
   /* ----- 출석 체크 (휴대폰용) : 이름 · 학번 · 수합금만, 오른쪽에 큰 출석 버튼 ----- */
   function atList(f) {
     const at = S.at || {}, q = (at.q || "").replace(/\s/g, ""), c = new Intl.Collator("ko");
-    return (S.fm.resp || []).filter((r) => AP.isGoing(f, r) && !r.wait)
+    return (S.fm.resp || []).filter((r) => AP.isIn(f, r))
       .filter((r) => (at.show === "no" ? !r.attended : at.show === "yes" ? r.attended : true))
       .filter((r) => !q || [r.name, r.sid, String(r.sid || "").slice(-4)].some((x) => String(x || "").indexOf(q) >= 0))
       .sort((a, b) => c.compare(String(a.name || ""), String(b.name || "")));
   }
   function atHeadHTML(f) {
-    const all = (S.fm.resp || []).filter((r) => AP.isGoing(f, r) && !r.wait), done = all.filter((r) => r.attended).length, show = (S.at || {}).show || "";
+    const all = (S.fm.resp || []).filter((r) => AP.isIn(f, r)), done = all.filter((r) => r.attended).length, show = (S.at || {}).show || "";
     const seg = (k, t) => '<button class="' + (show === k ? "on" : "") + '" data-act="atShow" data-k="' + k + '">' + t + "</button>";
     return '<div class="at-count"><b>' + done + "</b> / " + all.length + '명 출석<div class="pbar"><i style="width:' + (all.length ? Math.round((done / all.length) * 100) : 0) + '%"></i></div></div>' +
       '<div class="at-seg">' + seg("", "전체") + seg("no", "아직 " + (all.length - done)) + seg("yes", "출석 " + done) + "</div>";
@@ -3819,7 +3845,7 @@
       if (!f) return toast("이 사업에는 신청 양식이 없어요.", true);
       let list = [];
       try { list = ordered(f, await DB.list(respPath(f.id))); } catch (e) { return toast("명단을 볼 권한이 없어요.", true); }
-      const going = list.filter((r) => AP.isGoing(f, r) && !r.wait);
+      const going = list.filter((r) => AP.isIn(f, r));
       const inRound = (r, rd) => !AP.has2(f) ? rd === "1차" : rd === "1차" ? AP.partOf(f, r) !== "2차만" : rd === "2차" ? /2차/.test(AP.partOf(f, r)) : false;
       const msg = [];
       ["1차", "2차"].forEach((rd) => {
@@ -3898,15 +3924,20 @@
     const f = e.target;
     if (f.id !== "composeForm" && !f.classList.contains("cform")) return;
     e.preventDefault();
-    const input = f.querySelector("textarea, input");
+    const input = f.querySelector("textarea, input[name=c]");
     const text = input.value.trim();
     if (!text) return;
     const btn = f.querySelector("button"); btn.disabled = true;
-    const base = { text: text, authorUid: S.authUser.uid, authorName: (S.me && S.me.name) || "학생회", authorDept: (S.me && S.me.dept) || "",
-      authorPosition: (S.me && S.me.position) || "", generation: S.settings.generation, councilName: S.settings.councilName || "", createdAt: new Date().toISOString() };
+    const anon = !!(f.querySelector("input[name=anon]") || {}).checked, colName = f.id === "composeForm" ? "talk" : "talkComments";
+    const meta = { generation: S.settings.generation, councilName: S.settings.councilName || "", createdAt: new Date().toISOString() };
+    // 익명: 이름·국서·계정 없이 저장하고, 내가 쓴 표시는 나만 볼 수 있는 talkOwners 에만
+    const base = anon ? Object.assign({ text: text, anon: true, authorName: "익명" }, meta)
+      : Object.assign({ text: text, authorUid: S.authUser.uid, authorName: (S.me && S.me.name) || "학생회", authorDept: (S.me && S.me.dept) || "", authorPosition: (S.me && S.me.position) || "" }, meta);
+    if (colName === "talkComments") base.postId = f.dataset.post;
     try {
-      if (f.id === "composeForm") { await DB.add("talk", base); await after("talk"); toast("올렸어요."); }
-      else { await DB.add("talkComments", Object.assign(base, { postId: f.dataset.post })); await after("talkComments"); }
+      if (anon) { const id = DB.newId(); await DB.setMany([{ col: colName, id: id, data: base }, { col: "talkOwners", id: id, data: { uid: S.authUser.uid } }]); }
+      else await DB.add(colName, base);
+      await after(colName); if (colName === "talk") toast(anon ? "익명으로 올렸어요." : "올렸어요.");
     } catch (er) { toast(errMsg(er), true); btn.disabled = false; }
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modalRoot.innerHTML) closeModal(); });

@@ -151,6 +151,9 @@
     async add(col, data) { const r = await this.fs.collection(col).add(data); return r.id; },
     async update(col, id, data) { await this.fs.collection(col).doc(id).update(data); },
     async remove(col, id) { await this.fs.collection(col).doc(id).delete(); },
+    newId() { return this.fs.collection("_").doc().id; },
+    // 여러 문서를 한 번에 (전부 되거나 전부 안 되거나)
+    async setMany(list) { const b = this.fs.batch(); list.forEach((x) => b.set(this.fs.collection(x.col).doc(x.id), x.data)); await b.commit(); },
   };
 
   /* ---------------- 데모 모드 (연습용) ---------------- */
@@ -351,6 +354,8 @@
       c[id] = Object.assign(c[id], clone(data));
     },
     async remove(col, id) { if (this.store[col]) delete this.store[col][id]; },
+    newId() { return "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); },
+    async setMany(list) { for (const x of list) await this.set(x.col, x.id, x.data); },
     async submitResponse(formId, sid, data, withSlot) {
       const f = (this.store.forms || {})[formId];
       const path = "forms/" + formId + "/responses";

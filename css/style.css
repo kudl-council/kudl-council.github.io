@@ -1461,3 +1461,9 @@ input.ap-locked { background: var(--bg); color: var(--muted); }
   .pr-stack .psched li { flex-wrap: wrap; gap: 2px 10px; }
   .pr-stack .psched li .dt { margin-left: 0; text-align: left; }
 }
+
+/* 자유게시판 익명 */
+.anonchk { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.anonchk input { width: 16px; height: 16px; accent-color: var(--accent); }
+.compose-foot .anonchk { margin-right: auto; }
+.compose-foot .muted.small { margin-right: 8px; }

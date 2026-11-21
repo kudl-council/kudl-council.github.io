@@ -63,14 +63,28 @@
   const attendQ = (f) => (f.qs || []).find((q) => q.type === "yesno" && q.attend);
   // 입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 2024250123 이다홍 → 24123이다홍)
   const depositName = (sid, name) => (String(sid || "").length >= 7 ? String(sid).slice(2, 4) + String(sid).slice(-3) : "") + String(name || "").replace(/\s/g, "");
+  // '입금 안내 필요' 질문에 '예' (그 질문이 없으면 모두)
   const isGoing = (f, r) => { const a = attendQ(f); return !a || (r.answers || {})[a.id] === "예"; };
-  // 선착순: 제출 시각 순서로 정원 안 / 대기 (참여 '아니오'는 세지 않음). list는 제출 순서대로 정렬된 상태여야 함
+  // 선착순 기준 질문: 양식에서 고른 질문(capQ). '__all'이면 신청자 모두.
+  //   아직 안 골랐으면: 제목에 참여·참석·참가·신청이 들어간 예/아니오 질문(입금 안내 질문 말고) → 없으면 입금 안내 질문
+  const capGuess = (f) => { const yn = (f.qs || []).filter((q) => q.type === "yesno"); return yn.find((q) => !q.attend && /참여|참석|참가|신청/.test(q.label || "")) || yn.find((q) => q.attend) || null; };
+  const capQ = (f) => {
+    if (!f || f.mode !== "first" || f.capQ === "__all") return null;
+    if (f.capQ) return (f.qs || []).find((x) => x.id === f.capQ && x.type === "yesno") || null;
+    return capGuess(f);
+  };
+  const capYes = (f, r) => { const q = capQ(f); return !q || (r.answers || {})[q.id] === "예"; };
+  // 대기 중인 사람이 돈을 안 내는 경우: 입금 안내 질문이 없거나, 선착순 질문과 같은 질문일 때
+  const waitStops = (f) => { const a = attendQ(f), c = capQ(f); return !a || !c || a.id === c.id; };
+  // 행사에 실제로 오는 사람(출석·수합금 대상): 입금 안내 질문에 '예' + (해당하면) 대기 아님
+  const isIn = (f, r) => isGoing(f, r) && !(r.wait && waitStops(f));
+  // 번호: 응답한 사람 모두 제출 순서대로 / 선착순: 기준 질문에 '예'인 사람끼리 정원 안 · 대기
   function place(f, list) {
     let k = 0, c = 0;
     list.forEach((r) => {
       r.no = 0; r.wait = false; r.waitNo = 0;
-      if (!isGoing(f, r)) return;
       k++; r.no = k;
+      if (!capYes(f, r)) return;
       // 학생회가 직접 추가한 사람(현장 추가 등)은 선착순 정원과 상관없이 확정
       if (r.manual) return;
       c++;
@@ -95,7 +109,7 @@
     return has2(f) ? partFee(f, partOf(f, r) || "1차만", un) : fee1Of(f, un);
   };
   const anyFee = (f) => Number(f.fee) > 0 || Number(f.feeUnpaid) > 0 || (has2(f) && (Number(f.fee2) > 0 || Number(f.fee2Unpaid) > 0));
-  const needPay = (f, r) => isGoing(f, r) && !r.wait && anyFee(f);
+  const needPay = (f, r) => isIn(f, r) && anyFee(f);
   // 입금 기한: 날짜로 넣으면 '10월 23일(금)까지'
   const DOWK = ["일", "월", "화", "수", "목", "금", "토"];
   function dueText(f) {
@@ -231,17 +245,17 @@
   // 제출 후 화면
   function doneHTML(f, r, opts) {
     opts = opts || {};
-    const going = isGoing(f, r), dn = depositName(r.sid, r.name);
+    const going = isGoing(f, r), dn = depositName(r.sid, r.name), inCap = f.mode === "first" && capYes(f, r);
     const pay = going && anyFee(f);
     const ed = !!opts.edited;
-    return headHTML(f, true) + '<div class="ap-done"><span class="ap-pill ok">' + (ed ? "수정 완료" : going ? "신청 완료" : "응답 제출") + "</span>" +
-      "<div>" + esc(r.name) + "님, " + (ed ? "응답을 고쳤어요." : going ? "신청이 접수됐어요." : "응답해 주셔서 고마워요.") + "</div>" +
+    return headHTML(f, true) + '<div class="ap-done"><span class="ap-pill ok">' + (ed ? "수정 완료" : "신청 완료") + "</span>" +
+      "<div>" + esc(r.name) + "님, " + (ed ? "응답을 고쳤어요." : "신청이 접수됐어요.") + "</div>" +
       (ed ? '<div class="ap-time">수정 시각 ' + esc(stampText(Date.now())) + "</div>" : r.at ? '<div class="ap-time">접수 시각 ' + esc(stampText(r.at)) + "</div>" : "") +
-      (f.mode === "first" && going ? (r.rank ? rankHTML(f, r.rank) : '<div class="ap-note">선착순은 접수 시각 순서로 정해져요. 정원 안인지는 학생회가 따로 알려 드려요.</div>') : "") + "</div>" +
+      (inCap ? (r.rank ? rankHTML(f, r.rank) : '<div class="ap-note">선착순은 접수 시각 순서로 정해져요. 정원 안인지는 학생회가 따로 알려 드려요.</div>') : "") + "</div>" +
       (pay ? '<div class="ap-pay"><b>입금 안내</b><div>' + (dueText(f) ? esc(dueText(f)) + " " : "") + (has2(f) && partOf(f, r) ? esc(partOf(f, r)) + " 참여로 " : "") +
         "<b>" + won(feeOf(f, Object.assign({}, r, { duesUnpaid: false }))) + "</b>을 보내 주세요." +
         (hasDues(f) ? " <b>학생회비 미납부자는 " + won(feeOf(f, Object.assign({}, r, { duesUnpaid: true }))) + "</b>이에요." : "") +
-        (f.mode === "first" ? (r.rank && r.rank > Number(f.cap || 0) ? " <b>지금은 대기라서, 연락받은 뒤에 보내 주세요.</b>" : r.rank ? "" : " (대기로 접수됐다면 연락받은 뒤에 보내 주세요)") : "") + "</div>" +
+        (inCap && waitStops(f) ? (r.rank && r.rank > Number(f.cap || 0) ? " <b>지금은 대기라서, 연락받은 뒤에 보내 주세요.</b>" : r.rank ? "" : " (대기로 접수됐다면 연락받은 뒤에 보내 주세요)") : "") + "</div>" +
         (f.account ? '<div class="ap-copy"><span>' + esc(f.account) + '</span><button type="button" data-copy="' + esc(String(f.account).replace(/[^\d-]/g, "")) + '">복사</button></div>' : "") +
         '<div>입금자명은 꼭 이렇게 적어 주세요</div><div class="ap-copy"><b>' + esc(dn) + '</b><button type="button" data-copy="' + esc(dn) + '">복사</button></div>' +
         '<div class="ap-hint">입학연도 2자리 + 학번 뒤 3자리 + 이름</div></div>' : "") +
@@ -284,5 +298,5 @@
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
     return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
   }
-  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, hasPay, agreeText, agreeOf, dueText, feeText, PART, has2, partOf, partFee, fillAnswers, editKeyFor };
+  window.APPLY = { TYPES, Q, TEMPLATES, newForm, qOf, attendQ, capQ, capYes, isIn, depositName, isGoing, place, needPay, checkForm, stampText, formHTML, readAnswers, doneHTML, won, esc, rankHTML, sidExample, hasDues, feeOf, anyFee, hasPay, agreeText, agreeOf, dueText, feeText, PART, has2, partOf, partFee, fillAnswers, editKeyFor };
 })();
