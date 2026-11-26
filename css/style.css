@@ -1497,3 +1497,6 @@ input.ap-locked { background: var(--bg); color: var(--muted); }
 .st-wrap { max-width: 980px; }
 .st-table input { min-width: 0; }
 .st-table input[data-money] { min-width: 84px; }
+/* 사파리에서 선택 칸이 얇게 보이지 않게 */
+.st-edit select, .field select { -webkit-appearance: none; appearance: none; min-height: 44px; padding-right: 36px;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 12px center / 14px no-repeat; }

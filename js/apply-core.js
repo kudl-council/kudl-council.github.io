@@ -61,7 +61,7 @@
   /* ---------- 계산 ---------- */
   const qOf = (f, t) => (f.qs || []).find((q) => q.type === t);
   const attendQ = (f) => (f.qs || []).find((q) => q.type === "yesno" && q.attend);
-  // 입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 2024250123 이다홍 → 24123이다홍)
+  // 입금자명 = 입학연도 2자리 + 학번 뒤 3자리 + 이름 (예: 2024250123 홍길동 → 24123홍길동)
   const depositName = (sid, name) => (String(sid || "").length >= 7 ? String(sid).slice(2, 4) + String(sid).slice(-3) : "") + String(name || "").replace(/\s/g, "");
   // '입금 안내 필요' 질문에 '예' (그 질문이 없으면 모두)
   const isGoing = (f, r) => { const a = attendQ(f); return !a || (r.answers || {})[a.id] === "예"; };
