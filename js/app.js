@@ -3328,8 +3328,11 @@
   const SETTLE_INTRO = "교류반과 함께 진행되는 {행사}에는 학생회비가 지원되지 않습니다. 따라서 이 방은 선수합금을 제외한 결제 금액에 대한 정산을 위해 만들어진 방입니다. 위 사진을 근거로 추가 정산금이 다음과 같이 책정되었습니다. 아래 계좌로 해당 금액 보내주시면 됩니다.";
   const wonN = (n) => Math.round(Number(n) || 0).toLocaleString("ko-KR");
   const numOf = (v) => Number(String(v == null ? "" : v).replace(/[^\d-]/g, "")) || 0;
-  function newSettle() {
-    return { title: "", projectId: "", us: "고대", them: "연대", account: "", intro: SETTLE_INTRO, usPaid: 0, themPaid: 0,
+  const SETTLE_INTRO_DEPT = "{행사} 추가 정산 안내입니다. 아래 계좌로 해당 금액 보내주시면 됩니다.";
+  function newSettle(type) {
+    if (type === "dept") return { type: "dept", title: "", projectId: "", account: "", intro: SETTLE_INTRO_DEPT,
+      places: [{ round: "1차", name: "", deposit: 0, paid: 0, payers: 0, non: 0 }], fees: { "1차": 0 }, support: { "1차": 0 }, per: {}, names: { "1차": "" }, generation: S.settings.generation };
+    return { type: "joint", title: "", projectId: "", us: "고대", them: "연대", account: "", intro: SETTLE_INTRO, usPaid: 0, themPaid: 0,
       places: [{ round: "1차", name: "", deposit: 0, paid: 0, us: 0, them: 0, note: "" }, { round: "2차", name: "", deposit: 0, paid: 0, us: 0, them: 0, note: "" }],
       fees: { "1차": 0, "2차": 0 }, names: { "1차": "", "2차": "" }, generation: S.settings.generation };
   }
@@ -3365,19 +3368,55 @@
     return { calc: calc, notice: notice };
   }
 
+  /* ----- 과 행사 추가 정산 (회비 통장으로 결제한 우리끼리 행사) -----
+     합계(예약금 + 당일 결제) ÷ 인원 = 1인 금액(최소 주문 금액)
+     미납부자 = 1인 금액 − 수합금 / 납부자 = 1인 금액 − 수합금 − 회비 지원 (원 단위 아래 · 나머지는 회비) */
+  function settleCalcDept(d) {
+    const places = (d.places || []).map((p) => Object.assign({}, p, { total: numOf(p.deposit) + numOf(p.paid) }));
+    const rounds = ROUNDS.filter((r) => places.some((p) => p.round === r)).map((r) => {
+      const ps = places.filter((p) => p.round === r);
+      const total = ps.reduce((s, p) => s + p.total, 0), deposit = ps.reduce((s, p) => s + numOf(p.deposit), 0);
+      const payers = ps.reduce((s, p) => s + numOf(p.payers), 0), non = ps.reduce((s, p) => s + numOf(p.non), 0), n = payers + non;
+      const fee = numOf((d.fees || {})[r]), support = numOf((d.support || {})[r]), set = numOf((d.per || {})[r]);
+      const per = set || (n ? Math.floor(total / n) : 0);
+      const extraNon = Math.max(0, per - fee), extraPay = Math.max(0, per - fee - support);
+      const collected = n * fee, extraTotal = non * extraNon + payers * extraPay;
+      const names = String((d.names || {})[r] || "").split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
+      return { r: r, places: ps, total: total, deposit: deposit, payers: payers, non: non, n: n, fee: fee, support: support, per: per, auto: !set,
+        extraNon: extraNon, extraPay: extraPay, collected: collected, extraTotal: extraTotal, dues: total - collected - extraTotal, names: names };
+    });
+    return { places: places, rounds: rounds };
+  }
+  function settleTextsDept(d, c) {
+    const pn = (projById(d.projectId) || {}).name || d.title || "행사";
+    const calc = c.rounds.map((x) => x.r + "(" + x.places.map((p) => p.name || "장소").join(", ") + ")\n" +
+      "총 결제액: " + wonN(x.total) + "원" + (x.deposit ? " (예약금 " + wonN(x.deposit) + "원 포함)" : "") + "\n" +
+      "인원: " + x.n + "명 (회비 납부자 " + x.payers + "명 · 미납부자 " + x.non + "명)\n" +
+      "1인 금액: " + (x.auto ? wonN(x.total) + " / " + x.n + " = " : "") + wonN(x.per) + "원\n" +
+      "회비 미납부자: " + wonN(x.per) + " - " + wonN(x.fee) + "(수합금) = " + wonN(x.extraNon) + "원\n" +
+      "회비 납부자: " + wonN(x.per) + " - " + wonN(x.fee) + "(수합금) - " + wonN(x.support) + "(회비 지원) = " + wonN(x.extraPay) + "원\n" +
+      "추가 정산 합계: " + x.non + " × " + wonN(x.extraNon) + " + " + x.payers + " × " + wonN(x.extraPay) + " = " + wonN(x.extraTotal) + "원\n" +
+      "(학생회비 사용: " + wonN(x.dues) + "원)").join("\n\n");
+    const notice = c.rounds.map((x) => (c.rounds.length > 1 ? "<" + x.r + ">\n" : "") + String(d.intro || SETTLE_INTRO_DEPT).replace(/\{행사\}/g, pn) +
+      "\n1인 금액 " + wonN(x.per) + "원에서 수합금 " + wonN(x.fee) + "원을 뺀 금액이고, 학생회비 납부자는 회비 지원 " + wonN(x.support) + "원이 더 빠져요." +
+      (x.names.length ? "\n* 현장 추가 신청자 · 미입금자는 수합금(" + wonN(x.fee) + "원)을 더해서 보내 주세요.\n" + x.names.join(", ") : "") +
+      "\n\n✅ 학생회비 납부자: " + wonN(x.extraPay) + "원\n✅ 학생회비 미납부자: " + wonN(x.extraNon) + "원\n✅ 계좌: " + (d.account || "____________________")).join("\n\n\n");
+    return { calc: calc, notice: notice };
+  }
+
   // 재무국방 위에 붙는 '추가 정산' 카드
   async function settleRoomHTML(room) {
     if (!/재무/.test(room) || !canSettle()) return "";
     let list = [];
     try { list = await col("settlements"); } catch (e) { return ""; }
     list = list.slice().sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
-    return '<section class="card st-room"><div class="card-head"><h3>💸 추가 정산 <small>다른 학교와 같이 결제한 뒤풀이 등</small></h3><button class="btn sm primary" data-act="stNew">+ 새 정산</button></div>' +
+    return '<section class="card st-room"><div class="card-head"><h3>💸 추가 정산</h3><span class="st-newbtns"><button class="btn sm primary" data-act="stNew" data-t="dept">+ 과 행사</button><button class="btn sm" data-act="stNew" data-t="joint">+ 함께한 행사</button></span></div>' +
       (list.length ? '<ul class="tlist">' + list.map((d) => {
-        const c = settleCalc(d);
-        return '<li class="trow" data-act="stOpen" data-id="' + esc(d.id) + '"><span class="tt"><b>' + esc(d.title || "제목 없음") + "</b>" +
-          (c.rounds.length ? ' <small class="muted">' + c.rounds.map((x) => x.r + " 인당 " + wonN(x.per) + "원").join(" · ") + "</small>" : "") + "</span>" +
+        const dept = d.type === "dept", c = dept ? settleCalcDept(d) : settleCalc(d);
+        return '<li class="trow" data-act="stOpen" data-id="' + esc(d.id) + '"><span class="tt"><span class="gtag">' + (dept ? "과 행사" : "함께한 행사") + "</span> <b>" + esc(d.title || "제목 없음") + "</b>" +
+          (c.rounds.length ? ' <small class="muted">' + c.rounds.map((x) => dept ? x.r + " 납부자 " + wonN(x.extraPay) + " · 미납부자 " + wonN(x.extraNon) + "원" : x.r + " 인당 " + wonN(x.per) + "원").join(" · ") + "</small>" : "") + "</span>" +
           '<span class="dd muted small">' + esc(d.generation || "") + "</span></li>";
-      }).join("") + "</ul>" : '<p class="empty-s">아직 없어요. [+ 새 정산]을 누르면 엑셀 대신 여기서 계산하고 공지 멘트까지 만들어 줘요.</p>') + "</section>";
+      }).join("") + "</ul>" : '<p class="empty-s">과 행사(우리 회비 통장으로 결제) 또는 다른 학교와 함께한 행사의 추가 정산을 계산하고 공지 글까지 만들어 줘요.</p>') + "</section>";
   }
 
   /* ----- 출석 체크 (휴대폰용) : 이름 · 학번 · 수합금만, 오른쪽에 큰 출석 버튼 ----- */
@@ -3732,71 +3771,90 @@
     if (!canSettle()) return '<div class="card empty">재무국과 회장단만 볼 수 있어요.</div>';
     const id = S.routeArg;
     if (!S.st || S.st.id !== id) {
-      const d = id === "new" ? newSettle() : await DB.get("settlements", id);
+      const d = /^new/.test(id) ? newSettle(id === "new-dept" ? "dept" : "joint") : await DB.get("settlements", id);
       if (!d) return '<div class="card empty">정산을 찾을 수 없어요. <a href="#room">재무국방으로</a></div>';
-      S.st = { id: id, d: JSON.parse(JSON.stringify(d)), dirty: id === "new" };
+      S.st = { id: id, d: JSON.parse(JSON.stringify(d)), dirty: /^new/.test(id) };
     }
     await col("projects");
-    const d = S.st.d;
+    const d = S.st.d, dept = d.type === "dept";
     const inp = (k, v, o) => { o = o || {}; return '<input data-st="' + k + '" value="' + esc(o.money ? (numOf(v) ? commas(String(numOf(v))) : "") : v == null ? "" : v) + '"' +
       (o.money ? ' inputmode="numeric" data-money' : o.num ? ' inputmode="numeric"' : "") + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : "") + (o.cls ? ' class="' + o.cls + '"' : "") + ">"; };
     const projOpts = (S.cache.projects || []).filter((p) => isCurrent(p) || p.id === d.projectId).sort((a, b) => (b.startDate || "").localeCompare(a.startDate || ""));
     const rounds = ROUNDS.filter((r) => d.places.some((p) => p.round === r));
+    const nextRound = ROUNDS.find((r) => rounds.indexOf(r) < 0);
     const fl = d.projectId ? (await formsMap())[d.projectId] || [] : [], f = fl.length ? fl : null;
-    const placeRow = (p, i) => '<tr><td><select data-st="places.' + i + '.round">' + ROUNDS.map((r) => '<option' + (p.round === r ? " selected" : "") + ">" + r + "</option>").join("") + "</select></td>" +
-      "<td>" + inp("places." + i + ".name", p.name, { ph: "예: 쿠마" }) + "</td><td>" + inp("places." + i + ".deposit", p.deposit, { money: 1 }) + "</td><td>" + inp("places." + i + ".paid", p.paid, { money: 1 }) + "</td>" +
-      '<td class="st-total" data-st-total="' + i + '"></td><td>' + inp("places." + i + ".us", p.us, { num: 1, cls: "n" }) + "</td><td>" + inp("places." + i + ".them", p.them, { num: 1, cls: "n" }) + "</td>" +
-      "<td>" + inp("places." + i + ".note", p.note, { ph: "예: 1,500원 할인" }) + '</td><td><button class="x" data-act="stDelPlace" data-i="' + i + '" aria-label="이 장소 지우기">×</button></td></tr>';
-    return '<div class="fm-head"><a class="fm-back" href="#room">← 재무국방</a><div class="fm-title"><h2>' + esc(d.title || "새 정산") + "</h2></div></div>" +
+    // ① 결제 내역: 차수마다 묶어서 (장소가 여러 곳이면 줄 추가)
+    const head = dept ? "<th>장소</th><th>예약금</th><th>당일 결제</th><th>합계</th><th>회비 납부자</th><th>미납부자</th><th></th>"
+      : "<th>장소</th><th>예약금</th><th>당일 결제</th><th>합계</th><th>" + esc(d.us) + "</th><th>" + esc(d.them) + "</th><th>비고</th><th></th>";
+    const row = (p, i) => "<tr><td>" + inp("places." + i + ".name", p.name, { ph: "장소" }) + "</td><td>" + inp("places." + i + ".deposit", p.deposit, { money: 1 }) + "</td><td>" + inp("places." + i + ".paid", p.paid, { money: 1 }) + "</td>" +
+      '<td class="st-total" data-st-total="' + i + '"></td>' +
+      (dept ? "<td>" + inp("places." + i + ".payers", p.payers, { num: 1, cls: "n" }) + "</td><td>" + inp("places." + i + ".non", p.non, { num: 1, cls: "n" }) + "</td>"
+        : "<td>" + inp("places." + i + ".us", p.us, { num: 1, cls: "n" }) + "</td><td>" + inp("places." + i + ".them", p.them, { num: 1, cls: "n" }) + "</td><td>" + inp("places." + i + ".note", p.note, { ph: "메모" }) + "</td>") +
+      '<td><button class="x" data-act="stDelPlace" data-i="' + i + '" aria-label="이 장소 지우기">×</button></td></tr>';
+    const roundBlock = (r) => '<div class="st-rblock"><div class="st-rhead"><b>' + r + '</b><button class="linkbtn small" data-act="stAddPlace" data-r="' + r + '">+ 장소</button></div>' +
+      '<div class="fm-tablewrap"><table class="st-table"><thead><tr>' + head + "</tr></thead><tbody>" +
+      d.places.map((p, i) => (p.round === r ? row(p, i) : "")).join("") + "</tbody></table></div></div>";
+    // ② 차수별 돈 설정
+    const roundMoney = (r) => '<div class="st-round"><b>' + r + '</b><div class="fields">' +
+      '<div class="field half"><label>1인 ' + (dept ? "수합금" : "선수합금") + "</label>" + inp("fees." + r, (d.fees || {})[r], { money: 1 }) + "</div>" +
+      (dept ? '<div class="field half"><label>회비 지원 (납부자 1인)</label>' + inp("support." + r, (d.support || {})[r], { money: 1 }) + "</div>" +
+        '<div class="field half"><label>1인 금액 <small class="muted">비우면 합계 ÷ 인원</small></label>' + inp("per." + r, (d.per || {})[r], { money: 1, ph: "예: 최소 주문 금액" }) + "</div>" : "") +
+      '<div class="field"><label>현장 추가 · 미입금자 <small class="muted">' + (dept ? "수합금" : "선수합금") + "도 같이 낼 사람</small></label>" +
+        '<textarea data-st="names.' + r + '" rows="2" placeholder="이름을 쉼표로">' + esc((d.names || {})[r] || "") + "</textarea></div></div></div>";
+    return '<div class="fm-head"><a class="fm-back" href="#room">← 재무국방</a><div class="fm-title"><h2>' + esc(d.title || "새 정산") + '</h2><span class="fm-pill">' + (dept ? "과 행사" : "함께한 행사") + "</span></div></div>" +
       '<div class="st-wrap"><div class="st-edit">' +
       '<section class="card"><h3>기본 정보</h3><div class="fields">' +
-        '<div class="field"><label>정산 이름</label>' + inp("title", d.title, { ph: "예: 2학기 합동응원전 뒤풀이" }) + "</div>" +
-        '<div class="field half"><label>연결 사업 (선택)</label><select data-st="projectId"><option value="">선택 안 함</option>' + projOpts.map((p) => '<option value="' + esc(p.id) + '"' + (p.id === d.projectId ? " selected" : "") + ">" + esc(p.name) + "</option>").join("") + "</select>" +
-          '<small class="help">고르면 신청 명단에서 선수합금·미입금자를 불러올 수 있어요</small></div>' +
+        '<div class="field"><label>정산 이름</label>' + inp("title", d.title, { ph: dept ? "예: 2학기 개강파티" : "예: 2학기 합동응원전 뒤풀이" }) + "</div>" +
+        '<div class="field half"><label>연결 사업</label><select data-st="projectId"><option value="">선택 안 함</option>' + projOpts.map((p) => '<option value="' + esc(p.id) + '"' + (p.id === d.projectId ? " selected" : "") + ">" + esc(p.name) + "</option>").join("") + "</select></div>" +
         '<div class="field half"><label>입금 계좌</label>' + inp("account", d.account, { ph: "예: 하나은행 000-000000-00000 이다홍" }) + "</div>" +
-        '<div class="field half"><label>우리 학교</label>' + inp("us", d.us) + '</div><div class="field half"><label>같이 한 학교</label>' + inp("them", d.them) + "</div>" +
+        (dept ? "" : '<div class="field half"><label>우리 학교</label>' + inp("us", d.us) + '</div><div class="field half"><label>같이 한 학교</label>' + inp("them", d.them) + "</div>") +
       "</div></section>" +
-      '<section class="card"><div class="card-head"><h3>① 장소별 결제 금액 · 인원</h3><button class="btn sm" data-act="stAddPlace">+ 장소 추가</button></div>' +
-        '<div class="fm-tablewrap"><table class="st-table"><thead><tr><th>차수</th><th>장소</th><th>예약금</th><th>결제액</th><th>총액</th><th>' + esc(d.us) + " 인원</th><th>" + esc(d.them) + " 인원</th><th>비고</th><th></th></tr></thead><tbody>" +
-        d.places.map(placeRow).join("") + "</tbody></table></div>" +
-        '<p class="muted small">1차 장소가 두 곳이면 두 줄 다 1차로. 합쳐서 계산하면 한 줄만 써도 돼요.</p></section>' +
-      '<section class="card"><h3>② 실제로 결제한 금액</h3><div class="fields">' +
-        '<div class="field half"><label>' + esc(d.us) + "가 결제한 금액</label>" + inp("usPaid", d.usPaid, { money: 1 }) + "</div>" +
-        '<div class="field half"><label>' + esc(d.them) + "가 결제한 금액</label>" + inp("themPaid", d.themPaid, { money: 1 }) + "</div>" +
-      '</div><div id="stDiff"></div></section>' +
-      '<section class="card"><div class="card-head"><h3>③ 차수별 선수합금 · 추가로 받을 사람</h3>' + (f ? '<button class="btn sm" data-act="stImport">신청 명단에서 불러오기</button>' : "") + "</div>" +
-        (rounds.length ? rounds.map((r) => '<div class="st-round"><b>' + r + '</b><div class="fields">' +
-          '<div class="field half"><label>1인 선수합금</label>' + inp("fees." + r, (d.fees || {})[r], { money: 1 }) + "</div>" +
-          '<div class="field"><label>현장 추가 신청자 · 미입금자 (선수합금도 같이 내야 하는 사람)</label><textarea data-st="names.' + r + '" rows="2" placeholder="이름을 쉼표나 줄바꿈으로">' + esc((d.names || {})[r] || "") + "</textarea></div></div></div>").join("") : '<p class="empty-s">① 에 장소를 넣으면 나와요.</p>') +
-        '<details class="st-intro"><summary>공지 첫 문단 고치기</summary><textarea data-st="intro" rows="4">' + esc(d.intro || SETTLE_INTRO) + '</textarea><small class="help">{행사}는 연결 사업 이름으로 바뀌어요</small></details>' +
+      '<section class="card"><div class="card-head"><h3>① 결제 내역 · 인원</h3>' + (nextRound ? '<button class="btn sm" data-act="stAddRound" data-r="' + nextRound + '">+ ' + nextRound + "</button>" : "") + "</div>" +
+        (rounds.map(roundBlock).join("") || '<p class="empty-s">[+ 1차]를 눌러 시작해요.</p>') + "</section>" +
+      (dept ? "" : '<section class="card"><h3>② 실제로 결제한 금액</h3><div class="fields">' +
+        '<div class="field half"><label>' + esc(d.us) + " 결제</label>" + inp("usPaid", d.usPaid, { money: 1 }) + "</div>" +
+        '<div class="field half"><label>' + esc(d.them) + " 결제</label>" + inp("themPaid", d.themPaid, { money: 1 }) + "</div>" +
+        '</div><div id="stDiff"></div></section>') +
+      '<section class="card"><div class="card-head"><h3>' + (dept ? "②" : "③") + " 차수별 " + (dept ? "수합금 · 회비 지원" : "선수합금") + "</h3>" + (f ? '<button class="btn sm" data-act="stImport">신청 명단에서 불러오기</button>' : "") + "</div>" +
+        (rounds.map(roundMoney).join("") || '<p class="empty-s">① 에 차수를 넣으면 나와요.</p>') +
+        '<details class="st-intro"><summary>공지 첫 문단 고치기</summary><textarea data-st="intro" rows="4">' + esc(d.intro || (dept ? SETTLE_INTRO_DEPT : SETTLE_INTRO)) + '</textarea><small class="help">{행사}는 연결 사업 이름으로 바뀌어요</small></details>' +
       "</section>" +
       '<div class="fm-save"><button class="btn primary" data-act="stSave">저장</button><span class="dirty" id="stDirty"' + (S.st.dirty ? "" : " hidden") + ">저장 안 한 변경이 있어요</span>" +
-        (S.st.id !== "new" ? '<span style="flex:1"></span><button class="btn danger sm" data-act="stDelete">삭제</button>' : "") + "</div>" +
+        (!/^new/.test(S.st.id) ? '<span style="flex:1"></span><button class="btn danger sm" data-act="stDelete">삭제</button>' : "") + "</div>" +
       '</div><div class="st-res" id="stRes"></div></div>';
-  }
+  };
   function settleRefresh() {
     if (!S.st) return;
-    const d = S.st.d, c = settleCalc(d), T = settleTexts(d, c);
-    c.places.forEach((p, i) => { const el = document.querySelector('[data-st-total="' + i + '"]'); if (el) el.textContent = p.total ? wonN(p.total) : ""; });
-    const diffLine = (who, other, v) => Math.round(v) > 0 ? "<b>" + esc(who) + "</b>가 " + esc(other) + "에게 <b>" + wonN(v) + "원</b> 보내야 해요" : Math.round(v) < 0 ? "<b>" + esc(who) + "</b>가 " + wonN(-v) + "원 받아야 해요" : esc(who) + "는 주고받을 돈이 없어요";
-    const dEl = document.getElementById("stDiff");
-    if (dEl) dEl.innerHTML = '<table class="st-sum"><tr><th></th><th>' + esc(d.us) + "</th><th>" + esc(d.them) + "</th></tr>" +
-      "<tr><td>부담액</td><td>" + wonN(c.usTotal) + "</td><td>" + wonN(c.themTotal) + "</td></tr>" +
-      "<tr><td>결제한 금액</td><td>" + wonN(d.usPaid) + "</td><td>" + wonN(d.themPaid) + "</td></tr>" +
-      "<tr><td>부족액</td><td>" + wonN(c.usDiff) + "</td><td>" + wonN(c.themDiff) + "</td></tr></table>" +
-      '<p class="st-who">' + diffLine(d.us, d.them, c.usDiff) + "</p>";
+    const d = S.st.d, dept = d.type === "dept";
+    const c = dept ? settleCalcDept(d) : settleCalc(d), T = dept ? settleTextsDept(d, c) : settleTexts(d, c);
+    (c.places || []).forEach((p, i) => { const el = document.querySelector('[data-st-total="' + i + '"]'); if (el) el.textContent = p.total ? wonN(p.total) : ""; });
+    if (!dept) {
+      const diffLine = (who, other, v) => Math.round(v) > 0 ? "<b>" + esc(who) + "</b>가 " + esc(other) + "에게 <b>" + wonN(v) + "원</b> 보내야 해요" : Math.round(v) < 0 ? "<b>" + esc(who) + "</b>가 " + wonN(-v) + "원 받아야 해요" : esc(who) + "는 주고받을 돈이 없어요";
+      const dEl = document.getElementById("stDiff");
+      if (dEl) dEl.innerHTML = '<table class="st-sum"><tr><th></th><th>' + esc(d.us) + "</th><th>" + esc(d.them) + "</th></tr>" +
+        "<tr><td>부담액</td><td>" + wonN(c.usTotal) + "</td><td>" + wonN(c.themTotal) + "</td></tr>" +
+        "<tr><td>결제한 금액</td><td>" + wonN(d.usPaid) + "</td><td>" + wonN(d.themPaid) + "</td></tr>" +
+        "<tr><td>부족액</td><td>" + wonN(c.usDiff) + "</td><td>" + wonN(c.themDiff) + "</td></tr></table>" +
+        '<p class="st-who">' + diffLine(d.us, d.them, c.usDiff) + "</p>";
+    }
     const r = document.getElementById("stRes");
     if (!r) return;
-    r.innerHTML = '<section class="card"><h3>차수별 결과</h3>' + (c.rounds.length ? '<div class="st-cards">' + c.rounds.map((x) =>
-      '<div class="st-card"><div class="st-r">' + x.r + "</div>" +
-      '<div class="st-big">' + wonN(x.per) + "<small>원 / 인</small></div>" +
-      "<dl><dt>" + esc(d.us) + " 부담액</dt><dd>" + wonN(x.burden) + "원</dd><dt>선수합금</dt><dd>" + wonN(x.prepaid) + "원 <small>(" + x.people + "명 × " + wonN(x.fee) + ")</small></dd>" +
-      "<dt>추가 정산금</dt><dd>" + wonN(x.extra) + "원</dd><dt>회비 지원</dt><dd>" + wonN(x.rest) + "원</dd>" + (x.names.length ? "<dt>선수합금도 낼 사람</dt><dd>" + x.names.length + "명 · " + wonN(x.per + x.fee) + "원씩</dd>" : "") + "</dl>" +
-      (x.extra < 0 ? '<p class="notice warn small">선수합금이 부담액보다 ' + wonN(-x.extra) + "원 많아요. 돌려줄지 정해 주세요.</p>" : "") + "</div>").join("") + "</div>" : '<p class="empty-s">장소와 인원을 넣으면 계산돼요.</p>') + "</section>" +
-      '<section class="card"><div class="card-head"><h3>계산 과정</h3><button class="btn sm" data-act="stCopy" data-k="calc">복사</button></div><pre class="st-text">' + esc(T.calc) + "</pre>" +
-      '<p class="muted small">정산방에 이 글을 먼저 올리고(또는 캡처해서), 아래 공지를 올리면 돼요.</p></section>' +
+    const card = dept ? (x) => '<div class="st-card"><div class="st-r">' + x.r + (x.names.length ? "" : "") + "</div>" +
+        '<div class="st-pair"><div><span>회비 납부자</span><b>' + wonN(x.extraPay) + "<small>원</small></b></div><div><span>미납부자</span><b>" + wonN(x.extraNon) + "<small>원</small></b></div></div>" +
+        "<dl><dt>합계</dt><dd>" + wonN(x.total) + "원</dd><dt>인원</dt><dd>" + x.n + "명 <small>(납부 " + x.payers + " · 미납 " + x.non + ")</small></dd>" +
+        "<dt>1인 금액</dt><dd>" + wonN(x.per) + "원</dd><dt>받은 수합금</dt><dd>" + wonN(x.collected) + "원</dd><dt>추가 정산 합계</dt><dd>" + wonN(x.extraTotal) + "원</dd>" +
+        "<dt>학생회비 사용</dt><dd>" + wonN(x.dues) + "원</dd>" + (x.names.length ? "<dt>수합금도 낼 사람</dt><dd>" + x.names.length + "명</dd>" : "") + "</dl>" +
+        (x.extraNon <= 0 ? '<p class="notice warn small">수합금이 1인 금액보다 많거나 같아요. 추가로 받을 돈이 없어요.</p>' : "") + "</div>"
+      : (x) => '<div class="st-card"><div class="st-r">' + x.r + "</div>" +
+        '<div class="st-big">' + wonN(x.per) + "<small>원 / 인</small></div>" +
+        "<dl><dt>" + esc(d.us) + " 부담액</dt><dd>" + wonN(x.burden) + "원</dd><dt>선수합금</dt><dd>" + wonN(x.prepaid) + "원 <small>(" + x.people + "명 × " + wonN(x.fee) + ")</small></dd>" +
+        "<dt>추가 정산금</dt><dd>" + wonN(x.extra) + "원</dd><dt>회비 지원</dt><dd>" + wonN(x.rest) + "원</dd>" + (x.names.length ? "<dt>선수합금도 낼 사람</dt><dd>" + x.names.length + "명 · " + wonN(x.per + x.fee) + "원씩</dd>" : "") + "</dl>" +
+        (x.extra < 0 ? '<p class="notice warn small">선수합금이 부담액보다 ' + wonN(-x.extra) + "원 많아요. 돌려줄지 정해 주세요.</p>" : "") + "</div>";
+    r.innerHTML = '<section class="card st-result"><h3>결과 · 1인 추가 정산금</h3>' + (c.rounds.length ? '<div class="st-cards">' + c.rounds.map(card).join("") + "</div>" : '<p class="empty-s">결제 금액과 인원을 넣으면 계산돼요.</p>') + "</section>" +
+      '<section class="card"><div class="card-head"><h3>계산 과정</h3><button class="btn sm" data-act="stCopy" data-k="calc">복사</button></div><pre class="st-text">' + esc(T.calc) + "</pre></section>" +
       '<section class="card"><div class="card-head"><h3>정산방 공지</h3><button class="btn sm" data-act="stCopy" data-k="notice">복사</button></div><pre class="st-text">' + esc(T.notice) + "</pre>" +
-      '<p class="muted small">· 원 단위 아래로 나누어떨어지지 않는 금액은 회비로 지원해요. 2학기처럼 상대 학교가 결제해서 우리 회비 통장을 안 쓰는 경우엔 남는 금액은 사비 지원을 추천해요.<br>· 1학기(안암에서 결제)는 우리 회비 통장에서 돈이 나가니 사실확인증과 결산을 꼭 써 주세요.</p></section>';
+      '<p class="muted small">' + (dept ? "나누어떨어지지 않는 금액은 회비로 지원해요. 예약금은 회비 통장에서 먼저 나간 돈이라, 수합금 · 추가 정산금으로 다시 채워져요."
+        : "나누어떨어지지 않는 금액은 회비로 지원해요. 상대 학교가 결제해서 우리 회비 통장을 안 쓰면 남는 금액은 사비 지원을 추천해요.") + "</p></section>";
   }
   function stMark() { S.st.dirty = true; const e = document.getElementById("stDirty"); if (e) e.hidden = false; }
   document.addEventListener("input", function (e) {
@@ -3817,15 +3875,21 @@
     if (el.dataset && (el.dataset.st === "us" || el.dataset.st === "them") && S.st) renderPage();
   });
   Object.assign(ACTS, {
-    stNew() { S.st = null; location.hash = "settle/new"; },
+    stNew(el) { S.st = null; location.hash = "settle/" + (el.dataset.t === "dept" ? "new-dept" : "new"); },
     stOpen(el) { S.st = null; location.hash = "settle/" + encodeURIComponent(el.dataset.id); },
-    stAddPlace() { const ps = S.st.d.places; ps.push({ round: (ps[ps.length - 1] || {}).round || "1차", name: "", deposit: 0, paid: 0, us: 0, them: 0, note: "" }); stMark(); renderPage(); },
+    stAddPlace(el) {
+      const d = S.st.d, r = el.dataset.r || "1차", row = d.type === "dept" ? { round: r, name: "", deposit: 0, paid: 0, payers: 0, non: 0 } : { round: r, name: "", deposit: 0, paid: 0, us: 0, them: 0, note: "" };
+      // 같은 차수 마지막 줄 바로 뒤에
+      let at = -1; d.places.forEach((p, i) => { if (p.round === r) at = i; });
+      d.places.splice(at < 0 ? d.places.length : at + 1, 0, row); stMark(); renderPage();
+    },
+    stAddRound(el) { ACTS.stAddPlace(el); },
     stDelPlace(el) { S.st.d.places.splice(Number(el.dataset.i), 1); stMark(); renderPage(); },
     async stSave() {
       const st = S.st, d = Object.assign({}, st.d, { updatedAt: new Date().toISOString(), updatedBy: (S.me && S.me.name) || "" });
       if (!String(d.title || "").trim()) return toast("정산 이름을 넣어 주세요.", true);
       delete d.id;
-      if (st.id === "new") { const nid = await DB.add("settlements", d); st.id = nid; history.replaceState(null, "", "#settle/" + nid); S.routeArg = nid; }
+      if (/^new/.test(st.id)) { const nid = await DB.add("settlements", d); st.id = nid; history.replaceState(null, "", "#settle/" + nid); S.routeArg = nid; }
       else await DB.set("settlements", st.id, d);
       st.dirty = false; dirty("settlements"); toast("저장했어요."); renderPage();
     },
@@ -3834,7 +3898,7 @@
       await DB.remove("settlements", S.st.id); dirty("settlements"); S.st = null; location.hash = "room"; toast("지웠어요.");
     },
     stCopy(el) {
-      const d = S.st.d, T = settleTexts(d, settleCalc(d)), txt = T[el.dataset.k];
+      const d = S.st.d, T = d.type === "dept" ? settleTextsDept(d, settleCalcDept(d)) : settleTexts(d, settleCalc(d)), txt = T[el.dataset.k];
       Promise.resolve(navigator.clipboard && navigator.clipboard.writeText(txt)).then(() => toast("복사했어요. 단톡방에 붙여넣으면 돼요.")).catch(() => infoModal("복사하기", '<textarea rows="12" style="width:100%">' + esc(txt) + "</textarea>"));
     },
     // 연결 사업의 신청 명단에서: 차수별 1인 선수합금 = 양식 참가비, 미입금자 = 참여하는데 입금 확인 안 된 사람
@@ -3845,7 +3909,7 @@
       if (!f) return toast("이 사업에는 신청 양식이 없어요.", true);
       let list = [];
       try { list = ordered(f, await DB.list(respPath(f.id))); } catch (e) { return toast("명단을 볼 권한이 없어요.", true); }
-      const going = list.filter((r) => AP.isIn(f, r));
+      const going = list.filter((r) => AP.isIn(f, r)), dept = d.type === "dept";
       const inRound = (r, rd) => !AP.has2(f) ? rd === "1차" : rd === "1차" ? AP.partOf(f, r) !== "2차만" : rd === "2차" ? /2차/.test(AP.partOf(f, r)) : false;
       const msg = [];
       ["1차", "2차"].forEach((rd) => {
@@ -3854,7 +3918,9 @@
         d.fees = d.fees || {}; d.names = d.names || {};
         d.fees[rd] = rd === "1차" ? Number(f.fee) || 0 : Number(f.fee2) || 0;
         d.names[rd] = unpaid.map((r) => r.name).join(", ");
-        msg.push(rd + " 신청 " + ppl.length + "명 · 미입금 " + unpaid.length + "명");
+        // 과 행사: 재무국방 수합금 확인에서 정한 학생회비 납부자 / 미납부자 인원을 그 차수 첫 장소에 넣음
+        if (dept) { const pl = d.places.find((p) => p.round === rd); if (pl) { pl.non = ppl.filter((r) => r.duesUnpaid).length; pl.payers = ppl.length - pl.non; } }
+        msg.push(rd + " 신청 " + ppl.length + "명" + (dept ? " (회비 미납부자 " + ppl.filter((r) => r.duesUnpaid).length + "명)" : "") + " · 미입금 " + unpaid.length + "명");
       });
       stMark(); renderPage();
       setTimeout(() => toast("불러왔어요: " + msg.join(" / ") + ". 현장 추가 신청자는 직접 더해 주세요."), 50);

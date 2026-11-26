@@ -1467,3 +1467,33 @@ input.ap-locked { background: var(--bg); color: var(--muted); }
 .anonchk input { width: 16px; height: 16px; accent-color: var(--accent); }
 .compose-foot .anonchk { margin-right: auto; }
 .compose-foot .muted.small { margin-right: 8px; }
+
+/* ===== 추가 정산 (가독성) ===== */
+.st-newbtns { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.st-edit select { width: 100%; font: inherit; font-size: 15px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.st-rblock { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px 6px; margin-top: 10px; }
+.st-rblock:first-of-type { margin-top: 4px; }
+.st-rhead { display: flex; align-items: center; gap: 10px; padding: 2px 2px 4px; }
+.st-rhead b { font-size: 14px; background: var(--ink); color: var(--surface); border-radius: 6px; padding: 1px 8px; }
+.st-rhead .linkbtn { margin-left: auto; color: var(--accent); text-decoration: none; font-size: 13px; }
+.st-table th { padding: 6px 6px 4px; }
+.st-table td { padding: 3px 4px; }
+.st-table input { font-size: 14px; }
+.st-table .st-total { color: var(--accent); }
+.st-table .x { font-size: 20px; }
+.st-round { padding: 12px 0; }
+.st-round > b { display: inline-block; font-size: 13px; background: var(--ink); color: var(--surface); border-radius: 6px; padding: 1px 8px; margin-bottom: 8px; }
+.st-result { border: 1.5px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.st-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 10px; }
+.st-pair > div { background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+.st-pair span { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
+.st-pair b { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.st-pair b small { font-size: 12px; color: var(--muted); margin-left: 2px; }
+.st-card dd small { color: var(--muted); font-weight: 500; }
+@media (min-width: 1500px) {
+  .st-wrap { max-width: 1300px; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; }
+  .st-res { position: sticky; top: 16px; }
+}
+.st-wrap { max-width: 980px; }
+.st-table input { min-width: 0; }
+.st-table input[data-money] { min-width: 84px; }
