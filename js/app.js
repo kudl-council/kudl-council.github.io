@@ -1785,8 +1785,9 @@
     const projects = await col("projects");
     const projId = (S.fm.form && S.fm.form.projectId) || newFor || keepProj || (projects.some((x) => x.id === pid) ? pid : pid.replace(/-[a-z0-9]+$/, ""));
     S.fm.projId = projId;
-    const p = projects.find((x) => x.id === projId);
-    if (!p) return '<div class="card empty">사업을 찾을 수 없어요.<br><a class="btn" href="#projects">사업 기획안으로</a></div>';
+    // 사업이 지워졌어도 양식·명단은 남아 있으면 그대로 보여 줌
+    const p = projects.find((x) => x.id === projId) || (S.fm.form ? { id: projId, name: S.fm.form.projectName || S.fm.form.title || "지워진 사업", dept: S.fm.form.projectDept || "", gone: true } : null);
+    if (!p) return '<div class="card empty">양식을 찾을 수 없어요. 지워졌거나 주소가 바뀌었을 수 있어요.<br><a class="btn" href="#projects">사업 기획안으로</a></div>';
     const fm = S.fm, f = fm.form;
     const editable = canEditForm(f || { ownerDept: formDeptFor(p) });
     const viewer = canSeeRoster(f);
@@ -1799,6 +1800,7 @@
     let head = '<div class="fm-head"><a class="fm-back" href="#projects">← 사업 기획안</a>' +
       '<div class="fm-title"><h2>' + esc(p.name) + (curForm() && curForm().name ? ' <span class="fm-fname">· ' + esc(curForm().name) + "</span>" : "") + "</h2>" + deptTag(p.dept) +
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.imported ? "구글폼에서 가져옴" : f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") + "</div>";
+    if (p.gone) head += '<div class="notice warn small" style="margin:0">이 양식이 연결된 사업이 지워졌어요. 신청 링크와 명단은 그대로 쓸 수 있어요.</div>';
     if (f && imp) {
       head += '<div class="notice info small" style="margin:0">구글폼에서 가져온 명단이에요' + (f.importedAt ? " (" + esc(dotDate(f.importedAt)) + ")" : "") + ". 신청 링크는 없고, 출석 체크와 수합금 확인은 똑같이 할 수 있어요." +
         (editable ? ' <button class="linkbtn small" data-act="fmImpEdit">이름·참가비 고치기</button>' : "") + (canSetEditors(f) ? ' <button class="linkbtn small" data-act="fmPerm">권한 설정</button>' : "") + "</div>" +
@@ -2985,7 +2987,8 @@
       await col("users");
       openForm({ title: "사업 수정", fields: projectFields({ council: true, selfId: p.id }), values: Object.assign({}, p, { ownerSel: memberValue(p.dept, p.ownerUid, p.owner), isSchool: isSchool(p) }),
         extraButtons: isHead() ? [{ label: "삭제", cls: "danger", onClick: async () => {
-          if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)")) return;
+          const nf = ((await formsMap())[p.id] || []).length;
+          if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)" + (nf ? "\n\n⚠ 이 사업에 신청 양식 " + nf + "개가 있어요. 양식과 명단은 지워지지 않고 남아요. 보통은 삭제 대신 [아카이브로 보내기]를 추천해요." : ""))) return;
           await DB.remove("projects", p.id);
           // 신청 양식·명단도 함께 지움 (권한이 없으면 보관 기한에 자동으로 지워짐)
           try { for (const fx of ((await formsMap())[p.id] || [])) { for (const r of await DB.list(respPath(fx.id))) await DB.remove(respPath(fx.id), r.id); await clearSlots(fx.id); await DB.remove("forms", fx.id); } dirty("forms"); } catch (e) { console.warn(e); }
