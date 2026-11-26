@@ -1764,6 +1764,12 @@
       (old ? '<br><span style="color:var(--accent)">이미 받은 응답은 로그인 없이 낸 거라서, 저장하면 그 사람들은 직접 고칠 수 없어요.</span>' : "");
   }
 
+  // 양식 하나를 명단까지 통째로 지움
+  async function removeForm(fid) {
+    for (const r of (await DB.list(respPath(fid)))) await DB.remove(respPath(fid), r.id);
+    await clearSlots(fid);
+    await DB.remove("forms", fid);
+  }
   async function clearSlots(pid) {
     try { for (const x of await DB.list("forms/" + pid + "/slots")) await DB.remove("forms/" + pid + "/slots", x.id); } catch (e) { console.warn(e); }
     try { for (const x of await DB.list("forms/" + pid + "/edits")) await DB.remove("forms/" + pid + "/edits", x.id); } catch (e) { console.warn(e); }
@@ -1800,7 +1806,7 @@
     let head = '<div class="fm-head"><a class="fm-back" href="#projects">← 사업 기획안</a>' +
       '<div class="fm-title"><h2>' + esc(p.name) + (curForm() && curForm().name ? ' <span class="fm-fname">· ' + esc(curForm().name) + "</span>" : "") + "</h2>" + deptTag(p.dept) +
       (f ? '<span class="fm-pill ' + (f.open ? "ok" : "") + '">' + (f.imported ? "구글폼에서 가져옴" : f.open ? "신청 받는 중" : "신청 닫힘") + "</span>" : "") + "</div>";
-    if (p.gone) head += '<div class="notice warn small" style="margin:0">이 양식이 연결된 사업이 지워졌어요. 신청 링크와 명단은 그대로 쓸 수 있어요.</div>';
+    if (p.gone) head += '<div class="notice warn small" style="margin:0">이 양식이 연결된 사업이 지워졌어요.' + (editable ? ' <button class="linkbtn small" data-act="fmDelete">이 양식도 지우기</button>' : " 회장단에게 지워 달라고 해 주세요.") + "</div>";
     if (f && imp) {
       head += '<div class="notice info small" style="margin:0">구글폼에서 가져온 명단이에요' + (f.importedAt ? " (" + esc(dotDate(f.importedAt)) + ")" : "") + ". 신청 링크는 없고, 출석 체크와 수합금 확인은 똑같이 할 수 있어요." +
         (editable ? ' <button class="linkbtn small" data-act="fmImpEdit">이름·참가비 고치기</button>' : "") + (canSetEditors(f) ? ' <button class="linkbtn small" data-act="fmPerm">권한 설정</button>' : "") + "</div>" +
@@ -2552,9 +2558,7 @@
     },
     async fmDelete() {
       if (!confirm("이 신청 양식과 참여자 명단(" + (S.fm.resp ? S.fm.resp.length : 0) + "명)을 모두 지울까요? 되돌릴 수 없어요.")) return;
-      for (const r of (await DB.list(respPath(S.fm.pid)))) await DB.remove(respPath(S.fm.pid), r.id);
-      await clearSlots(S.fm.pid);
-      await DB.remove("forms", S.fm.pid);
+      await removeForm(S.fm.pid);
       dirty("forms"); S.fm = { pid: "" }; location.hash = "projects"; toast("삭제했어요.");
     },
     async fmReload() { S.fm.resp = null; await loadFm(S.fm.pid); refreshRoster(); toast("새로 불러왔어요."); },
@@ -2987,8 +2991,13 @@
       await col("users");
       openForm({ title: "사업 수정", fields: projectFields({ council: true, selfId: p.id }), values: Object.assign({}, p, { ownerSel: memberValue(p.dept, p.ownerUid, p.owner), isSchool: isSchool(p) }),
         extraButtons: isHead() ? [{ label: "삭제", cls: "danger", onClick: async () => {
-          const nf = ((await formsMap())[p.id] || []).length;
-          if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)" + (nf ? "\n\n⚠ 이 사업에 신청 양식 " + nf + "개가 있어요. 양식과 명단은 지워지지 않고 남아요. 보통은 삭제 대신 [아카이브로 보내기]를 추천해요." : ""))) return;
+          const pf = (await formsMap())[p.id] || [], nf = pf.length;
+          if (!confirm("'" + p.name + "' 사업을 삭제할까요? 되돌릴 수 없어요.\n(분배된 업무는 캘린더에 그대로 남아요)" + (nf ? "\n\n⚠ 이 사업의 신청 양식 " + nf + "개와 참여자 명단도 함께 지워져요. 기록을 남기려면 삭제 대신 [아카이브로 보내기]를 써 주세요." : ""))) return;
+          // 사업에 딸린 신청 양식·명단도 같이 지움 (권한이 없는 양식은 남기고 알려 줌)
+          let left = 0;
+          for (const x of pf) { try { await removeForm(x.id); } catch (e) { left++; } }
+          if (nf) dirty("forms");
+          if (left) toast("신청 양식 " + left + "개는 권한이 없어 못 지웠어요. 회장단에게 부탁해 주세요.", true);
           await DB.remove("projects", p.id);
           // 신청 양식·명단도 함께 지움 (권한이 없으면 보관 기한에 자동으로 지워짐)
           try { for (const fx of ((await formsMap())[p.id] || [])) { for (const r of await DB.list(respPath(fx.id))) await DB.remove(respPath(fx.id), r.id); await clearSlots(fx.id); await DB.remove("forms", fx.id); } dirty("forms"); } catch (e) { console.warn(e); }
@@ -3469,8 +3478,8 @@
     // 수합금 확인 = 재무국 할 일 하나. 사업이 완료(·취소)되거나 아카이브로 가면 사라짐 (명단의 [수합금 확인 →]으로는 계속 볼 수 있음)
     const items = [];
     for (const f of forms) {
-      const p = pn[f.projectId || f.id] || {};
-      if (p.archived || p.status === "완료" || p.status === "취소") continue;
+      const p = pn[f.projectId || f.id];
+      if (!p || p.archived || p.status === "완료" || p.status === "취소") continue; // 사업이 지워졌거나 끝났으면 안 보임
       let due = 0, paid = 0;
       try { const list = AP.place(f, (await DB.list(respPath(f.id))).sort((a, b) => (a.at || 0) - (b.at || 0))); list.forEach((r) => { if (AP.needPay(f, r)) { due++; if (r.paid) paid++; } }); } catch (e) { continue; }
       items.push({ f: f, p: p, due: due, paid: paid });
